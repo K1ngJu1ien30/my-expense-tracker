@@ -32,7 +32,7 @@ export default function AuthScreen() {
             } else {
                 const { error } = await supabase.auth.signUp({ email, password });
                 if (error) throw error;
-                triggerToast("Account mapped successfully! Check your email.");
+                triggerToast("Account created successfully! Check your email.");
             }
         } catch (error: any) {
             triggerToast(error.message || "Failed to authenticate.");
@@ -53,9 +53,9 @@ export default function AuthScreen() {
                 </div>
 
                 <div className="text-center mb-8">
-                    <h1 className="text-3xl font-black text-foreground tracking-tight">Aura Tracker</h1>
+                    <h1 className="text-3xl font-black text-foreground tracking-tight">Tracker</h1>
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-2">
-                        {isLogin ? "Sign in to your matrix" : "Initialize new account"}
+                        {isLogin ? "Welcome back" : "Create Account"}
                     </p>
                 </div>
 
@@ -76,7 +76,7 @@ export default function AuthScreen() {
                         <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                         <input 
                             type="password" 
-                            placeholder="Primary Password" 
+                            placeholder="Password" 
                             value={password}
                             onChange={e=>setPassword(e.target.value)}
                             className="w-full bg-muted/60 text-sm font-semibold pl-11 pr-4 py-3.5 rounded-xl border border-border focus:border-primary outline-none transition-colors"
@@ -90,14 +90,14 @@ export default function AuthScreen() {
                         style={{ backgroundColor: accentColor, boxShadow: `0 0 20px ${accentColor}60` }}
                         className="w-full text-white py-4 mt-2 rounded-xl font-bold active:scale-[0.98] transition-all flex justify-center items-center gap-2"
                     >
-                        {loading ? "Authenticating..." : (isLogin ? "Decrypt" : "Generate Keys")}
+                        {loading ? "Authenticating..." : (isLogin ? "Sign In" : "Sign Up")}
                         {!loading && <Lock className="w-4 h-4" />}
                     </button>
                 </form>
 
                 <div className="mt-6 text-center">
                     <button onClick={() => setIsLogin(!isLogin)} className="text-xs font-bold text-muted-foreground hover:text-foreground transition-colors">
-                        {isLogin ? "New to Aura? Create an account." : "Already mapped? Sign in instead."}
+                        {isLogin ? "New to Tracker? Create an account." : "Already have an account? Sign In."}
                     </button>
                 </div>
             </motion.div>
