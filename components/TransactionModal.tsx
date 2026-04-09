@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useEffect } from "react";
 
 import { useAppContext } from "@/lib/context";
 
@@ -60,7 +61,7 @@ function PillSelector({ options, value, onChange }: { options: string[], value: 
 }
 
 export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const { categories, triggerToast, accentColor } = useAppContext();
+  const { categories, triggerToast, accentColor, addTransaction, updateTransaction, transactions, editTransactionId, setEditTransactionId } = useAppContext();
   
   const [txType, setTxType] = useState<TxType>("Expense");
   const [modalCurrency, setModalCurrency] = useState("RM");
@@ -68,21 +69,45 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
   const [toAccount, setToAccount] = useState("TNG eWallet");
   const [category, setCategory] = useState(categories[0] || "Food");
   const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+
+  const isActuallyOpen = isOpen || editTransactionId !== null;
+
+  useEffect(() => {
+    if (editTransactionId) {
+       const tx = transactions.find(t => t.id === editTransactionId);
+       if (tx) {
+         setTxType(tx.type as TxType);
+         setCategory(tx.category || categories[0]);
+         setAccount(tx.account || "Bank (MBB)");
+         setAmount(String(tx.amount));
+         setNote(tx.note || "");
+       }
+    } else {
+       setAmount("");
+       setNote("");
+    }
+  }, [editTransactionId, transactions, categories]);
 
   const handleDragEnd = (_: any, info: any) => {
-    if (info.offset.y > 100) onClose();
+    if (info.offset.y > 100) handleClose();
+  };
+
+  const handleClose = () => {
+    setEditTransactionId(null);
+    onClose();
   };
 
   return (
     <AnimatePresence>
-      {isOpen && (
+      {isActuallyOpen && (
         <>
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 rounded-inherit"
+            onClick={handleClose}
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 rounded-[inherit]"
           />
           <motion.div
             initial={{ y: "100%" }}
@@ -93,14 +118,14 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
             dragConstraints={{ top: 0 }}
             dragElastic={0.2}
             onDragEnd={handleDragEnd}
-            className="absolute bottom-0 left-0 right-0 bg-card z-50 rounded-t-[2rem] shadow-heavy flex flex-col max-h-[90vh]"
+            className="absolute bottom-0 left-0 right-0 bg-card z-[51] rounded-t-[2rem] shadow-heavy flex flex-col max-h-[90vh]"
           >
             <div className="w-12 h-1.5 bg-border rounded-full mx-auto mt-3 mb-5 cursor-grab active:cursor-grabbing" />
             
             <div className="px-6 pb-8 overflow-y-auto hide-scrollbar">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold">New Transaction</h2>
-                <button onClick={onClose} className="p-2 bg-muted rounded-full text-muted-foreground hover:text-foreground transition-colors">
+                <h2 className="text-xl font-bold">{editTransactionId ? "Edit" : "New"} Transaction</h2>
+                <button onClick={handleClose} className="p-2 bg-muted rounded-full text-muted-foreground hover:text-foreground transition-colors">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -174,6 +199,8 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                     <input 
                       type="text" 
                       placeholder="Sub-category / Note (Optional)" 
+                      value={note}
+                      onChange={e=>setNote(e.target.value)}
                       className="w-full bg-muted text-sm px-4 py-3 rounded-xl border border-border/50 text-foreground outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium placeholder:text-muted-foreground/70"
                     />
                   </div>
@@ -183,12 +210,30 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                   style={{ backgroundColor: accentColor, boxShadow: `0 0 15px ${accentColor}4D` }}
                   className="w-full text-white py-4 rounded-xl font-bold active:scale-[0.98] transition-all mt-4"
                   onClick={() => {
+                    if (!amount || isNaN(Number(amount))) return;
+                    
+                    const payload = {
+                       type: txType,
+                       amount: Number(amount),
+                       category: txType === "Transfer" ? "Transfer" : category,
+                       account,
+                       note,
+                       date: new Date().toISOString()
+                    };
+
+                    if (editTransactionId) {
+                       updateTransaction(editTransactionId, payload);
+                       triggerToast(`Transaction updated gracefully!`);
+                    } else {
+                       addTransaction({ id: Date.now(), ...payload });
+                       triggerToast(`${txType} mapped formally natively!`);
+                    }
+                    
                     if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(50);
-                    triggerToast(`${txType} saved successfully!`);
-                    onClose();
+                    handleClose();
                   }}
                 >
-                  Save {txType}
+                  {editTransactionId ? "Update Record" : `Save ${txType}`}
                 </button>
               </div>
             </div>

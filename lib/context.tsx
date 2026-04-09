@@ -18,6 +18,7 @@ export type Goal = {
 };
 
 export type Subscription = { id: number; name: string; cost: number; icon: string; bg: string; color: string; autoDeduct?: boolean; billingDay?: number; sourceAccount?: string; user_id?: string; };
+export type Transaction = { id: number; type: string; amount: number; category: string; account: string; date: string; note?: string; user_id?: string; };
 export type ToastType = { message: string; id: number } | null;
 
 type AppContextType = {
@@ -37,7 +38,12 @@ type AppContextType = {
   deleteCategory: (cat: string) => void;
   toast: ToastType;
   triggerToast: (msg: string) => void;
-  transactions: any[];
+  transactions: Transaction[];
+  addTransaction: (tx: Transaction) => void;
+  updateTransaction: (id: number, patch: Partial<Transaction>) => void;
+  deleteTransaction: (id: number) => void;
+  editTransactionId: number | null;
+  setEditTransactionId: (val: number | null) => void;
   subscriptions: Subscription[];
   addSubscription: (sub: Subscription) => void;
   updateSubscription: (id: number, patch: Partial<Subscription>) => void;
@@ -100,7 +106,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const updateUtility = (id: number, patch: Partial<Subscription>) => setUtilities(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
   const deleteUtility = (id: number) => setUtilities(prev => prev.filter(s => s.id !== id));
 
-  const [transactions, setTransactions] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([
+    { id: 1, type: "Expense", amount: 12.50, category: "Food", account: "Bank (MBB)", date: new Date().toISOString() },
+    { id: 2, type: "Income", amount: 2500, category: "Salary", account: "Bank (MBB)", date: new Date().toISOString() }
+  ]);
+  const addTransaction = (tx: Transaction) => setTransactions(prev => [{ ...tx, user_id: session?.user?.id }, ...prev]);
+  const updateTransaction = (id: number, patch: Partial<Transaction>) => setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t));
+  const deleteTransaction = (id: number) => setTransactions(prev => prev.filter(t => t.id !== id));
+  const [editTransactionId, setEditTransactionId] = useState<number | null>(null);
 
   const [goals, setGoals] = useState<Goal[]>([
     { id: 1, title: 'Year-End Family Trip', subtitle: 'Year-End Goal', current: 3500, target: 10000, isPinned: true, color: "bg-blue-500", bg: "bg-blue-500/10", iconName: "Target" },
@@ -152,6 +165,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       utilities: utilities.filter(u => !u.user_id || u.user_id === session?.user?.id),
       addUtility, updateUtility, deleteUtility,
       transactions: transactions.filter(t => !t.user_id || t.user_id === session?.user?.id),
+      addTransaction, updateTransaction, deleteTransaction,
+      editTransactionId, setEditTransactionId,
       goals: goals.filter(g => !g.user_id || g.user_id === session?.user?.id),
       addGoal, updateGoal, deleteGoal,
       accentColor, setAccentColor,
