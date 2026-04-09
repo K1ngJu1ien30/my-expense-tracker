@@ -1,0 +1,148 @@
+"use client";
+
+import React, { createContext, useContext, useState, useEffect } from "react";
+
+export type Goal = {
+  id: number;
+  title: string;
+  subtitle: string;
+  current: number;
+  target: number;
+  isPinned: boolean;
+  color: string;
+  bg: string;
+  iconName: string;
+};
+
+export type Subscription = { id: number; name: string; cost: number; icon: string; bg: string; color: string; autoDeduct?: boolean; billingDay?: number; sourceAccount?: string; };
+export type ToastType = { message: string; id: number } | null;
+
+type AppContextType = {
+  userName: string;
+  setUserName: (val: string) => void;
+  currency: string;
+  setCurrency: (val: string) => void;
+  billingCycle: string;
+  setBillingCycle: (val: string) => void;
+  dailyReminder: boolean;
+  setDailyReminder: (val: boolean) => void;
+  reminderTime: string;
+  setReminderTime: (val: string) => void;
+  categories: string[];
+  setCategories: (cats: string[]) => void;
+  addCategory: (cat: string) => void;
+  deleteCategory: (cat: string) => void;
+  toast: ToastType;
+  triggerToast: (msg: string) => void;
+  transactions: any[];
+  subscriptions: Subscription[];
+  addSubscription: (sub: Subscription) => void;
+  updateSubscription: (id: number, patch: Partial<Subscription>) => void;
+  deleteSubscription: (id: number) => void;
+  utilities: Subscription[];
+  addUtility: (sub: Subscription) => void;
+  updateUtility: (id: number, patch: Partial<Subscription>) => void;
+  deleteUtility: (id: number) => void;
+  goals: Goal[];
+  addGoal: (goal: Goal) => void;
+  updateGoal: (id: number, goal: Partial<Goal>) => void;
+  deleteGoal: (id: number) => void;
+  accentColor: string;
+  setAccentColor: (val: string) => void;
+  isSecurityEnabled: boolean;
+  setIsSecurityEnabled: (val: boolean) => void;
+  securityMethod: string;
+  setSecurityMethod: (val: string) => void;
+  appPin: string;
+  setAppPin: (val: string) => void;
+  isLocked: boolean;
+  setIsLocked: (val: boolean) => void;
+};
+
+export const AppContext = createContext<AppContextType | null>(null);
+
+export function AppProvider({ children }: { children: React.ReactNode }) {
+  const [userName, setUserName] = useState("Jeff");
+  const [currency, setCurrency] = useState("RM");
+  const [billingCycle, setBillingCycle] = useState("1");
+  const [dailyReminder, setDailyReminder] = useState(false);
+  const [reminderTime, setReminderTime] = useState("20:00");
+  const [categories, setCategories] = useState<string[]>(["Food", "Transport", "Entertainment", "Shopping", "Bills", "Family", "Subs"]);
+
+  const [toast, setToast] = useState<ToastType>(null);
+  const triggerToast = (message: string) => {
+    const id = Date.now();
+    setToast({ message, id });
+    setTimeout(() => setToast(prev => prev?.id === id ? null : prev), 3000);
+  };
+
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([
+    { id: 1, name: "Netflix", cost: 55.00, icon: "MonitorPlay", bg: "bg-red-500/10", color: "text-red-500" },
+    { id: 2, name: "Spotify Premium", cost: 14.90, icon: "Music", bg: "bg-green-500/10", color: "text-green-500" }
+  ]);
+  const addSubscription = (sub: Subscription) => setSubscriptions(prev => [...prev, sub]);
+  const updateSubscription = (id: number, patch: Partial<Subscription>) => setSubscriptions(prev => prev.map(s => s.id === id ? { ...s, ...patch} : s));
+  const deleteSubscription = (id: number) => setSubscriptions(prev => prev.filter(s => s.id !== id));
+
+  const [utilities, setUtilities] = useState<Subscription[]>([
+    { id: 3, name: "Electricity", cost: 120.00, icon: "Zap", bg: "bg-yellow-500/10", color: "text-yellow-500" },
+    { id: 4, name: "Internet", cost: 89.00, icon: "Wifi", bg: "bg-blue-500/10", color: "text-blue-500" }
+  ]);
+  const addUtility = (sub: Subscription) => setUtilities(prev => [...prev, sub]);
+  const updateUtility = (id: number, patch: Partial<Subscription>) => setUtilities(prev => prev.map(s => s.id === id ? { ...s, ...patch} : s));
+  const deleteUtility = (id: number) => setUtilities(prev => prev.filter(s => s.id !== id));
+
+  const [transactions, setTransactions] = useState<any[]>([]);
+
+  const [goals, setGoals] = useState<Goal[]>([
+    { id: 1, title: 'Year-End Family Trip', subtitle: 'Year-End Goal', current: 3500, target: 10000, isPinned: true, color: "bg-blue-500", bg: "bg-blue-500/10", iconName: "Target" },
+    { id: 2, title: 'Emergency Fund', subtitle: 'Safety Net', current: 15000, target: 20000, isPinned: false, color: "bg-emerald-500", bg: "bg-emerald-500/10", iconName: "ShieldAlert" },
+  ]);
+
+  const addGoal = (goal: Goal) => setGoals(prev => [...prev, goal]);
+  const updateGoal = (id: number, patch: Partial<Goal>) => setGoals(prev => prev.map(g => g.id === id ? { ...g, ...patch } : g));
+  const deleteGoal = (id: number) => setGoals(prev => prev.filter(g => g.id !== id));
+
+  const addCategory = (cat: string) => setCategories(prev => [...prev, cat]);
+  const deleteCategory = (cat: string) => setCategories(prev => prev.filter(c => c !== cat));
+
+  // Theming and Security State
+  const [accentColor, setAccentColor] = useState("#3b82f6");
+  const [isSecurityEnabled, setIsSecurityEnabled] = useState(false);
+  const [securityMethod, setSecurityMethod] = useState("PIN");
+  const [appPin, setAppPin] = useState("");
+  const [isLocked, setIsLocked] = useState(false);
+
+  useEffect(() => {
+    if (isSecurityEnabled) setIsLocked(true);
+  }, [isSecurityEnabled]);
+
+  return (
+    <AppContext.Provider value={{
+      userName, setUserName,
+      currency, setCurrency,
+      billingCycle, setBillingCycle,
+      dailyReminder, setDailyReminder,
+      reminderTime, setReminderTime,
+      categories, setCategories, addCategory, deleteCategory,
+      toast, triggerToast,
+      subscriptions, addSubscription, updateSubscription, deleteSubscription,
+      utilities, addUtility, updateUtility, deleteUtility,
+      transactions,
+      goals, addGoal, updateGoal, deleteGoal,
+      accentColor, setAccentColor,
+      isSecurityEnabled, setIsSecurityEnabled,
+      securityMethod, setSecurityMethod,
+      appPin, setAppPin,
+      isLocked, setIsLocked
+    }}>
+      {children}
+    </AppContext.Provider>
+  );
+}
+
+export function useAppContext() {
+  const ctx = useContext(AppContext);
+  if (!ctx) throw new Error("useAppContext must be used within an AppProvider");
+  return ctx;
+}
