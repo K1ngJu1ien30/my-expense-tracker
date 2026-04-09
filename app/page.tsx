@@ -1,21 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { TrendingUp, TrendingDown, Wallet, Target, Plus, Check, X, Trash2 } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer, Tooltip } from "recharts";
 import Link from "next/link";
 import { useAppContext } from "@/lib/context";
 
-const mockTrendData = [
-  { name: 'Mon', value: 400, income: 0, transactions: 3 },
-  { name: 'Tue', value: 300, income: 1500, transactions: 5 },
-  { name: 'Wed', value: 550, income: 0, transactions: 4 },
-  { name: 'Thu', value: 200, income: 0, transactions: 2 },
-  { name: 'Fri', value: 700, income: 200, transactions: 8 },
-  { name: 'Sat', value: 900, income: 0, transactions: 6 },
-  { name: 'Sun', value: 450, income: 0, transactions: 3 },
-];
+
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
@@ -34,13 +26,46 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function Dashboard() {
-  const { userName, goals } = useAppContext();
+  const { userName, goals, transactions } = useAppContext();
   const pinnedGoals = goals.filter(g => g.isPinned);
 
   const hour = new Date().getHours();
   const greeting = hour >= 5 && hour < 12 ? "Good morning," 
                  : hour >= 12 && hour < 17 ? "Good afternoon," 
                  : "Good evening,";
+
+  const totalBalance = useMemo(() => {
+     return transactions.reduce((acc, tx) => {
+        if (tx.type === "Income") return acc + Number(tx.amount);
+        if (tx.type === "Expense") return acc - Number(tx.amount);
+        return acc;
+     }, 0);
+  }, [transactions]);
+
+  const todayTotal = useMemo(() => {
+     const today = new Date().toDateString();
+     return transactions.filter(t => t.type === "Expense" && new Date(t.date).toDateString() === today).reduce((acc, curr) => acc + Number(curr.amount), 0);
+  }, [transactions]);
+
+  const weeklyTotal = useMemo(() => {
+     const weekAgo = new Date();
+     weekAgo.setDate(weekAgo.getDate() - 7);
+     return transactions.filter(t => t.type === "Expense" && new Date(t.date) > weekAgo).reduce((acc, curr) => acc + Number(curr.amount), 0);
+  }, [transactions]);
+
+  const dynamicTrendData = useMemo(() => {
+     if (transactions.length === 0) return [];
+     const map: Record<string, { income: number, value: number, transactions: number }> = {};
+     transactions.forEach(t => {
+        const d = new Date(t.date);
+        const key = `${d.getMonth()+1}/${d.getDate()}`;
+        if (!map[key]) map[key] = { income: 0, value: 0, transactions: 0 };
+        if (t.type === "Income") map[key].income += Number(t.amount);
+        if (t.type === "Expense") map[key].value += Number(t.amount);
+        map[key].transactions += 1;
+     });
+     return Object.entries(map).reverse().slice(0, 7).map(([name, vals]) => ({ name, ...vals })).reverse();
+  }, [transactions]);
 
   return (
     <div className="p-6 space-y-8 animate-in fade-in duration-500">
@@ -65,7 +90,7 @@ export default function Dashboard() {
         <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full blur-xl -ml-8 -mb-8 pointer-events-none" />
         
         <p className="text-primary-foreground/70 font-medium mb-1 relative z-10 text-sm">Total Balance</p>
-        <h2 className="text-4xl font-black mb-6 relative z-10 tracking-tight">RM 12,450.00</h2>
+        <h2 className="text-4xl font-black mb-6 relative z-10 tracking-tight">RM {totalBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</h2>
         
         <div className="flex gap-4 relative z-10">
           <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-full backdrop-blur-md">
@@ -86,14 +111,14 @@ export default function Dashboard() {
             <Wallet className="w-4 h-4 text-primary" />
           </div>
           <p className="text-muted-foreground text-xs font-bold uppercase tracking-wider mb-1">Today</p>
-          <p className="text-lg font-black dark:text-foreground">RM 142.50</p>
+          <p className="text-lg font-black dark:text-foreground">RM {todayTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
         </Link>
         <Link href="/history" className="bg-card w-full text-left p-5 rounded-3xl shadow-soft border border-border/40 hover:scale-[1.02] active:scale-95 transition-transform cursor-pointer block">
           <div className="bg-emerald-500/10 w-8 h-8 rounded-full flex items-center justify-center mb-3">
             <TrendingDown className="w-4 h-4 text-emerald-500" />
           </div>
           <p className="text-muted-foreground text-xs font-bold uppercase tracking-wider mb-1">Weekly</p>
-          <p className="text-lg font-black dark:text-foreground">RM 840.00</p>
+          <p className="text-lg font-black dark:text-foreground">RM {weeklyTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
         </Link>
       </div>
 
@@ -143,7 +168,7 @@ export default function Dashboard() {
         <h3 className="font-bold text-foreground mb-4">Spending Trend</h3>
         <div className="h-[120px] w-[105%] -ml-[2.5%]">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={mockTrendData}>
+            <LineChart data={dynamicTrendData}>
               <Line 
                 type="monotone" 
                 dataKey="value" 

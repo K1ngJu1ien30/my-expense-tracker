@@ -108,25 +108,30 @@ export default function AnalyticsPage() {
      setShowAddModal(null);
   }
 
-  const multiplier = useMemo(() => {
-    if (timeFilter === "Year") return 12;
-    if (timeFilter === "Month") return 1;
-    return 36; // All Time
-  }, [timeFilter]);
+  const categoryData = useMemo(() => {
+    const map: Record<string, number> = {};
+    transactions.forEach(t => {
+       if (t.type !== "Expense") return;
+       map[t.category] = (map[t.category] || 0) + Number(t.amount);
+    });
+    const colors = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4'];
+    return Object.entries(map).map(([name, value], i) => ({ name, value, color: colors[i % colors.length] }));
+  }, [transactions, timeFilter]);
 
-  const categoryData = useMemo(() => [
-    { name: 'Food', value: 800 * multiplier, color: '#3b82f6' },
-    { name: 'Transport', value: 300 * multiplier, color: '#10b981' },
-    { name: 'Shopping', value: 450 * multiplier, color: '#8b5cf6' },
-    { name: 'Bills', value: 200 * multiplier, color: '#f59e0b' },
-  ], [multiplier]);
+  const totalExpense = useMemo(() => categoryData.reduce((acc, curr) => acc + curr.value, 0), [categoryData]);
 
-  const trendData = useMemo(() => [
-    { name: 'W1', expense: 400 * multiplier, income: 1200 * multiplier },
-    { name: 'W2', expense: 300 * multiplier, income: 0 },
-    { name: 'W3', expense: 550 * multiplier, income: 800 * multiplier },
-    { name: 'W4', expense: 200 * multiplier, income: 0 },
-  ], [multiplier]);
+  const trendData = useMemo(() => {
+     if (transactions.length === 0) return [];
+     const map: Record<string, { income: number, expense: number }> = {};
+     transactions.forEach(t => {
+        const d = new Date(t.date);
+        const key = `${d.getMonth()+1}/${d.getDate()}`;
+        if (!map[key]) map[key] = { income: 0, expense: 0 };
+        if (t.type === "Income") map[key].income += Number(t.amount);
+        if (t.type === "Expense") map[key].expense += Number(t.amount);
+     });
+     return Object.entries(map).reverse().slice(0, 7).map(([name, vals]) => ({ name, ...vals })).reverse();
+  }, [transactions, timeFilter]);
 
   const smartInsightText = useMemo(() => {
      if (transactions && transactions.length === 0) return "Start tracking to uncover your financial personality!";
@@ -195,7 +200,7 @@ export default function AnalyticsPage() {
           <div className="h-[200px] w-[200px] relative">
              <div className="absolute inset-0 flex flex-col items-center justify-center">
                <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Total</span>
-               <span className="font-black text-xl text-foreground">RM {(1750 * multiplier).toLocaleString()}</span>
+               <span className="font-black text-xl text-foreground">RM {totalExpense.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
              </div>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
