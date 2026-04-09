@@ -16,6 +16,14 @@ const ICONS: Record<string, React.ReactNode> = {
   Droplet: <Droplet className="w-4 h-4" />
 };
 
+const ACCOUNT_ICONS: Record<string, string> = {
+  "Bank (MBB)": "🏦",
+  "Bank (HSBC)": "🏦",
+  "TNG eWallet": "📱",
+  "TNG Card": "💳",
+  "Cash": "💵",
+};
+
 export default function AnalyticsPage() {
   const { 
     subscriptions, addSubscription, deleteSubscription, updateSubscription,
@@ -24,6 +32,19 @@ export default function AnalyticsPage() {
   } = useAppContext();
 
   const [timeFilter, setTimeFilter] = useState("Month");
+
+  // Compute live balance per account from transactions
+  const accountBalances = useMemo(() => {
+    const balances: Record<string, number> = {};
+    transactions.forEach(tx => {
+      const acc = tx.account || "Cash";
+      if (!balances[acc]) balances[acc] = 0;
+      if (tx.type === "Income") balances[acc] += Number(tx.amount);
+      else if (tx.type === "Expense") balances[acc] -= Number(tx.amount);
+      // Transfers: deduct from source, but we only track per-account
+    });
+    return Object.entries(balances).map(([name, balance]) => ({ name, balance }));
+  }, [transactions]);
   
   // Modals
   const [showAddModal, setShowAddModal] = useState<"Sub" | "Util" | null>(null);
@@ -115,24 +136,6 @@ export default function AnalyticsPage() {
      return "Your long-term financial health is strictly optimal based on historical averages.";
   }, [timeFilter, transactions]);
 
-  const accountBalances = useMemo(() => {
-    const balances: Record<string, number> = {};
-    transactions.forEach((t: any) => {
-       const amt = Number(t.amount) || 0;
-       if (t.type === "Income") {
-          balances[t.account] = (balances[t.account] || 0) + amt;
-       } else if (t.type === "Expense") {
-          balances[t.account] = (balances[t.account] || 0) - amt;
-       } else if (t.type === "Transfer") {
-          balances[t.account] = (balances[t.account] || 0) - amt;
-          if (t.toAccount) {
-             balances[t.toAccount] = (balances[t.toAccount] || 0) + amt;
-          }
-       }
-    });
-    return Object.entries(balances);
-  }, [transactions]);
-
   return (
     <div className="p-6 animate-in fade-in duration-500 space-y-6 pb-[120px] relative min-h-screen overflow-x-hidden">
       
@@ -153,6 +156,28 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
+      {/* Account Balance Pills */}
+      {accountBalances.length > 0 && (
+        <div className="-mx-6 px-6 overflow-x-auto hide-scrollbar">
+          <div className="flex gap-3 pb-1 w-max">
+            {accountBalances.map(({ name, balance }) => (
+              <div
+                key={name}
+                className="flex items-center gap-2 bg-card border border-border/50 shadow-soft rounded-2xl px-4 py-3 shrink-0"
+              >
+                <span className="text-lg leading-none">{ACCOUNT_ICONS[name] || "💰"}</span>
+                <div>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider leading-none mb-0.5">{name}</p>
+                  <p className={`text-sm font-black leading-none ${balance >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
+                    {balance < 0 ? "-" : ""}RM {Math.abs(balance).toFixed(2)}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Smart Insights Array */}
       <div style={{ backgroundColor: `${accentColor}1A`, borderColor: `${accentColor}30` }} className="border p-4 rounded-2xl flex items-start gap-4">
          <div style={{ backgroundColor: accentColor, boxShadow: `0 0 15px ${accentColor}60` }} className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 mt-1 pb-0.5 shadow-soft text-white">
@@ -163,23 +188,6 @@ export default function AnalyticsPage() {
             <p className="text-sm font-semibold text-foreground/90 leading-snug">{smartInsightText}</p>
          </div>
       </div>
-
-      {/* Account Balance Pills Row */}
-      {accountBalances.length > 0 && (
-         <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-2 -mx-6 px-6">
-            {accountBalances.map(([acc, bal]) => (
-               <div key={acc} className="flex items-center gap-2 bg-card border border-border/60 shadow-sm rounded-xl px-4 py-2.5 shrink-0 hover:border-primary/50 transition-colors">
-                  <div className="bg-primary/10 p-1.5 rounded-full">
-                     {acc.includes("Bank") ? '🏦' : acc.includes("Cash") ? '💵' : '📱'}
-                  </div>
-                  <div className="flex flex-col">
-                     <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground leading-none">{acc}</span>
-                     <span className={`text-sm font-bold leading-tight ${bal < 0 ? 'text-rose-500' : 'text-foreground'}`}>RM {bal.toFixed(2)}</span>
-                  </div>
-               </div>
-            ))}
-         </div>
-      )}
 
       {/* Spending Breakdown */}
       <div className="bg-card p-6 rounded-[2rem] shadow-heavy shadow-black/5 border border-border/40 relative">
