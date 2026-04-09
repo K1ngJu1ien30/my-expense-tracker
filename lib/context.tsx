@@ -1,6 +1,8 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { Session } from "@supabase/supabase-js";
+import { supabase } from "./supabase";
 
 export type Goal = {
   id: number;
@@ -12,9 +14,10 @@ export type Goal = {
   color: string;
   bg: string;
   iconName: string;
+  user_id?: string;
 };
 
-export type Subscription = { id: number; name: string; cost: number; icon: string; bg: string; color: string; autoDeduct?: boolean; billingDay?: number; sourceAccount?: string; };
+export type Subscription = { id: number; name: string; cost: number; icon: string; bg: string; color: string; autoDeduct?: boolean; billingDay?: number; sourceAccount?: string; user_id?: string; };
 export type ToastType = { message: string; id: number } | null;
 
 type AppContextType = {
@@ -57,11 +60,16 @@ type AppContextType = {
   setAppPin: (val: string) => void;
   isLocked: boolean;
   setIsLocked: (val: boolean) => void;
+  session: Session | null;
+  authLoading: boolean;
 };
 
 export const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
   const [userName, setUserName] = useState("Jeff");
   const [currency, setCurrency] = useState("RM");
   const [billingCycle, setBillingCycle] = useState("1");
@@ -80,16 +88,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     { id: 1, name: "Netflix", cost: 55.00, icon: "MonitorPlay", bg: "bg-red-500/10", color: "text-red-500" },
     { id: 2, name: "Spotify Premium", cost: 14.90, icon: "Music", bg: "bg-green-500/10", color: "text-green-500" }
   ]);
-  const addSubscription = (sub: Subscription) => setSubscriptions(prev => [...prev, sub]);
-  const updateSubscription = (id: number, patch: Partial<Subscription>) => setSubscriptions(prev => prev.map(s => s.id === id ? { ...s, ...patch} : s));
+  const addSubscription = (sub: Subscription) => setSubscriptions(prev => [...prev, { ...sub, user_id: session?.user?.id }]);
+  const updateSubscription = (id: number, patch: Partial<Subscription>) => setSubscriptions(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
   const deleteSubscription = (id: number) => setSubscriptions(prev => prev.filter(s => s.id !== id));
 
   const [utilities, setUtilities] = useState<Subscription[]>([
     { id: 3, name: "Electricity", cost: 120.00, icon: "Zap", bg: "bg-yellow-500/10", color: "text-yellow-500" },
     { id: 4, name: "Internet", cost: 89.00, icon: "Wifi", bg: "bg-blue-500/10", color: "text-blue-500" }
   ]);
-  const addUtility = (sub: Subscription) => setUtilities(prev => [...prev, sub]);
-  const updateUtility = (id: number, patch: Partial<Subscription>) => setUtilities(prev => prev.map(s => s.id === id ? { ...s, ...patch} : s));
+  const addUtility = (sub: Subscription) => setUtilities(prev => [...prev, { ...sub, user_id: session?.user?.id }]);
+  const updateUtility = (id: number, patch: Partial<Subscription>) => setUtilities(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
   const deleteUtility = (id: number) => setUtilities(prev => prev.filter(s => s.id !== id));
 
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -99,7 +107,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     { id: 2, title: 'Emergency Fund', subtitle: 'Safety Net', current: 15000, target: 20000, isPinned: false, color: "bg-emerald-500", bg: "bg-emerald-500/10", iconName: "ShieldAlert" },
   ]);
 
-  const addGoal = (goal: Goal) => setGoals(prev => [...prev, goal]);
+  const addGoal = (goal: Goal) => setGoals(prev => [...prev, { ...goal, user_id: session?.user?.id }]);
   const updateGoal = (id: number, patch: Partial<Goal>) => setGoals(prev => prev.map(g => g.id === id ? { ...g, ...patch } : g));
   const deleteGoal = (id: number) => setGoals(prev => prev.filter(g => g.id !== id));
 
@@ -117,6 +125,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (isSecurityEnabled) setIsLocked(true);
   }, [isSecurityEnabled]);
 
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   return (
     <AppContext.Provider value={{
       userName, setUserName,
@@ -126,15 +147,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       reminderTime, setReminderTime,
       categories, setCategories, addCategory, deleteCategory,
       toast, triggerToast,
-      subscriptions, addSubscription, updateSubscription, deleteSubscription,
-      utilities, addUtility, updateUtility, deleteUtility,
-      transactions,
-      goals, addGoal, updateGoal, deleteGoal,
+      subscriptions: subscriptions.filter(s => !s.user_id || s.user_id === session?.user?.id),
+      addSubscription, updateSubscription, deleteSubscription,
+      utilities: utilities.filter(u => !u.user_id || u.user_id === session?.user?.id),
+      addUtility, updateUtility, deleteUtility,
+      transactions: transactions.filter(t => !t.user_id || t.user_id === session?.user?.id),
+      goals: goals.filter(g => !g.user_id || g.user_id === session?.user?.id),
+      addGoal, updateGoal, deleteGoal,
       accentColor, setAccentColor,
       isSecurityEnabled, setIsSecurityEnabled,
       securityMethod, setSecurityMethod,
       appPin, setAppPin,
-      isLocked, setIsLocked
+      isLocked, setIsLocked,
+      session, authLoading
     }}>
       {children}
     </AppContext.Provider>
