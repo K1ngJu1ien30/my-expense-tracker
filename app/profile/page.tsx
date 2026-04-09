@@ -23,7 +23,7 @@ export default function ProfilePage() {
     reminderTime, setReminderTime,
     categories, setCategories, addCategory, deleteCategory,
     accounts, setAccounts, addAccount, renameAccount, deleteAccount,
-    accentColor, setAccentColor,
+    accentColor, setAccentColor, confirmAction,
     isSecurityEnabled, setIsSecurityEnabled,
     securityMethod, setSecurityMethod,
     appPin, setAppPin,
@@ -566,7 +566,12 @@ export default function ProfilePage() {
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
                               <button
-                                onClick={() => { deleteAccount(acc); triggerToast(`"${acc}" removed.`); }}
+                                onClick={() => {
+                                   confirmAction("Delete Account", `Are you sure you want to remove "${acc}"?`, () => {
+                                      deleteAccount(acc); 
+                                      triggerToast(`"${acc}" removed.`);
+                                   });
+                                }}
                                 className="text-muted-foreground hover:text-red-500 transition-colors p-1.5"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />

@@ -37,12 +37,17 @@ export default function Dashboard() {
   const { userName, goals } = useAppContext();
   const pinnedGoals = goals.filter(g => g.isPinned);
 
+  const hour = new Date().getHours();
+  const greeting = hour >= 5 && hour < 12 ? "Good morning," 
+                 : hour >= 12 && hour < 17 ? "Good afternoon," 
+                 : "Good evening,";
+
   return (
     <div className="p-6 space-y-8 animate-in fade-in duration-500">
       {/* Header */}
       <div className="flex justify-between items-center mt-2">
         <div>
-          <p className="text-muted-foreground font-medium text-sm">Good morning,</p>
+          <p className="text-muted-foreground font-medium text-sm">{greeting}</p>
           <h1 className="text-2xl font-bold">{userName}</h1>
         </div>
         <div className="w-10 h-10 rounded-full bg-primary/10 overflow-hidden flex items-center justify-center border-2 border-primary/20 shadow-sm">

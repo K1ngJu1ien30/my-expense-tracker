@@ -28,7 +28,7 @@ export default function AnalyticsPage() {
   const { 
     subscriptions, addSubscription, deleteSubscription, updateSubscription,
     utilities, addUtility, deleteUtility, updateUtility,
-    triggerToast, accentColor, transactions, accounts
+    triggerToast, accentColor, transactions, accounts, confirmAction
   } = useAppContext();
 
   const [timeFilter, setTimeFilter] = useState("Month");
@@ -48,7 +48,7 @@ export default function AnalyticsPage() {
   
   // Modals
   const [showAddModal, setShowAddModal] = useState<"Sub" | "Util" | null>(null);
-  const [editItemId, setEditItemId] = useState<number | null>(null);
+  const [editItemId, setEditItemId] = useState<string | null>(null);
   
   const [newItemName, setNewItemName] = useState("");
   const [newItemCost, setNewItemCost] = useState("");
@@ -95,7 +95,6 @@ export default function AnalyticsPage() {
         triggerToast(`Updated successfully!`);
      } else {
         const newItem = {
-           id: Date.now(),
            ...payload,
            icon: showAddModal === "Sub" ? "CreditCard" : "Zap", 
            bg: "bg-muted", 
@@ -283,7 +282,7 @@ export default function AnalyticsPage() {
                       </div>
                       <div className="flex gap-1 shrink-0">
                          <button onClick={() => openEditModal("Sub", sub)} className="p-2 text-muted-foreground hover:text-primary transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
-                         <button onClick={() => deleteSubscription(sub.id)} className="p-2 text-muted-foreground hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                         <button onClick={() => confirmAction("Delete Subscription", `Remove ${sub.name}?`, () => deleteSubscription(sub.id))} className="p-2 text-muted-foreground hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
                       </div>
                   </div>
                   {/* Dynamic QoL Info Map */}
@@ -322,7 +321,7 @@ export default function AnalyticsPage() {
                       </div>
                       <div className="flex gap-1 shrink-0">
                          <button onClick={() => openEditModal("Util", sub)} className="p-2 text-muted-foreground hover:text-primary transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
-                         <button onClick={() => deleteUtility(sub.id)} className="p-2 text-muted-foreground hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                         <button onClick={() => confirmAction("Delete Utility", `Remove ${sub.name}?`, () => deleteUtility(sub.id))} className="p-2 text-muted-foreground hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
                       </div>
                   </div>
                   {sub.autoDeduct && (

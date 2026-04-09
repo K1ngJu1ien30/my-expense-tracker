@@ -4,7 +4,7 @@ import { Ghost, Edit2, Trash2, ArrowRight } from "lucide-react";
 import { useAppContext } from "@/lib/context";
 
 export default function HistoryPage() {
-  const { transactions, deleteTransaction, setEditTransactionId, accentColor } = useAppContext();
+  const { transactions, deleteTransaction, setEditTransactionId, accentColor, confirmAction } = useAppContext();
   
   return (
     <div className="p-6 animate-in fade-in duration-500 pb-[120px]">
@@ -45,10 +45,10 @@ export default function HistoryPage() {
                    </button>
                    <button 
                       onClick={() => {
-                         if (confirm("Permanently wipe this transaction record?")) {
+                         confirmAction("Delete Transaction", "Permanently wipe this transaction record?", () => {
                             deleteTransaction(tx.id);
                             if(navigator.vibrate) navigator.vibrate(20);
-                         }
+                         });
                       }}
                       className="flex items-center justify-center p-2 rounded-xl bg-muted text-muted-foreground hover:bg-rose-500/10 hover:text-rose-500 transition-colors focus:outline-none"
                    >

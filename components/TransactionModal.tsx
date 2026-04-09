@@ -230,7 +230,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                        updateTransaction(editTransactionId, payload);
                        triggerToast(`✅ ${txType} updated successfully!`);
                     } else {
-                       addTransaction({ id: Date.now(), ...payload });
+                       addTransaction(payload);
                        triggerToast(`✅ ${txType} saved!`);
                     }
                     

@@ -12,17 +12,17 @@ const ICONS: Record<string, React.ReactNode> = {
 };
 
 export default function GoalsPage() {
-  const { goals, addGoal, updateGoal, deleteGoal } = useAppContext();
+  const { goals, addGoal, updateGoal, deleteGoal, confirmAction } = useAppContext();
   
   // Modals state
-  const [activeAddFunds, setActiveAddFunds] = useState<number | null>(null);
+  const [activeAddFunds, setActiveAddFunds] = useState<string | null>(null);
   const [fundAmount, setFundAmount] = useState("");
   
   const [isCreating, setIsCreating] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newTarget, setNewTarget] = useState("");
 
-  const handleAddFunds = (id: number, currentAmount: number) => {
+  const handleAddFunds = (id: string, currentAmount: number) => {
     if (!fundAmount) return;
     updateGoal(id, { current: currentAmount + Number(fundAmount) });
     setFundAmount("");
@@ -32,7 +32,6 @@ export default function GoalsPage() {
   const handleCreate = () => {
     if (!newTitle || !newTarget) return;
     addGoal({
-      id: Date.now(),
       title: newTitle,
       subtitle: "Custom Goal",
       current: 0,
@@ -80,7 +79,7 @@ export default function GoalsPage() {
                 >
                   <Pin className="w-4 h-4" fill={g.isPinned ? "currentColor" : "none"} />
                 </button>
-                <button onClick={() => deleteGoal(g.id)} className="text-muted-foreground hover:text-red-500 transition-colors cursor-pointer">
+                <button onClick={() => confirmAction("Delete Goal", `Are you sure you want to delete "${g.title}"?`, () => deleteGoal(g.id))} className="text-muted-foreground hover:text-red-500 transition-colors cursor-pointer">
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>

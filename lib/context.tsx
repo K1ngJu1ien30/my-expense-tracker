@@ -3,9 +3,10 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
+import { motion, AnimatePresence } from "framer-motion";
 
 export type Goal = {
-  id: number;
+  id: string;
   title: string;
   subtitle: string;
   current: number;
@@ -17,9 +18,39 @@ export type Goal = {
   user_id?: string;
 };
 
-export type Subscription = { id: number; name: string; cost: number; icon: string; bg: string; color: string; autoDeduct?: boolean; billingDay?: number; sourceAccount?: string; user_id?: string; };
-export type Transaction = { id: number; type: string; amount: number; category: string; account: string; date: string; note?: string; user_id?: string; };
+export type Subscription = { 
+  id: string; 
+  name: string; 
+  cost: number; 
+  icon: string; 
+  bg: string; 
+  color: string; 
+  autoDeduct?: boolean; 
+  billingDay?: number; 
+  sourceAccount?: string; 
+  type?: string;
+  user_id?: string; 
+};
+
+export type Transaction = { 
+  id: string; 
+  type: string; 
+  amount: number; 
+  category: string; 
+  account: string; 
+  date: string; 
+  note?: string; 
+  user_id?: string; 
+};
+
 export type ToastType = { message: string; id: number } | null;
+
+type ConfirmState = {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  onConfirm: () => void;
+};
 
 type AppContextType = {
   userName: string;
@@ -39,23 +70,23 @@ type AppContextType = {
   toast: ToastType;
   triggerToast: (msg: string) => void;
   transactions: Transaction[];
-  addTransaction: (tx: Transaction) => void;
-  updateTransaction: (id: number, patch: Partial<Transaction>) => void;
-  deleteTransaction: (id: number) => void;
-  editTransactionId: number | null;
-  setEditTransactionId: (val: number | null) => void;
+  addTransaction: (tx: Partial<Transaction>) => Promise<void>;
+  updateTransaction: (id: string, patch: Partial<Transaction>) => Promise<void>;
+  deleteTransaction: (id: string) => Promise<void>;
+  editTransactionId: string | null;
+  setEditTransactionId: (val: string | null) => void;
   subscriptions: Subscription[];
-  addSubscription: (sub: Subscription) => void;
-  updateSubscription: (id: number, patch: Partial<Subscription>) => void;
-  deleteSubscription: (id: number) => void;
+  addSubscription: (sub: Partial<Subscription>) => Promise<void>;
+  updateSubscription: (id: string, patch: Partial<Subscription>) => Promise<void>;
+  deleteSubscription: (id: string) => Promise<void>;
   utilities: Subscription[];
-  addUtility: (sub: Subscription) => void;
-  updateUtility: (id: number, patch: Partial<Subscription>) => void;
-  deleteUtility: (id: number) => void;
+  addUtility: (sub: Partial<Subscription>) => Promise<void>;
+  updateUtility: (id: string, patch: Partial<Subscription>) => Promise<void>;
+  deleteUtility: (id: string) => Promise<void>;
   goals: Goal[];
-  addGoal: (goal: Goal) => void;
-  updateGoal: (id: number, goal: Partial<Goal>) => void;
-  deleteGoal: (id: number) => void;
+  addGoal: (goal: Partial<Goal>) => Promise<void>;
+  updateGoal: (id: string, goal: Partial<Goal>) => Promise<void>;
+  deleteGoal: (id: string) => Promise<void>;
   accounts: string[];
   setAccounts: (val: string[]) => void;
   addAccount: (acc: string) => void;
@@ -73,6 +104,7 @@ type AppContextType = {
   setIsLocked: (val: boolean) => void;
   session: Session | null;
   authLoading: boolean;
+  confirmAction: (title: string, message: string, onConfirm: () => void) => void;
 };
 
 export const AppContext = createContext<AppContextType | null>(null);
@@ -81,7 +113,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
-  const [userName, setUserName] = useState("Jeff");
+  const [userName, setUserNameRaw] = useState("User");
   const [currency, setCurrency] = useState("RM");
   const [billingCycle, setBillingCycle] = useState("1");
   const [dailyReminder, setDailyReminder] = useState(false);
@@ -95,46 +127,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => setToast(prev => prev?.id === id ? null : prev), 3000);
   };
 
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>([
-    { id: 1, name: "Netflix", cost: 55.00, icon: "MonitorPlay", bg: "bg-red-500/10", color: "text-red-500" },
-    { id: 2, name: "Spotify Premium", cost: 14.90, icon: "Music", bg: "bg-green-500/10", color: "text-green-500" }
-  ]);
-  const addSubscription = (sub: Subscription) => setSubscriptions(prev => [...prev, { ...sub, user_id: session?.user?.id }]);
-  const updateSubscription = (id: number, patch: Partial<Subscription>) => setSubscriptions(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
-  const deleteSubscription = (id: number) => setSubscriptions(prev => prev.filter(s => s.id !== id));
-
-  const [utilities, setUtilities] = useState<Subscription[]>([
-    { id: 3, name: "Electricity", cost: 120.00, icon: "Zap", bg: "bg-yellow-500/10", color: "text-yellow-500" },
-    { id: 4, name: "Internet", cost: 89.00, icon: "Wifi", bg: "bg-blue-500/10", color: "text-blue-500" },
-    { id: 5, name: "Water", cost: 35.00, icon: "Droplet", bg: "bg-cyan-500/10", color: "text-cyan-500" },
-    { id: 6, name: "Rent", cost: 1200.00, icon: "Smartphone", bg: "bg-orange-500/10", color: "text-orange-500" },
-  ]);
-  const addUtility = (sub: Subscription) => setUtilities(prev => [...prev, { ...sub, user_id: session?.user?.id }]);
-  const updateUtility = (id: number, patch: Partial<Subscription>) => setUtilities(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
-  const deleteUtility = (id: number) => setUtilities(prev => prev.filter(s => s.id !== id));
-
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [utilities, setUtilities] = useState<Subscription[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  
   const [accounts, setAccounts] = useState<string[]>(["Bank", "Cash", "eWallet"]);
+  const [editTransactionId, setEditTransactionId] = useState<string | null>(null);
+  
+  const [confirmState, setConfirmState] = useState<ConfirmState>({ isOpen: false, title: "", message: "", onConfirm: () => {} });
+
+  const confirmAction = (title: string, message: string, onConfirm: () => void) => {
+    setConfirmState({ isOpen: true, title, message, onConfirm });
+  };
+
   const addAccount = (acc: string) => setAccounts(prev => [...prev, acc]);
   const renameAccount = (old: string, next: string) => setAccounts(prev => prev.map(a => a === old ? next : a));
   const deleteAccount = (acc: string) => setAccounts(prev => prev.filter(a => a !== acc));
-
-  const [transactions, setTransactions] = useState<Transaction[]>([
-    { id: 1, type: "Expense", amount: 12.50, category: "Food", account: "Bank (MBB)", date: new Date().toISOString() },
-    { id: 2, type: "Income", amount: 2500, category: "Salary", account: "Bank (MBB)", date: new Date().toISOString() }
-  ]);
-  const addTransaction = (tx: Transaction) => setTransactions(prev => [{ ...tx, user_id: session?.user?.id }, ...prev]);
-  const updateTransaction = (id: number, patch: Partial<Transaction>) => setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t));
-  const deleteTransaction = (id: number) => setTransactions(prev => prev.filter(t => t.id !== id));
-  const [editTransactionId, setEditTransactionId] = useState<number | null>(null);
-
-  const [goals, setGoals] = useState<Goal[]>([
-    { id: 1, title: 'Year-End Family Trip', subtitle: 'Year-End Goal', current: 3500, target: 10000, isPinned: true, color: "bg-blue-500", bg: "bg-blue-500/10", iconName: "Target" },
-    { id: 2, title: 'Emergency Fund', subtitle: 'Safety Net', current: 15000, target: 20000, isPinned: false, color: "bg-emerald-500", bg: "bg-emerald-500/10", iconName: "ShieldAlert" },
-  ]);
-
-  const addGoal = (goal: Goal) => setGoals(prev => [...prev, { ...goal, user_id: session?.user?.id }]);
-  const updateGoal = (id: number, patch: Partial<Goal>) => setGoals(prev => prev.map(g => g.id === id ? { ...g, ...patch } : g));
-  const deleteGoal = (id: number) => setGoals(prev => prev.filter(g => g.id !== id));
 
   const addCategory = (cat: string) => setCategories(prev => [...prev, cat]);
   const deleteCategory = (cat: string) => setCategories(prev => prev.filter(c => c !== cat));
@@ -163,6 +172,142 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (session?.user) {
+      const metaName = session.user.user_metadata?.display_name;
+      const emailName = session.user.email?.split('@')[0];
+      setUserNameRaw(metaName || emailName || "User");
+
+      // Fetch from Supabase
+      const fetchData = async () => {
+        const [txs, gls, subs] = await Promise.all([
+          supabase.from("transactions").select("*").order("date", { ascending: false }),
+          supabase.from("goals").select("*").order("created_at", { ascending: false }),
+          supabase.from("subscriptions").select("*").order("created_at", { ascending: false })
+        ]);
+        if (txs.data) setTransactions(txs.data as Transaction[]);
+        if (gls.data) setGoals(gls.data.map((g: any) => ({
+             id: g.id, 
+             title: g.title, 
+             subtitle: 'Goal', 
+             current: Number(g.current_amount), 
+             target: Number(g.target_amount),
+             isPinned: g.is_pinned,
+             color: "bg-emerald-500",
+             bg: "bg-emerald-500/10",
+             iconName: "Target",
+             user_id: g.user_id
+        })) as Goal[]);
+        if (subs.data) {
+          setSubscriptions(subs.data.filter((s:any) => s.type === "subscription").map((s:any) => ({
+             id: s.id, name: s.name, cost: Number(s.amount), billingDay: s.billing_day, sourceAccount: s.source_account, autoDeduct: s.auto_deduct, user_id: s.user_id, icon: "MonitorPlay", bg: "bg-red-500/10", color: "text-red-500"
+          })) as Subscription[]);
+          setUtilities(subs.data.filter((s:any) => s.type === "utility").map((s:any) => ({
+             id: s.id, name: s.name, cost: Number(s.amount), billingDay: s.billing_day, sourceAccount: s.source_account, autoDeduct: s.auto_deduct, user_id: s.user_id, icon: "Zap", bg: "bg-yellow-500/10", color: "text-yellow-500"
+          })) as Subscription[]);
+        }
+      };
+      fetchData();
+    } else {
+       setTransactions([]);
+       setGoals([]);
+       setSubscriptions([]);
+       setUtilities([]);
+    }
+  }, [session]);
+
+  const setUserName = async (newName: string) => {
+     setUserNameRaw(newName);
+     if (session?.user) {
+        await supabase.auth.updateUser({ data: { display_name: newName } });
+     }
+  };
+
+  // --- Supabase CRUD ---
+  
+  const addTransaction = async (tx: Partial<Transaction>) => {
+    delete tx.id;
+    const { data, error } = await supabase.from('transactions').insert({ ...tx, user_id: session?.user?.id }).select().single();
+    if (!error && data) setTransactions(prev => [data as Transaction, ...prev]);
+  };
+  const updateTransaction = async (id: string, patch: Partial<Transaction>) => {
+    const { data, error } = await supabase.from('transactions').update(patch).eq('id', id).select().single();
+    if (!error && data) setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...data } : t));
+  };
+  const deleteTransaction = async (id: string) => {
+    const { error } = await supabase.from('transactions').delete().eq('id', id);
+    if (!error) setTransactions(prev => prev.filter(t => t.id !== id));
+  };
+
+  const addSubscription = async (sub: Partial<Subscription>) => {
+    delete sub.id;
+    const { icon, bg, color, cost, billingDay, sourceAccount, autoDeduct, ...rest } = sub;
+    const payload = { ...rest, amount: cost, billing_day: billingDay, source_account: sourceAccount, auto_deduct: autoDeduct, type: "subscription", user_id: session?.user?.id };
+    const { data, error } = await supabase.from('subscriptions').insert(payload).select().single();
+    if (!error && data) setSubscriptions(prev => [{...sub, id: data.id} as Subscription, ...prev]);
+  };
+  const updateSubscription = async (id: string, patch: Partial<Subscription>) => {
+    const { icon, bg, color, cost, billingDay, sourceAccount, autoDeduct, ...rest } = patch;
+    const payload: any = { ...rest };
+    if (cost !== undefined) payload.amount = cost;
+    if (billingDay !== undefined) payload.billing_day = billingDay;
+    if (sourceAccount !== undefined) payload.source_account = sourceAccount;
+    if (autoDeduct !== undefined) payload.auto_deduct = autoDeduct;
+
+    const { data, error } = await supabase.from('subscriptions').update(payload).eq('id', id).select().single();
+    if (!error && data) setSubscriptions(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
+  };
+  const deleteSubscription = async (id: string) => {
+    const { error } = await supabase.from('subscriptions').delete().eq('id', id);
+    if (!error) setSubscriptions(prev => prev.filter(s => s.id !== id));
+  };
+
+  const addUtility = async (sub: Partial<Subscription>) => {
+    delete sub.id;
+    const { icon, bg, color, cost, billingDay, sourceAccount, autoDeduct, ...rest } = sub;
+    const payload = { ...rest, amount: cost, billing_day: billingDay, source_account: sourceAccount, auto_deduct: autoDeduct, type: "utility", user_id: session?.user?.id };
+    const { data, error } = await supabase.from('subscriptions').insert(payload).select().single();
+    if (!error && data) setUtilities(prev => [{...sub, id: data.id} as Subscription, ...prev]);
+  };
+  const updateUtility = async (id: string, patch: Partial<Subscription>) => {
+    const { icon, bg, color, cost, billingDay, sourceAccount, autoDeduct, ...rest } = patch;
+    const payload: any = { ...rest };
+    if (cost !== undefined) payload.amount = cost;
+    if (billingDay !== undefined) payload.billing_day = billingDay;
+    if (sourceAccount !== undefined) payload.source_account = sourceAccount;
+    if (autoDeduct !== undefined) payload.auto_deduct = autoDeduct;
+
+    const { data, error } = await supabase.from('subscriptions').update(payload).eq('id', id).select().single();
+    if (!error && data) setUtilities(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
+  };
+  const deleteUtility = async (id: string) => {
+    const { error } = await supabase.from('subscriptions').delete().eq('id', id);
+    if (!error) setUtilities(prev => prev.filter(s => s.id !== id));
+  };
+
+  const addGoal = async (goal: Partial<Goal>) => {
+    delete goal.id;
+    const { title, current, target, isPinned } = goal;
+    const payload = { title, current_amount: current || 0, target_amount: target, is_pinned: isPinned || false, user_id: session?.user?.id };
+    const { data, error } = await supabase.from('goals').insert(payload).select().single();
+    if (!error && data) setGoals(prev => [{...goal, id: data.id} as Goal, ...prev]);
+  };
+  const updateGoal = async (id: string, patch: Partial<Goal>) => {
+    const { title, current, target, isPinned } = patch;
+    const payload: any = {};
+    if (title !== undefined) payload.title = title;
+    if (current !== undefined) payload.current_amount = current;
+    if (target !== undefined) payload.target_amount = target;
+    if (isPinned !== undefined) payload.is_pinned = isPinned;
+
+    const { data, error } = await supabase.from('goals').update(payload).eq('id', id).select().single();
+    if (!error && data) setGoals(prev => prev.map(g => g.id === id ? { ...g, ...patch } : g));
+  };
+  const deleteGoal = async (id: string) => {
+    const { error } = await supabase.from('goals').delete().eq('id', id);
+    if (!error) setGoals(prev => prev.filter(g => g.id !== id));
+  };
+
   return (
     <AppContext.Provider value={{
       userName, setUserName,
@@ -187,9 +332,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       securityMethod, setSecurityMethod,
       appPin, setAppPin,
       isLocked, setIsLocked,
-      session, authLoading
+      session, authLoading,
+      confirmAction
     }}>
       {children}
+
+      {/* Global Security Confirmation Modal */}
+      <AnimatePresence>
+        {confirmState.isOpen && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setConfirmState({...confirmState, isOpen: false})} className="absolute inset-0 bg-black/40 backdrop-blur-md" />
+             <motion.div initial={{ y: 20, opacity: 0, scale: 0.95 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 20, opacity: 0, scale: 0.95 }} className="bg-card w-full max-w-sm rounded-[2rem] shadow-heavy z-10 overflow-hidden p-6 space-y-4 border border-border/50">
+               <div>
+                  <h3 className="font-bold text-lg text-foreground leading-tight">{confirmState.title}</h3>
+                  <p className="text-sm text-muted-foreground font-medium mt-1.5">{confirmState.message}</p>
+               </div>
+               
+               <div className="flex gap-3 pt-2">
+                 <button onClick={() => setConfirmState({...confirmState, isOpen: false})} className="flex-1 py-3 bg-muted rounded-xl font-bold text-sm text-foreground hover:bg-border transition-colors outline-none focus:ring-2 focus:ring-border">
+                   Cancel
+                 </button>
+                 <button 
+                   onClick={() => { confirmState.onConfirm(); setConfirmState({...confirmState, isOpen: false}); }} 
+                   className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold text-sm active:scale-95 transition-all outline-none focus:ring-2 focus:ring-red-500/50 shadow-sm"
+                 >
+                   Delete
+                 </button>
+               </div>
+             </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </AppContext.Provider>
   );
 }
