@@ -12,7 +12,7 @@ export default function BottomNav({ onOpenAdd }: { onOpenAdd: () => void }) {
   const activeColor = accentColor || '#3b82f6'; // Safe fallback
   
   return (
-    <div className="absolute bottom-0 w-full bg-white dark:bg-card border-t border-border shadow-up rounded-t-3xl px-6 py-4 flex justify-between items-center z-40 bg-opacity-90 dark:bg-opacity-90 backdrop-blur-xl">
+    <div className="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-zinc-950 pb-safe border-t border-border shadow-up rounded-t-3xl px-6 py-4 flex justify-between items-center bg-opacity-90 dark:bg-opacity-90 backdrop-blur-xl">
       <Link href="/" style={pathname === '/' ? { color: activeColor } : {}} className={cn("flex flex-col items-center gap-1 transition-colors", pathname !== '/' && 'text-muted-foreground hover:text-foreground')}>
         <Home className="w-6 h-6" strokeWidth={pathname === '/' ? 2.5 : 2} />
         <span className="text-[10px] font-semibold">Home</span>

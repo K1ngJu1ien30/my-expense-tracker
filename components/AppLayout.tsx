@@ -40,7 +40,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         )}
       </AnimatePresence>
       
-      <main className="flex-1 overflow-x-hidden overflow-y-auto pb-[100px] hide-scrollbar relative">
+      <main className="flex-1 overflow-x-hidden overflow-y-auto pb-28 hide-scrollbar relative">
         {children}
       </main>
       
