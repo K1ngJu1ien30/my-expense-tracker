@@ -28,7 +28,7 @@ export default function AnalyticsPage() {
   const { 
     subscriptions, addSubscription, deleteSubscription, updateSubscription,
     utilities, addUtility, deleteUtility, updateUtility,
-    triggerToast, accentColor, transactions
+    triggerToast, accentColor, transactions, accounts
   } = useAppContext();
 
   const [timeFilter, setTimeFilter] = useState("Month");
@@ -65,7 +65,7 @@ export default function AnalyticsPage() {
      setNewItemCost("");
      setAutoDeduct(true);
      setBillingDay("15");
-     setSourceAcc("Bank MBB");
+     setSourceAcc(accounts[0] || "Bank");
   }
 
   const openEditModal = (type: "Sub" | "Util", item: any) => {
@@ -75,7 +75,7 @@ export default function AnalyticsPage() {
      setNewItemCost(String(item.cost));
      setAutoDeduct(item.autoDeduct ?? true);
      setBillingDay(String(item.billingDay || 15));
-     setSourceAcc(item.sourceAccount || "Bank MBB");
+     setSourceAcc(item.sourceAccount || accounts[0] || "Bank");
   }
 
   const handleSave = () => {
@@ -409,7 +409,7 @@ export default function AnalyticsPage() {
                              <div className="flex flex-col gap-2">
                                 <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Source Account</span>
                                 <div className="flex flex-wrap gap-2">
-                                   {["Bank MBB", "TNG eWallet", "Credit Card", "Cash"].map(acc => (
+                                   {accounts.map(acc => (
                                       <button 
                                          key={acc} 
                                          onClick={() => { setSourceAcc(acc); if(navigator.vibrate) navigator.vibrate(20); }}

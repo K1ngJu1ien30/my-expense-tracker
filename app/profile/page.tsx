@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Trash2, Tags, Moon, ChevronRight, Edit2, Check, Bell, CircleDollarSign, Calendar, X, Plus, GripVertical, Shield, Palette, Database, LogOut, Lock } from "lucide-react";
+import { Download, Trash2, Tags, Moon, ChevronRight, Edit2, Check, Bell, CircleDollarSign, Calendar, X, Plus, GripVertical, Shield, Palette, Database, LogOut, Lock, Wallet } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAppContext } from "@/lib/context";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
@@ -22,6 +22,7 @@ export default function ProfilePage() {
     dailyReminder, setDailyReminder,
     reminderTime, setReminderTime,
     categories, setCategories, addCategory, deleteCategory,
+    accounts, setAccounts, addAccount, renameAccount, deleteAccount,
     accentColor, setAccentColor,
     isSecurityEnabled, setIsSecurityEnabled,
     securityMethod, setSecurityMethod,
@@ -54,6 +55,12 @@ export default function ProfilePage() {
   const [showClearModal, setShowClearModal] = useState(false);
   const [clearPassword, setClearPassword] = useState("");
   const [clearLoading, setClearLoading] = useState(false);
+
+  // Manage Accounts modal state
+  const [showAccountsModal, setShowAccountsModal] = useState(false);
+  const [newAccount, setNewAccount] = useState("");
+  const [editingAccount, setEditingAccount] = useState<string | null>(null);
+  const [editingAccountVal, setEditingAccountVal] = useState("");
 
   useEffect(() => {
     if (document.documentElement.classList.contains('dark')) setDarkMode(true);
@@ -232,6 +239,14 @@ export default function ProfilePage() {
             <div className="flex items-center gap-3">
               <div className="bg-blue-500/10 p-2 rounded-xl text-blue-500"><Tags className="w-5 h-5" /></div>
               <span className="font-semibold text-foreground text-sm">Manage Categories</span>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </button>
+
+          <button onClick={() => setShowAccountsModal(true)} className="w-full flex items-center justify-between p-4 border-b border-border/40 active:bg-muted/50 transition-colors text-left cursor-pointer">
+            <div className="flex items-center gap-3">
+              <div className="bg-teal-500/10 p-2 rounded-xl text-teal-500"><Wallet className="w-5 h-5" /></div>
+              <span className="font-semibold text-foreground text-sm">Manage Accounts</span>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
           </button>
@@ -485,6 +500,113 @@ export default function ProfilePage() {
                      onKeyDown={(e) => { if(e.key === 'Enter' && newCat) { addCategory(newCat); setNewCat(""); } }}
                    />
                    <button style={{ backgroundColor: accentColor }} onClick={() => { if(newCat) { addCategory(newCat); setNewCat(""); } }} className="text-white p-3 rounded-xl hover:scale-[1.02] active:scale-95 transition-transform"><Plus className="w-5 h-5"/></button>
+                </div>
+             </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Manage Accounts Modal */}
+      <AnimatePresence>
+        {showAccountsModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowAccountsModal(false)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+             <motion.div initial={{ y: 20, opacity: 0, scale: 0.95 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 20, opacity: 0, scale: 0.95 }} className="bg-card w-full max-w-sm rounded-[2rem] shadow-heavy z-10 overflow-hidden flex flex-col max-h-[85vh]">
+                <div className="p-5 border-b border-border/40 flex justify-between items-center bg-muted/20">
+                   <h3 className="font-bold text-foreground">Manage Accounts</h3>
+                   <button onClick={() => setShowAccountsModal(false)} className="p-1.5 hover:bg-muted rounded-full transition-colors"><X className="w-5 h-5 text-muted-foreground"/></button>
+                </div>
+
+                <p className="px-5 pt-4 text-xs font-bold text-muted-foreground uppercase tracking-wider text-center">Drag to reorder</p>
+
+                <div className="flex-1 overflow-y-auto p-4 hide-scrollbar">
+                   <Reorder.Group axis="y" values={accounts} onReorder={setAccounts} className="space-y-2">
+                     {accounts.map((acc) => (
+                       <Reorder.Item key={acc} value={acc} className="flex justify-between items-center bg-card shadow-sm p-3 rounded-xl border border-border/80 cursor-grab active:cursor-grabbing">
+                          <div className="flex items-center gap-3 flex-1">
+                             <GripVertical className="w-4 h-4 text-muted-foreground/50 shrink-0" />
+                             {editingAccount === acc ? (
+                               <div className="flex items-center gap-2 flex-1">
+                                 <input
+                                   autoFocus
+                                   value={editingAccountVal}
+                                   onChange={e => setEditingAccountVal(e.target.value)}
+                                   onKeyDown={e => {
+                                     if (e.key === "Enter" && editingAccountVal.trim()) {
+                                       renameAccount(acc, editingAccountVal.trim());
+                                       setEditingAccount(null);
+                                     }
+                                   }}
+                                   className="flex-1 bg-muted px-2 py-1 rounded-lg text-sm font-semibold outline-none text-foreground border border-border"
+                                 />
+                                 <button
+                                   onClick={() => {
+                                     if (editingAccountVal.trim()) {
+                                       renameAccount(acc, editingAccountVal.trim());
+                                       setEditingAccount(null);
+                                       triggerToast("Account renamed!");
+                                     }
+                                   }}
+                                   style={{ backgroundColor: accentColor }}
+                                   className="p-1.5 text-white rounded-lg"
+                                 >
+                                   <Check className="w-3.5 h-3.5" />
+                                 </button>
+                               </div>
+                             ) : (
+                               <span className="font-medium text-sm text-foreground flex-1">{acc}</span>
+                             )}
+                          </div>
+                          {editingAccount !== acc && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={() => { setEditingAccount(acc); setEditingAccountVal(acc); }}
+                                className="text-muted-foreground hover:text-primary transition-colors p-1.5"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => { deleteAccount(acc); triggerToast(`"${acc}" removed.`); }}
+                                className="text-muted-foreground hover:text-red-500 transition-colors p-1.5"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
+                       </Reorder.Item>
+                     ))}
+                   </Reorder.Group>
+                   {accounts.length === 0 && <p className="text-center text-sm font-medium text-muted-foreground py-4">No accounts defined!</p>}
+                </div>
+
+                <div className="p-4 border-t border-border/40 bg-muted/20 flex gap-2">
+                   <input
+                     value={newAccount}
+                     onChange={e => setNewAccount(e.target.value)}
+                     type="text"
+                     placeholder="New account (e.g. Maybank)"
+                     className="flex-1 bg-card rounded-xl px-4 py-2 text-sm font-medium outline-none border border-border text-foreground"
+                     onKeyDown={(e) => {
+                       if(e.key === 'Enter' && newAccount.trim()) {
+                         addAccount(newAccount.trim());
+                         setNewAccount("");
+                         triggerToast(`"${newAccount.trim()}" added!`);
+                       }
+                     }}
+                   />
+                   <button
+                     style={{ backgroundColor: accentColor }}
+                     onClick={() => {
+                       if(newAccount.trim()) {
+                         addAccount(newAccount.trim());
+                         triggerToast(`"${newAccount.trim()}" added!`);
+                         setNewAccount("");
+                       }
+                     }}
+                     className="text-white p-3 rounded-xl hover:scale-[1.02] active:scale-95 transition-transform"
+                   >
+                     <Plus className="w-5 h-5"/>
+                   </button>
                 </div>
              </motion.div>
           </div>

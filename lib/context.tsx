@@ -56,6 +56,11 @@ type AppContextType = {
   addGoal: (goal: Goal) => void;
   updateGoal: (id: number, goal: Partial<Goal>) => void;
   deleteGoal: (id: number) => void;
+  accounts: string[];
+  setAccounts: (val: string[]) => void;
+  addAccount: (acc: string) => void;
+  renameAccount: (old: string, next: string) => void;
+  deleteAccount: (acc: string) => void;
   accentColor: string;
   setAccentColor: (val: string) => void;
   isSecurityEnabled: boolean;
@@ -100,11 +105,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const [utilities, setUtilities] = useState<Subscription[]>([
     { id: 3, name: "Electricity", cost: 120.00, icon: "Zap", bg: "bg-yellow-500/10", color: "text-yellow-500" },
-    { id: 4, name: "Internet", cost: 89.00, icon: "Wifi", bg: "bg-blue-500/10", color: "text-blue-500" }
+    { id: 4, name: "Internet", cost: 89.00, icon: "Wifi", bg: "bg-blue-500/10", color: "text-blue-500" },
+    { id: 5, name: "Water", cost: 35.00, icon: "Droplet", bg: "bg-cyan-500/10", color: "text-cyan-500" },
+    { id: 6, name: "Rent", cost: 1200.00, icon: "Smartphone", bg: "bg-orange-500/10", color: "text-orange-500" },
   ]);
   const addUtility = (sub: Subscription) => setUtilities(prev => [...prev, { ...sub, user_id: session?.user?.id }]);
   const updateUtility = (id: number, patch: Partial<Subscription>) => setUtilities(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
   const deleteUtility = (id: number) => setUtilities(prev => prev.filter(s => s.id !== id));
+
+  const [accounts, setAccounts] = useState<string[]>(["Bank", "Cash", "eWallet"]);
+  const addAccount = (acc: string) => setAccounts(prev => [...prev, acc]);
+  const renameAccount = (old: string, next: string) => setAccounts(prev => prev.map(a => a === old ? next : a));
+  const deleteAccount = (acc: string) => setAccounts(prev => prev.filter(a => a !== acc));
 
   const [transactions, setTransactions] = useState<Transaction[]>([
     { id: 1, type: "Expense", amount: 12.50, category: "Food", account: "Bank (MBB)", date: new Date().toISOString() },
@@ -169,6 +181,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       editTransactionId, setEditTransactionId,
       goals: goals.filter(g => !g.user_id || g.user_id === session?.user?.id),
       addGoal, updateGoal, deleteGoal,
+      accounts, setAccounts, addAccount, renameAccount, deleteAccount,
       accentColor, setAccentColor,
       isSecurityEnabled, setIsSecurityEnabled,
       securityMethod, setSecurityMethod,

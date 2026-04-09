@@ -10,7 +10,6 @@ import { useAppContext } from "@/lib/context";
 
 type TxType = "Expense" | "Income" | "Transfer";
 
-const ACCOUNTS = ["Bank (MBB)", "Bank (HSBC)", "TNG eWallet", "TNG Card", "Cash"];
 
 function SegmentedControl({ value, onChange }: { value: TxType; onChange: (val: TxType) => void }) {
   const options: TxType[] = ["Expense", "Income", "Transfer"];
@@ -61,17 +60,23 @@ function PillSelector({ options, value, onChange }: { options: string[], value: 
 }
 
 export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const { categories, triggerToast, accentColor, addTransaction, updateTransaction, transactions, editTransactionId, setEditTransactionId } = useAppContext();
+  const { categories, triggerToast, accentColor, addTransaction, updateTransaction, transactions, editTransactionId, setEditTransactionId, accounts } = useAppContext();
   
   const [txType, setTxType] = useState<TxType>("Expense");
   const [modalCurrency, setModalCurrency] = useState("RM");
-  const [account, setAccount] = useState("Bank (MBB)");
-  const [toAccount, setToAccount] = useState("TNG eWallet");
+  const [account, setAccount] = useState("");
+  const [toAccount, setToAccount] = useState("");
   const [category, setCategory] = useState(categories[0] || "Food");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
 
   const isActuallyOpen = isOpen || editTransactionId !== null;
+
+  useEffect(() => {
+    // Set default accounts once accounts array is loaded
+    if (!account && accounts.length > 0) setAccount(accounts[0]);
+    if (!toAccount && accounts.length > 1) setToAccount(accounts[1] || accounts[0]);
+  }, [accounts]);
 
   useEffect(() => {
     if (editTransactionId) {
@@ -168,7 +173,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                   <div className="p-4 bg-muted/30 rounded-2xl border border-border/50 flex flex-col gap-3">
                     <div>
                       <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-2">From Account</label>
-                      <PillSelector options={ACCOUNTS} value={account} onChange={setAccount} />
+                      <PillSelector options={accounts} value={account} onChange={setAccount} />
                     </div>
                     <div className="flex justify-center -my-1 rounded-full relative z-10 w-full">
                       <div className="bg-card border border-border p-1.5 rounded-full shadow-sm text-muted-foreground">
@@ -177,13 +182,13 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                     </div>
                     <div>
                       <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-2">To Account</label>
-                      <PillSelector options={ACCOUNTS} value={toAccount} onChange={setToAccount} />
+                      <PillSelector options={accounts} value={toAccount} onChange={setToAccount} />
                     </div>
                   </div>
                 ) : (
                   <div>
                     <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-3">Account</label>
-                    <PillSelector options={ACCOUNTS} value={account} onChange={setAccount} />
+                    <PillSelector options={accounts} value={account} onChange={setAccount} />
                   </div>
                 )}
 
