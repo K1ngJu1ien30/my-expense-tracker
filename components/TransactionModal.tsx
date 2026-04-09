@@ -217,16 +217,17 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                        amount: Number(amount),
                        category: txType === "Transfer" ? "Transfer" : category,
                        account,
+                       toAccount: txType === "Transfer" ? toAccount : undefined,
                        note,
                        date: new Date().toISOString()
                     };
 
                     if (editTransactionId) {
                        updateTransaction(editTransactionId, payload);
-                       triggerToast(`Transaction updated gracefully!`);
+                       triggerToast(`✅ ${txType} updated`);
                     } else {
                        addTransaction({ id: Date.now(), ...payload });
-                       triggerToast(`${txType} mapped formally natively!`);
+                       triggerToast(`✅ ${txType} saved`);
                     }
                     
                     if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(50);

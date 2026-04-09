@@ -1,8 +1,9 @@
 "use client";
 
-import { Download, Trash2, Tags, Moon, ChevronRight, Edit2, Check, Bell, CircleDollarSign, Calendar, X, Plus, GripVertical, Shield, Palette, Database } from "lucide-react";
+import { Download, Trash2, Tags, Moon, ChevronRight, Edit2, Check, Bell, CircleDollarSign, Calendar, X, Plus, GripVertical, Shield, Palette, Database, LogOut } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAppContext } from "@/lib/context";
+import { supabase } from "@/lib/supabase";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
 
 const ACCENT_COLORS = [
@@ -26,12 +27,16 @@ export default function ProfilePage() {
     securityMethod, setSecurityMethod,
     appPin, setAppPin,
     triggerToast,
-    transactions, subscriptions, goals, utilities
+    transactions, subscriptions, goals, utilities, session
   } = useAppContext();
 
   const [darkMode, setDarkMode] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState("");
+  
+  const [showWipeModal, setShowWipeModal] = useState(false);
+  const [wipePassword, setWipePassword] = useState("");
+  const [isWiping, setIsWiping] = useState(false);
 
   const [showCategoriesModal, setShowCategoriesModal] = useState(false);
   const [newCat, setNewCat] = useState("");
@@ -75,6 +80,50 @@ export default function ProfilePage() {
   };
 
   const DAYS = Array.from({ length: 31 }, (_, i) => (i + 1).toString());
+
+  const handleLogout = async () => {
+     await supabase.auth.signOut();
+     triggerToast("Logged out successfully");
+  };
+
+  const exportCSV = () => {
+     const headers = "Date,Type,Category,Amount,Account,Note\n";
+     const rows = transactions.map(t => `${new Date(t.date).toLocaleDateString()},${t.type},${t.category || ''},${t.amount},${t.account || ''},${(t.note || '').replace(/,/g, ' ')}`).join('\n');
+     const blob = new Blob([headers + rows], { type: 'text/csv' });
+     const url = window.URL.createObjectURL(blob);
+     const a = document.createElement('a');
+     a.setAttribute('hidden', '');
+     a.setAttribute('href', url);
+     a.setAttribute('download', 'transactions_export.csv');
+     document.body.appendChild(a);
+     a.click();
+     document.body.removeChild(a);
+     triggerToast("CSV Export downloaded!");
+  };
+
+  const executeWipe = async () => {
+     if (!session?.user?.email) return;
+     setIsWiping(true);
+     
+     const { error: authError } = await supabase.auth.signInWithPassword({ email: session.user.email, password: wipePassword });
+     if (authError) {
+        triggerToast("Auth failed: " + authError.message);
+        setIsWiping(false);
+        return;
+     }
+
+     const { error: txError } = await supabase.from('transactions').delete().eq('user_id', session.user.id);
+     
+     if (txError) {
+        triggerToast("Database error: " + txError.message);
+     } else {
+        triggerToast("Data wiped securely from remote core.");
+        setShowWipeModal(false);
+        setWipePassword("");
+        setTimeout(() => window.location.reload(), 1000);
+     }
+     setIsWiping(false);
+  };
 
   return (
     <div className="p-6 animate-in fade-in duration-500 space-y-8 pb-[120px] overflow-x-hidden min-h-screen relative">
@@ -306,7 +355,7 @@ export default function ProfilePage() {
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
           </button>
 
-          <button className="w-full flex items-center justify-between p-4 border-b border-border/40 active:bg-muted/50 transition-colors text-left cursor-pointer">
+          <button onClick={exportCSV} className="w-full flex items-center justify-between p-4 border-b border-border/40 active:bg-muted/50 transition-colors text-left cursor-pointer">
             <div className="flex items-center gap-3">
               <div className="bg-emerald-500/10 p-2 rounded-xl text-emerald-500"><Download className="w-5 h-5" /></div>
               <span className="font-semibold text-foreground text-sm">Export Data to CSV</span>
@@ -314,13 +363,20 @@ export default function ProfilePage() {
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
           </button>
           
-          <button className="w-full flex items-center justify-between p-4 active:bg-red-50 transition-colors text-left group cursor-pointer">
+          <button onClick={() => setShowWipeModal(true)} className="w-full flex items-center justify-between p-4 active:bg-red-500/10 transition-colors text-left group cursor-pointer">
             <div className="flex items-center gap-3">
               <div className="bg-red-500/10 p-2 rounded-xl text-red-500 group-hover:bg-red-500/20 transition-colors"><Trash2 className="w-5 h-5" /></div>
               <span className="font-semibold text-red-600 text-sm">Clear All Data</span>
             </div>
           </button>
         </div>
+      </div>
+
+      {/* Logout Overlay */}
+      <div className="pt-2">
+         <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 p-4 bg-red-500/10 hover:bg-red-500/20 text-red-600 rounded-[2rem] font-bold transition-colors active:scale-[0.98]">
+            <LogOut className="w-5 h-5" /> Sign Out
+         </button>
       </div>
 
       {/* Categories Reorder Modal overlay */}

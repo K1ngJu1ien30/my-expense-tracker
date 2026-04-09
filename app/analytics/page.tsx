@@ -115,6 +115,24 @@ export default function AnalyticsPage() {
      return "Your long-term financial health is strictly optimal based on historical averages.";
   }, [timeFilter, transactions]);
 
+  const accountBalances = useMemo(() => {
+    const balances: Record<string, number> = {};
+    transactions.forEach((t: any) => {
+       const amt = Number(t.amount) || 0;
+       if (t.type === "Income") {
+          balances[t.account] = (balances[t.account] || 0) + amt;
+       } else if (t.type === "Expense") {
+          balances[t.account] = (balances[t.account] || 0) - amt;
+       } else if (t.type === "Transfer") {
+          balances[t.account] = (balances[t.account] || 0) - amt;
+          if (t.toAccount) {
+             balances[t.toAccount] = (balances[t.toAccount] || 0) + amt;
+          }
+       }
+    });
+    return Object.entries(balances);
+  }, [transactions]);
+
   return (
     <div className="p-6 animate-in fade-in duration-500 space-y-6 pb-[120px] relative min-h-screen overflow-x-hidden">
       
@@ -145,6 +163,23 @@ export default function AnalyticsPage() {
             <p className="text-sm font-semibold text-foreground/90 leading-snug">{smartInsightText}</p>
          </div>
       </div>
+
+      {/* Account Balance Pills Row */}
+      {accountBalances.length > 0 && (
+         <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-2 -mx-6 px-6">
+            {accountBalances.map(([acc, bal]) => (
+               <div key={acc} className="flex items-center gap-2 bg-card border border-border/60 shadow-sm rounded-xl px-4 py-2.5 shrink-0 hover:border-primary/50 transition-colors">
+                  <div className="bg-primary/10 p-1.5 rounded-full">
+                     {acc.includes("Bank") ? '🏦' : acc.includes("Cash") ? '💵' : '📱'}
+                  </div>
+                  <div className="flex flex-col">
+                     <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground leading-none">{acc}</span>
+                     <span className={`text-sm font-bold leading-tight ${bal < 0 ? 'text-rose-500' : 'text-foreground'}`}>RM {bal.toFixed(2)}</span>
+                  </div>
+               </div>
+            ))}
+         </div>
+      )}
 
       {/* Spending Breakdown */}
       <div className="bg-card p-6 rounded-[2rem] shadow-heavy shadow-black/5 border border-border/40 relative">
