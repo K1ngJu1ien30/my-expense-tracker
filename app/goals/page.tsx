@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Target, Plus, ShieldAlert, Pin, Trash2, X, Check } from "lucide-react";
 import { useAppContext } from "@/lib/context";
 
 // Map strings back to icons for rendering
-const ICONS: Record<string, JSX.Element> = {
+const ICONS: Record<string, React.ReactNode> = {
   Target: <Target className="w-5 h-5 text-blue-500" />,
   ShieldAlert: <ShieldAlert className="w-5 h-5 text-emerald-500" />
 };

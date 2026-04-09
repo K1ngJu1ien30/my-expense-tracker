@@ -3,7 +3,6 @@
 import { useState } from "react";
 import BottomNav from "./BottomNav";
 import TransactionModal from "./TransactionModal";
-import LockScreen from "./LockScreen";
 import AuthScreen from "./AuthScreen";
 import { useAppContext } from "@/lib/context";
 import { AnimatePresence, motion } from "framer-motion";
@@ -47,8 +46,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       
       <BottomNav onOpenAdd={() => setModalOpen(true)} />
       <TransactionModal isOpen={isModalOpen} onClose={() => setModalOpen(false)} />
-      
-      <LockScreen />
     </div>
   );
 }

@@ -3,10 +3,10 @@
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useAppContext } from "@/lib/context";
 import { MonitorPlay, Music, Wifi, CreditCard, Plus, Trash2, Edit2, Zap, Smartphone, Droplet, X, Sparkles } from "lucide-react";
-import { useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
-const ICONS: Record<string, JSX.Element> = {
+const ICONS: Record<string, React.ReactNode> = {
   MonitorPlay: <MonitorPlay className="w-4 h-4" />,
   Music: <Music className="w-4 h-4" />,
   Wifi: <Wifi className="w-4 h-4" />,
