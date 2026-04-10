@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Trash2, Tags, Moon, ChevronRight, Edit2, Check, Bell, CircleDollarSign, Calendar, X, Plus, GripVertical, Shield, Palette, Database, LogOut, Lock, Wallet, PiggyBank, UtensilsCrossed, TrendingUp } from "lucide-react";
+import { Download, Trash2, Tags, Moon, ChevronRight, Edit2, Check, Bell, CircleDollarSign, Calendar, X, Plus, GripVertical, Shield, Palette, Database, LogOut, Lock, Wallet, PiggyBank, UtensilsCrossed, TrendingUp, Fingerprint } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAppContext } from "@/lib/context";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
@@ -29,6 +29,7 @@ export default function ProfilePage() {
     includeSavings, toggleIncludeSavings,
     enableFoodBudget, toggleFoodBudget, enableSalaryPlanner, toggleSalaryPlanner,
     foodDailyLimit, setFoodDailyLimit, foodMonthlyLimit, setFoodMonthlyLimit,
+    isAppLockEnabled, toggleAppLock,
     session
   } = useAppContext();
 
@@ -63,6 +64,13 @@ export default function ProfilePage() {
   const [newAccount, setNewAccount] = useState("");
   const [editingAccount, setEditingAccount] = useState<string | null>(null);
   const [editingAccountVal, setEditingAccountVal] = useState("");
+
+  // PIN setup modal
+  const [showPinSetup, setShowPinSetup] = useState(false);
+  const [pinStep, setPinStep] = useState<"enter" | "confirm">("enter");
+  const [tempPin, setTempPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [pinError, setPinError] = useState("");
 
   useEffect(() => {
     if (document.documentElement.classList.contains('dark')) setDarkMode(true);
@@ -400,6 +408,36 @@ export default function ProfilePage() {
             </div>
             <button className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${enableSalaryPlanner ? 'border-transparent' : 'bg-muted border border-border'}`} style={enableSalaryPlanner ? { backgroundColor: accentColor } : {}}>
               <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${enableSalaryPlanner ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Security & Privacy */}
+      <div>
+        <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 px-2">Security & Privacy</h3>
+        <div className="bg-card rounded-3xl shadow-soft border border-border/40 overflow-hidden relative">
+          <div className="w-full flex items-center justify-between p-4 active:bg-muted/50 transition-colors cursor-pointer" onClick={() => {
+            if (!isAppLockEnabled) {
+              setTempPin("");
+              setConfirmPin("");
+              setPinStep("enter");
+              setPinError("");
+              setShowPinSetup(true);
+            } else {
+              toggleAppLock(false);
+              triggerToast("App Lock disabled");
+            }
+          }}>
+            <div className="flex items-center gap-3">
+              <div className="bg-red-500/10 p-2 rounded-xl text-red-500"><Fingerprint className="w-5 h-5" /></div>
+              <div>
+                <span className="font-semibold text-foreground text-sm block">App Lock (Biometrics / PIN)</span>
+                <p className="text-[10px] text-muted-foreground leading-none mt-0.5">{isAppLockEnabled ? "Enabled — tap to disable" : "Require auth on app launch"}</p>
+              </div>
+            </div>
+            <button className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${isAppLockEnabled ? 'border-transparent' : 'bg-muted border border-border'}`} style={isAppLockEnabled ? { backgroundColor: accentColor } : {}}>
+              <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${isAppLockEnabled ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
             </button>
           </div>
         </div>
@@ -843,6 +881,88 @@ export default function ProfilePage() {
         )}
       </AnimatePresence>
 
+      {/* PIN Setup Modal */}
+      <AnimatePresence>
+        {showPinSetup && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowPinSetup(false)} className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+            <motion.div initial={{ y: 20, opacity: 0, scale: 0.95 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 20, opacity: 0, scale: 0.95 }} className="bg-card w-full max-w-xs rounded-[2rem] shadow-heavy z-10 overflow-hidden p-6 space-y-5 flex flex-col items-center">
+              <div className="bg-primary/10 p-3 rounded-2xl">
+                <Lock className="w-6 h-6 text-primary" />
+              </div>
+              <div className="text-center">
+                <h3 className="font-bold text-lg text-foreground">{pinStep === "enter" ? "Set a PIN" : "Confirm PIN"}</h3>
+                <p className="text-sm text-muted-foreground font-medium mt-1">{pinStep === "enter" ? "Enter a 6-digit fallback PIN" : "Re-enter your PIN to confirm"}</p>
+              </div>
+
+              <div className="flex gap-3">
+                {Array.from({ length: 6 }).map((_, i) => {
+                  const val = pinStep === "enter" ? tempPin : confirmPin;
+                  return (
+                    <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${i < val.length ? "bg-primary border-primary" : "border-border"}`} />
+                  );
+                })}
+              </div>
+
+              {pinError && <p className="text-rose-500 text-xs font-bold">{pinError}</p>}
+
+              <div className="grid grid-cols-3 gap-2 w-full">
+                {["1","2","3","4","5","6","7","8","9","","0","del"].map(key => {
+                  if (key === "") return <div key="empty" />;
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => {
+                        setPinError("");
+                        if (key === "del") {
+                          if (pinStep === "enter") setTempPin(prev => prev.slice(0, -1));
+                          else setConfirmPin(prev => prev.slice(0, -1));
+                          return;
+                        }
+                        if (pinStep === "enter") {
+                          const next = tempPin + key;
+                          if (next.length > 6) return;
+                          setTempPin(next);
+                          if (next.length === 6) {
+                            setPinStep("confirm");
+                          }
+                        } else {
+                          const next = confirmPin + key;
+                          if (next.length > 6) return;
+                          setConfirmPin(next);
+                          if (next.length === 6) {
+                            if (next === tempPin) {
+                              import("@/components/AuthGate").then(mod => {
+                                mod.setStoredPin(next);
+                              }).catch(() => {
+                                localStorage.setItem("app_lock_pin", next);
+                              });
+                              toggleAppLock(true);
+                              setShowPinSetup(false);
+                              triggerToast("App Lock enabled with PIN!");
+                            } else {
+                              setPinError("PINs do not match");
+                              setConfirmPin("");
+                              if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(200);
+                            }
+                          }
+                        }
+                      }}
+                      className="h-14 rounded-2xl bg-muted/50 border border-border/50 text-lg font-bold text-foreground hover:bg-muted active:scale-95 transition-all"
+                    >
+                      {key === "del" ? "⌫" : key}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button onClick={() => setShowPinSetup(false)} className="text-sm font-bold text-muted-foreground hover:text-foreground transition-colors">
+                Cancel
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
