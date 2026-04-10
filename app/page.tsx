@@ -36,7 +36,7 @@ export default function Dashboard() {
 
   const totalBalance = useMemo(() => {
      return transactions.reduce((acc, tx) => {
-        if (!includeSavings && tx.category && tx.category.toLowerCase().includes('saving')) {
+        if (!includeSavings && tx.account && tx.account.toLowerCase().includes('saving')) {
            return acc;
         }
         if (tx.type === "Income") return acc + Number(tx.amount);
