@@ -49,7 +49,7 @@ export default function GoalsPage() {
   };
 
   return (
-    <div className="p-6 animate-in fade-in duration-500 space-y-6 relative h-full">
+    <div className="p-6 animate-in fade-in duration-500 space-y-6 relative pb-32">
       <div className="flex justify-between items-center pt-2">
         <h1 className="text-2xl font-bold">Your Goals</h1>
         <button onClick={() => setIsCreating(true)} className="bg-primary text-primary-foreground p-2 rounded-full shadow-soft hover:scale-105 active:scale-95 transition-transform cursor-pointer">

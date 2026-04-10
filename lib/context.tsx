@@ -239,8 +239,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const savedIncludeSavings = session.user.user_metadata?.include_savings ?? true;
       setIncludeSavingsRaw(savedIncludeSavings);
 
-      setEnableFoodBudgetRaw(session.user.user_metadata?.enable_food_budget ?? false);
-      setEnableSalaryPlannerRaw(session.user.user_metadata?.enable_salary_planner ?? false);
+      setEnableFoodBudgetRaw(session.user.user_metadata?.enable_food_budget === true);
+      setEnableSalaryPlannerRaw(session.user.user_metadata?.enable_salary_planner === true);
       setFoodDailyLimitRaw(session.user.user_metadata?.food_daily_limit ?? 0);
       setFoodMonthlyLimitRaw(session.user.user_metadata?.food_monthly_limit ?? 0);
       
