@@ -56,8 +56,13 @@ export default function Dashboard() {
   }, [transactions, includeSavings, accounts]);
 
   const todayTransactions = useMemo(() => {
-     const today = new Date().toDateString();
-     return transactions.filter(t => t.type === "Expense" && new Date(t.date).toDateString() === today && !( !includeSavings && t.account?.toLowerCase().includes('saving') ));
+     const todayStr = new Date().toISOString().split('T')[0];
+     return transactions.filter(t => {
+       if (t.type !== "Expense") return false;
+       if (!includeSavings && t.account?.toLowerCase().includes('saving')) return false;
+       const txDateStr = t.date.includes('T') ? t.date.split('T')[0] : t.date.includes(' ') ? t.date.split(' ')[0] : t.date;
+       return txDateStr === todayStr;
+     });
   }, [transactions, includeSavings]);
 
   const todayTotal = useMemo(() => {
@@ -69,17 +74,17 @@ export default function Dashboard() {
      const dayOfWeek = now.getDay() || 7;
      const startOfWeek = new Date(now);
      startOfWeek.setDate(now.getDate() - dayOfWeek + 1);
-     startOfWeek.setHours(0, 0, 0, 0);
-
      const endOfWeek = new Date(startOfWeek);
      endOfWeek.setDate(startOfWeek.getDate() + 6);
-     endOfWeek.setHours(23, 59, 59, 999);
+
+     const startStr = startOfWeek.toISOString().split('T')[0];
+     const endStr = endOfWeek.toISOString().split('T')[0];
 
      return transactions.filter(t => {
         if (t.type !== "Expense") return false;
         if (!includeSavings && t.account?.toLowerCase().includes('saving')) return false;
-        const d = new Date(t.date);
-        return d >= startOfWeek && d <= endOfWeek;
+        const txDateStr = t.date.includes('T') ? t.date.split('T')[0] : t.date.includes(' ') ? t.date.split(' ')[0] : t.date;
+        return txDateStr >= startStr && txDateStr <= endStr;
      });
   }, [transactions, includeSavings]);
 
@@ -162,7 +167,11 @@ export default function Dashboard() {
             <Wallet className="w-4 h-4 text-primary" />
           </div>
           <p className="text-muted-foreground text-xs font-bold uppercase tracking-wider mb-1">Today</p>
-          <p className="text-lg font-black dark:text-foreground">RM {todayTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+          {todayTransactions.length === 0 ? (
+            <p className="text-sm font-medium text-muted-foreground">No transactions today!</p>
+          ) : (
+            <p className="text-lg font-black dark:text-foreground">RM {todayTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+          )}
         </Link>
         <Link href="/history" className="bg-card w-full text-left p-5 rounded-3xl shadow-soft border border-border/40 hover:scale-[1.02] active:scale-95 transition-transform cursor-pointer block">
           <div className="bg-rose-500/10 w-8 h-8 rounded-full flex items-center justify-center mb-3">

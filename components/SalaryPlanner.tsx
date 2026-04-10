@@ -98,24 +98,34 @@ export default function SalaryPlanner() {
 
       {/* Items List */}
       {plannerItems.length > 0 ? (
-        <div className="space-y-2">
-          {plannerItems.map(item => (
-            <div key={item.id} className="flex items-center justify-between p-3 bg-muted/20 rounded-xl border border-border/50">
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-sm text-foreground truncate">{item.item_name}</p>
-                <p className="text-[10px] font-semibold text-muted-foreground">{item.category}</p>
-              </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <span className="font-black text-sm text-foreground">RM {Number(item.amount).toFixed(2)}</span>
-                <button
-                  onClick={() => confirmAction("Delete Item", `Remove "${item.item_name}"?`, () => deletePlannerItem(item.id))}
-                  className="text-muted-foreground hover:text-red-500 transition-colors p-1"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          ))}
+        <div className="w-full overflow-x-auto rounded-xl border border-border/50">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50">
+              <tr>
+                <th className="text-left p-3 font-bold text-muted-foreground text-xs uppercase tracking-wider">Item</th>
+                <th className="text-center p-3 font-bold text-muted-foreground text-xs uppercase tracking-wider">Category</th>
+                <th className="text-center p-3 font-bold text-muted-foreground text-xs uppercase tracking-wider">Amount</th>
+                <th className="text-center p-3 font-bold text-muted-foreground text-xs uppercase tracking-wider w-10"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {plannerItems.map(item => (
+                <tr key={item.id} className="border-t border-border/30 hover:bg-muted/20 transition-colors">
+                  <td className="text-left p-3 font-bold text-foreground min-w-0 truncate">{item.item_name}</td>
+                  <td className="text-center p-3 text-muted-foreground font-semibold text-xs">{item.category}</td>
+                  <td className="text-center p-3 font-black text-foreground">RM {Number(item.amount).toFixed(2)}</td>
+                  <td className="text-center p-3">
+                    <button
+                      onClick={() => confirmAction("Delete Item", `Remove "${item.item_name}"?`, () => deletePlannerItem(item.id))}
+                      className="text-muted-foreground hover:text-red-500 transition-colors p-1"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ) : (
         <p className="text-sm font-medium text-muted-foreground text-center py-2">No planned expenses yet.</p>

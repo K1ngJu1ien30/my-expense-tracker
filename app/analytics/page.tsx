@@ -179,6 +179,13 @@ export default function AnalyticsPage() {
      return "Your long-term financial health is strictly optimal based on historical averages.";
   }, [timeFilter, transactions]);
 
+  const dateRangeLabel = useMemo(() => {
+     const now = new Date();
+     if (timeFilter === "Month") return now.toLocaleString('default', { month: 'long', year: 'numeric' });
+     if (timeFilter === "Year") return now.getFullYear().toString();
+     return "All Time";
+  }, [timeFilter]);
+
   return (
     <div className="p-6 animate-in fade-in duration-500 space-y-6 pb-[120px] relative min-h-screen overflow-x-hidden">
       
@@ -198,6 +205,8 @@ export default function AnalyticsPage() {
            ))}
         </div>
       </div>
+
+      <p className="text-sm font-semibold text-muted-foreground">Viewing: {dateRangeLabel}</p>
 
       {/* Account Balance Pills */}
       {accountBalances.length > 0 && (
@@ -245,11 +254,17 @@ export default function AnalyticsPage() {
               <PieChart margin={{ top: 20, right: 30, bottom: 20, left: 30 }}>
                 <Pie
                   data={categoryData}
-                  innerRadius={70}
-                  outerRadius={85}
+                  innerRadius={60}
+                  outerRadius={80}
                   paddingAngle={5}
                   dataKey="value"
                   stroke="none"
+                  labelLine={true}
+                  label={({ name, percent, x, y, textAnchor }: any) => (
+                    <text x={x} y={y} textAnchor={textAnchor} dominantBaseline="central" className="fill-foreground text-[10px] font-bold">
+                      {name} ({(percent * 100).toFixed(0)}%)
+                    </text>
+                  )}
                 >
                   {categoryData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
@@ -287,7 +302,7 @@ export default function AnalyticsPage() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={stackedCashFlow.data} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.5} />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--muted-foreground)', fontWeight: 600 }} dy={10} />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--muted-foreground)', fontWeight: 600 }} dy={10} interval={0} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--muted-foreground)', fontWeight: 600 }} />
                 <Tooltip 
                    formatter={(value: any) => ['RM ' + Number(value).toFixed(2), 'Amount']}
