@@ -144,10 +144,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [accentColor, setAccentColor] = useState("#3b82f6");
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setAuthLoading(false);
-    });
+    const initSession = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        setSession(session);
+      } catch (err) {
+        console.error("Session recovery failed:", err);
+        await supabase.auth.signOut();
+        setSession(null);
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+    initSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);

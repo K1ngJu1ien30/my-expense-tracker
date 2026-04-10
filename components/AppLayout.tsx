@@ -11,9 +11,6 @@ import { AnimatePresence, motion } from "framer-motion";
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [isModalOpen, setModalOpen] = useState(false);
   const { toast, session, authLoading } = useAppContext();
-
-  if (authLoading) return <div className="h-[100dvh] flex items-center justify-center bg-background max-w-md mx-auto"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"/></div>;
-
   const pathname = usePathname();
   useEffect(() => {
     setModalOpen(false);
@@ -27,6 +24,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       document.documentElement.classList.remove('dark');
     }
   }, []);
+
+  if (authLoading) return <div className="h-[100dvh] flex items-center justify-center bg-background max-w-md mx-auto"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"/></div>;
 
   if (!session) return (
     <div className="relative mx-auto w-full max-w-md h-[100dvh] lg:min-h-0 lg:h-[844px] lg:my-8 bg-background shadow-2xl flex flex-col overflow-hidden lg:rounded-[3rem] lg:border-[12px] lg:border-white/10 ring-1 ring-black/5 dark:ring-white/10">
