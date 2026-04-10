@@ -37,16 +37,16 @@ export default function Dashboard() {
   const totalBalance = useMemo(() => {
      const activeAccounts = includeSavings
        ? accounts
-       : accounts.filter(acc => !acc.toLowerCase().includes('saving'));
+       : accounts.filter(acc => acc && !acc.toLowerCase().includes('saving'));
 
      return activeAccounts.reduce((total, accountName) => {
        const balance = transactions.reduce((acc, tx) => {
          let newAcc = acc;
-         if (tx.account?.toLowerCase().trim() === accountName.toLowerCase().trim()) {
+         if (tx.account?.toLowerCase().trim() === accountName?.toLowerCase()?.trim()) {
            if (tx.type === "Income") newAcc += Number(tx.amount);
            if (tx.type === "Expense" || tx.type === "Transfer") newAcc -= Number(tx.amount);
          }
-         if (tx.type === "Transfer" && tx.to_account?.toLowerCase().trim() === accountName.toLowerCase().trim()) {
+         if (tx.type === "Transfer" && tx.to_account?.toLowerCase().trim() === accountName?.toLowerCase()?.trim()) {
            newAcc += Number(tx.amount);
          }
          return newAcc;
