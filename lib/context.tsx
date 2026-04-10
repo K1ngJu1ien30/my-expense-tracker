@@ -47,6 +47,14 @@ export type Transaction = {
 
 export type ToastType = { message: string; id: number } | null;
 
+export type PlannerItem = {
+  id: string;
+  category: string;
+  item_name: string;
+  amount: number;
+  user_id?: string;
+};
+
 type ConfirmState = {
   isOpen: boolean;
   title: string;
@@ -102,6 +110,17 @@ type AppContextType = {
   toggleIncludeSavings: (val: boolean) => void;
   session: any | null; // using any to avoid import issues if not already there, but wait, it's Session | null in this file originally.
   confirmAction: (title: string, message: string, onConfirm: () => void) => void;
+  enableFoodBudget: boolean;
+  toggleFoodBudget: (val: boolean) => void;
+  enableSalaryPlanner: boolean;
+  toggleSalaryPlanner: (val: boolean) => void;
+  foodDailyLimit: number;
+  setFoodDailyLimit: (val: number) => void;
+  foodMonthlyLimit: number;
+  setFoodMonthlyLimit: (val: number) => void;
+  plannerItems: PlannerItem[];
+  addPlannerItem: (item: Partial<PlannerItem>) => Promise<void>;
+  deletePlannerItem: (id: string) => Promise<void>;
 };
 
 export const AppContext = createContext<AppContextType | null>(null);
@@ -118,11 +137,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [categories, setCategories] = useState<string[]>(["Food", "Transport", "Entertainment", "Shopping", "Bills", "Family", "Subs"]);
   const [includeSavings, setIncludeSavingsRaw] = useState(true);
 
+  const [enableFoodBudget, setEnableFoodBudgetRaw] = useState(false);
+  const [enableSalaryPlanner, setEnableSalaryPlannerRaw] = useState(false);
+  const [foodDailyLimit, setFoodDailyLimitRaw] = useState(0);
+  const [foodMonthlyLimit, setFoodMonthlyLimitRaw] = useState(0);
+  const [plannerItems, setPlannerItems] = useState<PlannerItem[]>([]);
+
   const toggleIncludeSavings = async (val: boolean) => {
     setIncludeSavingsRaw(val);
     if (session?.user) {
        await supabase.auth.updateUser({ data: { include_savings: val } });
     }
+  };
+
+  const toggleFoodBudget = async (val: boolean) => {
+    setEnableFoodBudgetRaw(val);
+    if (session?.user) await supabase.auth.updateUser({ data: { enable_food_budget: val } });
+  };
+  const toggleSalaryPlanner = async (val: boolean) => {
+    setEnableSalaryPlannerRaw(val);
+    if (session?.user) await supabase.auth.updateUser({ data: { enable_salary_planner: val } });
+  };
+  const setFoodDailyLimit = async (val: number) => {
+    setFoodDailyLimitRaw(val);
+    if (session?.user) await supabase.auth.updateUser({ data: { food_daily_limit: val } });
+  };
+  const setFoodMonthlyLimit = async (val: number) => {
+    setFoodMonthlyLimitRaw(val);
+    if (session?.user) await supabase.auth.updateUser({ data: { food_monthly_limit: val } });
   };
 
   const [toast, setToast] = useState<ToastType>(null);
@@ -196,12 +238,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const savedAccounts = session.user.user_metadata?.custom_accounts || ['Bank', 'Cash', 'eWallet'];
       const savedIncludeSavings = session.user.user_metadata?.include_savings ?? true;
       setIncludeSavingsRaw(savedIncludeSavings);
+
+      setEnableFoodBudgetRaw(session.user.user_metadata?.enable_food_budget ?? false);
+      setEnableSalaryPlannerRaw(session.user.user_metadata?.enable_salary_planner ?? false);
+      setFoodDailyLimitRaw(session.user.user_metadata?.food_daily_limit ?? 0);
+      setFoodMonthlyLimitRaw(session.user.user_metadata?.food_monthly_limit ?? 0);
       
       const fetchData = async () => {
-        const [txs, gls, subs] = await Promise.all([
+        const [txs, gls, subs, plannerRes] = await Promise.all([
           supabase.from("transactions").select("*").eq('user_id', session.user.id).order("date", { ascending: false }),
           supabase.from("goals").select("*").eq('user_id', session.user.id).order("created_at", { ascending: false }),
-          supabase.from("subscriptions").select("*").eq('user_id', session.user.id).order("created_at", { ascending: false })
+          supabase.from("subscriptions").select("*").eq('user_id', session.user.id).order("created_at", { ascending: false }),
+          supabase.from("salary_planner").select("*").eq('user_id', session.user.id).order("created_at", { ascending: false })
         ]);
         if (txs.data) {
            setTransactions(txs.data as Transaction[]);
@@ -227,6 +275,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
              id: s.id, name: s.name, cost: Number(s.amount), billingDay: s.billing_day, sourceAccount: s.source_account, autoDeduct: s.auto_deduct, user_id: s.user_id, icon: "Zap", bg: "bg-yellow-500/10", color: "text-yellow-500"
           })) as Subscription[]);
         }
+        if (plannerRes.data) setPlannerItems(plannerRes.data as PlannerItem[]);
       };
       fetchData();
     } else {
@@ -234,6 +283,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
        setGoals([]);
        setSubscriptions([]);
        setUtilities([]);
+       setPlannerItems([]);
     }
   }, [session]);
 
@@ -329,6 +379,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!error) setGoals(prev => prev.filter(g => g.id !== id));
   };
 
+  const addPlannerItem = async (item: Partial<PlannerItem>) => {
+    delete item.id;
+    const payload = { ...item, user_id: session?.user?.id };
+    const { data, error } = await supabase.from('salary_planner').insert(payload).select().single();
+    if (!error && data) setPlannerItems(prev => [data as PlannerItem, ...prev]);
+  };
+  const deletePlannerItem = async (id: string) => {
+    const { error } = await supabase.from('salary_planner').delete().eq('id', id);
+    if (!error) setPlannerItems(prev => prev.filter(p => p.id !== id));
+  };
+
   return (
     <AppContext.Provider value={{
       userName, setUserName,
@@ -351,7 +412,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       accounts, setAccounts, reorderAccounts, addAccount, renameAccount, deleteAccount,
       accentColor, setAccentColor,
       session, authLoading,
-      confirmAction
+      confirmAction,
+      enableFoodBudget, toggleFoodBudget,
+      enableSalaryPlanner, toggleSalaryPlanner,
+      foodDailyLimit, setFoodDailyLimit,
+      foodMonthlyLimit, setFoodMonthlyLimit,
+      plannerItems, addPlannerItem, deletePlannerItem
     }}>
       {children}
 

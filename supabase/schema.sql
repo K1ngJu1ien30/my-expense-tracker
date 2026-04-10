@@ -56,3 +56,18 @@ CREATE POLICY "Strict isolation mapping for Goals" ON goals
 
 CREATE POLICY "Strict isolation mapping for Subscriptions" ON subscriptions
     FOR ALL USING (auth.uid() = user_id);
+
+-- 4. Salary Planner
+CREATE TABLE salary_planner (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    category VARCHAR(255),
+    item_name VARCHAR(255) NOT NULL,
+    amount DECIMAL(12,2) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE salary_planner ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Strict isolation mapping for Salary Planner" ON salary_planner
+    FOR ALL USING (auth.uid() = user_id);

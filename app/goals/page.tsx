@@ -4,6 +4,8 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Target, Plus, ShieldAlert, Pin, Trash2, X, Check } from "lucide-react";
 import { useAppContext } from "@/lib/context";
+import FoodBudgetCard from "@/components/FoodBudgetCard";
+import SalaryPlanner from "@/components/SalaryPlanner";
 
 // Map strings back to icons for rendering
 const ICONS: Record<string, React.ReactNode> = {
@@ -12,7 +14,7 @@ const ICONS: Record<string, React.ReactNode> = {
 };
 
 export default function GoalsPage() {
-  const { goals, addGoal, updateGoal, deleteGoal, confirmAction } = useAppContext();
+  const { goals, addGoal, updateGoal, deleteGoal, confirmAction, enableFoodBudget, enableSalaryPlanner } = useAppContext();
   
   // Modals state
   const [activeAddFunds, setActiveAddFunds] = useState<string | null>(null);
@@ -121,6 +123,9 @@ export default function GoalsPage() {
           )
         })}
       </div>
+
+      {enableFoodBudget && <FoodBudgetCard />}
+      {enableSalaryPlanner && <SalaryPlanner />}
     </div>
   )
 }

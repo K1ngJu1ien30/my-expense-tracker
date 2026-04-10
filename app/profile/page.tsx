@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Trash2, Tags, Moon, ChevronRight, Edit2, Check, Bell, CircleDollarSign, Calendar, X, Plus, GripVertical, Shield, Palette, Database, LogOut, Lock, Wallet, PiggyBank } from "lucide-react";
+import { Download, Trash2, Tags, Moon, ChevronRight, Edit2, Check, Bell, CircleDollarSign, Calendar, X, Plus, GripVertical, Shield, Palette, Database, LogOut, Lock, Wallet, PiggyBank, UtensilsCrossed, TrendingUp } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAppContext } from "@/lib/context";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
@@ -27,6 +27,8 @@ export default function ProfilePage() {
     triggerToast,
     transactions, subscriptions, goals, utilities,
     includeSavings, toggleIncludeSavings,
+    enableFoodBudget, toggleFoodBudget, enableSalaryPlanner, toggleSalaryPlanner,
+    foodDailyLimit, setFoodDailyLimit, foodMonthlyLimit, setFoodMonthlyLimit,
     session
   } = useAppContext();
 
@@ -324,6 +326,81 @@ export default function ProfilePage() {
                 </motion.div>
               )}
             </AnimatePresence>
+          </div>
+        </div>
+      </div>
+
+      {/* Modules */}
+      <div>
+        <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 px-2">Modules</h3>
+        <div className="bg-card rounded-3xl shadow-soft border border-border/40 overflow-hidden relative">
+
+          <div>
+            <div className="w-full flex items-center justify-between p-4 border-b border-border/40 active:bg-muted/50 transition-colors cursor-pointer" onClick={() => toggleFoodBudget(!enableFoodBudget)}>
+              <div className="flex items-center gap-3">
+                <div className="bg-orange-500/10 p-2 rounded-xl text-orange-500"><UtensilsCrossed className="w-5 h-5" /></div>
+                <div>
+                  <span className="font-semibold text-foreground text-sm block">Food Budget Tracker</span>
+                  <p className="text-[10px] text-muted-foreground leading-none mt-0.5">Daily & monthly food limits</p>
+                </div>
+              </div>
+              <button className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${enableFoodBudget ? 'border-transparent' : 'bg-muted border border-border'}`} style={enableFoodBudget ? { backgroundColor: accentColor } : {}}>
+                <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${enableFoodBudget ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
+              </button>
+            </div>
+
+            <AnimatePresence>
+              {enableFoodBudget && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="px-4 pb-4 overflow-hidden bg-muted/10 border-b border-border/40"
+                >
+                  <div className="space-y-3 pt-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Daily Limit</span>
+                      <div className="flex items-center gap-1.5 bg-card rounded-lg border border-border px-3 py-1.5">
+                        <span className="font-bold text-muted-foreground text-xs">RM</span>
+                        <input
+                          type="number"
+                          value={foodDailyLimit || ""}
+                          onChange={e => setFoodDailyLimit(Number(e.target.value))}
+                          placeholder="0"
+                          className="w-20 bg-transparent text-sm font-bold outline-none text-foreground text-right"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Monthly Limit</span>
+                      <div className="flex items-center gap-1.5 bg-card rounded-lg border border-border px-3 py-1.5">
+                        <span className="font-bold text-muted-foreground text-xs">RM</span>
+                        <input
+                          type="number"
+                          value={foodMonthlyLimit || ""}
+                          onChange={e => setFoodMonthlyLimit(Number(e.target.value))}
+                          placeholder="0"
+                          className="w-20 bg-transparent text-sm font-bold outline-none text-foreground text-right"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <div className="w-full flex items-center justify-between p-4 active:bg-muted/50 transition-colors cursor-pointer" onClick={() => toggleSalaryPlanner(!enableSalaryPlanner)}>
+            <div className="flex items-center gap-3">
+              <div className="bg-cyan-500/10 p-2 rounded-xl text-cyan-500"><TrendingUp className="w-5 h-5" /></div>
+              <div>
+                <span className="font-semibold text-foreground text-sm block">Salary Planner</span>
+                <p className="text-[10px] text-muted-foreground leading-none mt-0.5">Plan expenses against your balance</p>
+              </div>
+            </div>
+            <button className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${enableSalaryPlanner ? 'border-transparent' : 'bg-muted border border-border'}`} style={enableSalaryPlanner ? { backgroundColor: accentColor } : {}}>
+              <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${enableSalaryPlanner ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
+            </button>
           </div>
         </div>
       </div>
