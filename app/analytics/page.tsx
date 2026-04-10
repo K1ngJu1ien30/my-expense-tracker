@@ -35,16 +35,17 @@ export default function AnalyticsPage() {
 
   // Compute live balance per account from transactions
   const accountBalances = useMemo(() => {
-    const balances: Record<string, number> = {};
-    transactions.forEach(tx => {
-      const acc = tx.account || "Cash";
-      if (!balances[acc]) balances[acc] = 0;
-      if (tx.type === "Income") balances[acc] += Number(tx.amount);
-      else if (tx.type === "Expense") balances[acc] -= Number(tx.amount);
-      // Transfers: deduct from source, but we only track per-account
+    return accounts.map(accountName => {
+      const balance = transactions.reduce((acc, tx) => {
+        if (tx.account === accountName) {
+           if (tx.type === "Income") return acc + Number(tx.amount);
+           if (tx.type === "Expense" || tx.type === "Transfer") return acc - Number(tx.amount);
+        }
+        return acc;
+      }, 0);
+      return { name: accountName, balance };
     });
-    return Object.entries(balances).map(([name, balance]) => ({ name, balance }));
-  }, [transactions]);
+  }, [accounts, transactions]);
   
   // Modals
   const [showAddModal, setShowAddModal] = useState<"Sub" | "Util" | null>(null);

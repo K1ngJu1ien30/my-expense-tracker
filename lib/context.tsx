@@ -133,9 +133,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setConfirmState({ isOpen: true, title, message, onConfirm });
   };
 
-  const addAccount = (acc: string) => setAccounts(prev => [...prev, acc]);
-  const renameAccount = (old: string, next: string) => setAccounts(prev => prev.map(a => a === old ? next : a));
-  const deleteAccount = (acc: string) => setAccounts(prev => prev.filter(a => a !== acc));
+  const handleUpdateAccounts = async (newAccountsArray: string[]) => {
+    setAccounts(newAccountsArray);
+    if (session?.user) {
+      await supabase.auth.updateUser({ data: { custom_accounts: newAccountsArray } });
+    }
+  };
+
+  const addAccount = (acc: string) => handleUpdateAccounts([...accounts, acc]);
+  const renameAccount = (old: string, next: string) => handleUpdateAccounts(accounts.map(a => a === old ? next : a));
+  const deleteAccount = (acc: string) => handleUpdateAccounts(accounts.filter(a => a !== acc));
 
   const addCategory = (cat: string) => setCategories(prev => [...prev, cat]);
   const deleteCategory = (cat: string) => setCategories(prev => prev.filter(c => c !== cat));
@@ -172,18 +179,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const emailName = session.user.email?.split('@')[0];
       setUserNameRaw(metaName || emailName || "User");
 
-      // Fetch from Supabase
+      const savedAccounts = session.user.user_metadata?.custom_accounts || ['Bank', 'Cash', 'eWallet'];
+      
       const fetchData = async () => {
         const [txs, gls, subs] = await Promise.all([
-          supabase.from("transactions").select("*").order("date", { ascending: false }),
-          supabase.from("goals").select("*").order("created_at", { ascending: false }),
-          supabase.from("subscriptions").select("*").order("created_at", { ascending: false })
+          supabase.from("transactions").select("*").eq('user_id', session.user.id).order("date", { ascending: false }),
+          supabase.from("goals").select("*").eq('user_id', session.user.id).order("created_at", { ascending: false }),
+          supabase.from("subscriptions").select("*").eq('user_id', session.user.id).order("created_at", { ascending: false })
         ]);
         if (txs.data) {
            setTransactions(txs.data as Transaction[]);
            const uniqueAccounts = Array.from(new Set(txs.data.map((t: any) => t.account).filter(Boolean))) as string[];
            if (uniqueAccounts.length > 0) {
-              setAccounts(prev => Array.from(new Set([...prev, ...uniqueAccounts])));
+              const combinedAccounts = Array.from(new Set([...savedAccounts, ...uniqueAccounts]));
+              setAccounts(combinedAccounts);
+           } else {
+              setAccounts(savedAccounts);
            }
         }
         if (gls.data) setGoals(gls.data.map((g: any) => ({
