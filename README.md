@@ -25,7 +25,7 @@
 | **React** | 19.2.4 | UI rendering with hooks (`useState`, `useMemo`, `useEffect`, `useContext`) |
 | **TypeScript** | ^5 | Full type safety across all components and context |
 | **Tailwind CSS** | ^4 | Utility-first styling with CSS custom properties for theming |
-| **Recharts** | ^3.8.1 | Data visualization — `LineChart`, `PieChart`, `BarChart` |
+| **Recharts** | ^3.8.1 | Data visualization — `LineChart`, `PieChart`, `BarChart` with customized glassmorphism tooltips |
 | **Framer Motion** | ^12.38.0 | Animations — page transitions, modals, progress bars, drag-to-reorder |
 | **Supabase** | ^2.103.0 | Backend-as-a-Service — PostgreSQL database, authentication, Row Level Security |
 | **Lucide React** | ^1.8.0 | Icon library — consistent, lightweight SVG icons throughout the UI |
@@ -375,6 +375,7 @@ A horizontally scrollable row of account pills showing the live balance of each 
 A `PieChart` with:
 - Inner donut showing the total expense amount in the center
 - Outside labels showing category names and percentages (`Food (35%)`)
+- **Custom glassmorphism tooltip**: Backdrop-blurred card showing the category color dot alongside the formatted amount — no default Recharts "Amount" label
 - Color-coded legend below the chart
 - Only includes **Expense** type transactions from the filtered date range
 
@@ -382,6 +383,7 @@ A `PieChart` with:
 A `BarChart` showing expenses stacked by category over time:
 - **Month view**: Grouped by day (`4/10`, `4/11`, etc.)
 - **Year/All view**: Grouped by month (`Apr '26`, `May '26`, etc.)
+- **Custom bar tooltip**: Lists each category with its color dot and amount in a premium card
 - `interval={0}` forces every X-axis label to render without skipping
 - Horizontally scrollable with hidden scrollbar for datasets exceeding the viewport
 

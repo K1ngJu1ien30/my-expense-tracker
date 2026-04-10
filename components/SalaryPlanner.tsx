@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Trash2, Plus, TrendingUp } from "lucide-react";
+import { Trash2, Plus, TrendingUp, ChevronDown } from "lucide-react";
 import { useAppContext } from "@/lib/context";
 
 export default function SalaryPlanner() {
@@ -13,6 +13,7 @@ export default function SalaryPlanner() {
   const [newCategory, setNewCategory] = useState("");
   const [newName, setNewName] = useState("");
   const [newAmount, setNewAmount] = useState("");
+  const [isCategoryOpen, setIsCategoryOpen] = useState(false);
 
   const totalBalance = useMemo(() => {
     const activeAccounts = includeSavings
@@ -61,14 +62,40 @@ export default function SalaryPlanner() {
       {/* Add Form */}
       <div className="space-y-3 p-4 bg-muted/20 rounded-2xl border border-border/50">
         <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Add Planned Expense</p>
-        <select
-          value={newCategory}
-          onChange={e => setNewCategory(e.target.value)}
-          className="w-full bg-card text-sm font-semibold p-2.5 rounded-xl border border-border outline-none text-foreground"
-        >
-          <option value="">Select Category</option>
-          {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-        </select>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setIsCategoryOpen(!isCategoryOpen)}
+            className="w-full bg-card text-sm font-semibold p-2.5 rounded-xl border border-border outline-none text-foreground flex items-center justify-between transition-colors hover:border-border/80"
+          >
+            <span className={newCategory ? "text-foreground" : "text-muted-foreground"}>{newCategory || "Select Category"}</span>
+            <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${isCategoryOpen ? "rotate-180" : ""}`} />
+          </button>
+          {isCategoryOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setIsCategoryOpen(false)} />
+              <div className="absolute z-50 w-full mt-1 bg-card border border-border/80 rounded-xl shadow-heavy overflow-hidden max-h-48 overflow-y-auto hide-scrollbar">
+                <button
+                  type="button"
+                  onClick={() => { setNewCategory(""); setIsCategoryOpen(false); }}
+                  className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors hover:bg-muted/50 ${!newCategory ? "text-foreground font-bold" : "text-muted-foreground"}`}
+                >
+                  None
+                </button>
+                {categories.map(cat => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => { setNewCategory(cat); setIsCategoryOpen(false); }}
+                    className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors hover:bg-muted/50 border-t border-border/30 ${newCategory === cat ? "text-foreground font-bold" : "text-muted-foreground"}`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
         <input
           value={newName}
           onChange={e => setNewName(e.target.value)}

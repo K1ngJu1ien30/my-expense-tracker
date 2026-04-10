@@ -24,6 +24,45 @@ const ACCOUNT_ICONS: Record<string, string> = {
   "Cash": "💵",
 };
 
+const PieTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    const { name, value } = payload[0];
+    const color = payload[0].payload.fill || payload[0].payload.color;
+    return (
+      <div className="bg-card/95 backdrop-blur-xl border border-border/50 rounded-2xl shadow-heavy p-3 min-w-[140px]">
+        <p className="text-xs font-bold text-muted-foreground mb-2 pb-2 border-b border-border/50">{name}</p>
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color }} />
+          <span className="text-sm font-black text-foreground">RM {Number(value).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
+const BarTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-card/95 backdrop-blur-xl border border-border/50 rounded-2xl shadow-heavy p-3 min-w-[150px]">
+        <p className="text-xs font-bold text-muted-foreground mb-2 pb-2 border-b border-border/50">{label}</p>
+        <div className="space-y-1.5">
+          {payload.map((entry: any, i: number) => (
+            <div key={i} className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: entry.fill || entry.color }} />
+                <span className="text-xs font-semibold text-muted-foreground truncate">{entry.dataKey}</span>
+              </div>
+              <span className="text-xs font-black text-foreground shrink-0">RM {Number(entry.value).toFixed(2)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
 export default function AnalyticsPage() {
   const { 
     subscriptions, addSubscription, deleteSubscription, updateSubscription,
@@ -271,10 +310,8 @@ export default function AnalyticsPage() {
                   ))}
                 </Pie>
                 <Tooltip 
-                  formatter={(value: any) => ['RM ' + Number(value).toFixed(2), 'Amount']}
+                  content={<PieTooltip />}
                   allowEscapeViewBox={{ x: true, y: true }}
-                  contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: 'var(--shadow-heavy)', backgroundColor: 'var(--card)' }}
-                  itemStyle={{ color: 'var(--foreground)', fontWeight: 'bold' }}
                 />
               </PieChart>
             </ResponsiveContainer>
@@ -305,10 +342,8 @@ export default function AnalyticsPage() {
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--muted-foreground)', fontWeight: 600 }} dy={10} interval={0} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--muted-foreground)', fontWeight: 600 }} />
                 <Tooltip 
-                   formatter={(value: any) => ['RM ' + Number(value).toFixed(2), 'Amount']}
+                   content={<BarTooltip />}
                    cursor={{ fill: 'var(--muted)', opacity: 0.2 }}
-                   contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: 'var(--shadow-heavy)', backgroundColor: 'var(--card)' }}
-                   itemStyle={{ fontWeight: 'bold' }}
                 />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', fontWeight: 'bold', paddingTop: '10px' }} />
                 {stackedCashFlow.categories.map((cat, i) => (
