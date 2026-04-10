@@ -189,13 +189,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ]);
         if (txs.data) {
            setTransactions(txs.data as Transaction[]);
-           const uniqueAccounts = Array.from(new Set(txs.data.map((t: any) => t.account).filter(Boolean))) as string[];
-           if (uniqueAccounts.length > 0) {
-              const combinedAccounts = Array.from(new Set([...savedAccounts, ...uniqueAccounts]));
-              setAccounts(combinedAccounts);
-           } else {
-              setAccounts(savedAccounts);
-           }
+           setAccounts(savedAccounts);
         }
         if (gls.data) setGoals(gls.data.map((g: any) => ({
              id: g.id, 
