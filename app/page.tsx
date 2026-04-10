@@ -45,14 +45,18 @@ export default function Dashboard() {
      }, 0);
   }, [transactions, includeSavings]);
 
-  const todayTotal = useMemo(() => {
+  const todayTransactions = useMemo(() => {
      const today = new Date().toDateString();
-     return transactions.filter(t => t.type === "Expense" && new Date(t.date).toDateString() === today).reduce((acc, curr) => acc + Number(curr.amount), 0);
-  }, [transactions]);
+     return transactions.filter(t => t.type === "Expense" && new Date(t.date).toDateString() === today && !( !includeSavings && t.account?.toLowerCase().includes('saving') ));
+  }, [transactions, includeSavings]);
 
-  const weeklyTotal = useMemo(() => {
+  const todayTotal = useMemo(() => {
+     return todayTransactions.reduce((acc, curr) => acc + Number(curr.amount), 0);
+  }, [todayTransactions]);
+
+  const weeklyTransactions = useMemo(() => {
      const now = new Date();
-     const dayOfWeek = now.getDay() || 7; // Convert Sunday(0) to 7
+     const dayOfWeek = now.getDay() || 7;
      const startOfWeek = new Date(now);
      startOfWeek.setDate(now.getDate() - dayOfWeek + 1);
      startOfWeek.setHours(0, 0, 0, 0);
@@ -63,10 +67,15 @@ export default function Dashboard() {
 
      return transactions.filter(t => {
         if (t.type !== "Expense") return false;
+        if (!includeSavings && t.account?.toLowerCase().includes('saving')) return false;
         const d = new Date(t.date);
         return d >= startOfWeek && d <= endOfWeek;
-     }).reduce((acc, curr) => acc + Number(curr.amount), 0);
-  }, [transactions]);
+     });
+  }, [transactions, includeSavings]);
+
+  const weeklyTotal = useMemo(() => {
+     return weeklyTransactions.reduce((acc, curr) => acc + Number(curr.amount), 0);
+  }, [weeklyTransactions]);
 
   const dynamicTrendData = useMemo(() => {
      if (transactions.length === 0) return [];
@@ -144,8 +153,8 @@ export default function Dashboard() {
           <p className="text-lg font-black dark:text-foreground">RM {todayTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
         </Link>
         <Link href="/history" className="bg-card w-full text-left p-5 rounded-3xl shadow-soft border border-border/40 hover:scale-[1.02] active:scale-95 transition-transform cursor-pointer block">
-          <div className="bg-emerald-500/10 w-8 h-8 rounded-full flex items-center justify-center mb-3">
-            <TrendingDown className="w-4 h-4 text-emerald-500" />
+          <div className="bg-rose-500/10 w-8 h-8 rounded-full flex items-center justify-center mb-3">
+            <TrendingUp className="w-4 h-4 text-rose-500" />
           </div>
           <p className="text-muted-foreground text-xs font-bold uppercase tracking-wider mb-1">Weekly</p>
           <p className="text-lg font-black dark:text-foreground">RM {weeklyTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>

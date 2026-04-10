@@ -109,49 +109,59 @@ export default function AnalyticsPage() {
      setShowAddModal(null);
   }
 
+  const filteredTxs = useMemo(() => {
+     const d = new Date();
+     d.setHours(0,0,0,0);
+     if (timeFilter === "Month") d.setDate(d.getDate() - 30);
+     else if (timeFilter === "Year") d.setFullYear(d.getFullYear() - 1);
+     else return transactions;
+     return transactions.filter(t => new Date(t.date) >= d);
+  }, [transactions, timeFilter]);
+
   const categoryData = useMemo(() => {
     const map: Record<string, number> = {};
-    transactions.forEach(t => {
+    filteredTxs.forEach(t => {
        if (t.type !== "Expense") return;
-       // We can add timeFilter checks here if needed, but the current slice is fully reactive to [transactions].
        map[t.category] = (map[t.category] || 0) + Number(t.amount);
     });
     const colors = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4'];
-    return Object.entries(map).map(([name, value], i) => ({ name, value, color: colors[i % colors.length] }));
-  }, [transactions, timeFilter]);
+    return Object.entries(map).map(([name, value], i) => ({ name, value, color: colors[i % colors.length] })).sort((a,b)=>b.value-a.value);
+  }, [filteredTxs]);
 
   const totalExpense = useMemo(() => categoryData.reduce((acc, curr) => acc + curr.value, 0), [categoryData]);
 
   const stackedCashFlow = useMemo(() => {
-     const data = [];
+     const data: any[] = [];
      const map: Record<string, any> = {};
-     for (let i = 6; i >= 0; i--) {
-       const d = new Date();
-       d.setDate(d.getDate() - i);
-       const key = `${d.getMonth()+1}/${d.getDate()}`;
-       const item = { name: key };
-       map[key] = item;
-       data.push(item);
-     }
-     
-     const weekAgo = new Date();
-     weekAgo.setDate(weekAgo.getDate() - 7);
      const uniqueCats = new Set<string>();
      
-     transactions.forEach(t => {
-        const d = new Date(t.date);
-        if (d < weekAgo || t.type !== "Expense") return;
-        
-        const key = `${d.getMonth()+1}/${d.getDate()}`;
-        if (map[key]) {
-           uniqueCats.add(t.category);
-           map[key][t.category] = (map[key][t.category] || 0) + Number(t.amount);
-        }
+     // Reverse for chronological ordering on the chart
+     const chronologicalTxs = [...filteredTxs].reverse();
+
+     chronologicalTxs.forEach(t => {
+         if (t.type !== "Expense") return;
+         const d = new Date(t.date);
+         
+         const key = (timeFilter === "Year" || timeFilter === "All") 
+              ? `${d.toLocaleString('default', { month: 'short' })} '${d.getFullYear().toString().slice(2)}`
+              : `${d.getMonth()+1}/${d.getDate()}`;
+              
+         if (!map[key]) {
+            map[key] = { name: key };
+            data.push(map[key]);
+         }
+         uniqueCats.add(t.category);
+         map[key][t.category] = (map[key][t.category] || 0) + Number(t.amount);
      });
+     
+     // If data is entirely empty, just mock a shell so the chart doesn't crash visually
+     if (data.length === 0) {
+        data.push({ name: "No Data" });
+     }
      
      const colors = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4', '#f43f5e'];
      return { data, categories: Array.from(uniqueCats), colors };
-  }, [transactions]);
+  }, [filteredTxs, timeFilter]);
 
   const smartInsightText = useMemo(() => {
      if (transactions && transactions.length === 0) return "Start tracking to uncover your financial personality!";
@@ -216,18 +226,18 @@ export default function AnalyticsPage() {
       {/* Spending Breakdown */}
       <div className="bg-card p-6 rounded-[2rem] shadow-heavy shadow-black/5 border border-border/40 relative">
         <h3 className="font-bold text-foreground mb-6">Spending Category</h3>
-        <div className="flex items-center justify-center">
-          <div className="h-[200px] w-[200px] relative">
+        <div className="flex items-center justify-center flex-col md:flex-row min-h-[350px]">
+          <div className="h-[250px] w-full relative -mt-4">
              <div className="absolute inset-0 flex flex-col items-center justify-center">
                <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Total</span>
                <span className="font-black text-xl text-foreground">RM {totalExpense.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
              </div>
             <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
+              <PieChart margin={{ top: 20, right: 30, bottom: 20, left: 30 }}>
                 <Pie
                   data={categoryData}
-                  innerRadius={60}
-                  outerRadius={65}
+                  innerRadius={70}
+                  outerRadius={85}
                   paddingAngle={5}
                   dataKey="value"
                   stroke="none"
@@ -246,7 +256,7 @@ export default function AnalyticsPage() {
             </ResponsiveContainer>
           </div>
           
-          <div className="flex-1 space-y-3 pl-4">
+          <div className="flex-1 space-y-3 pl-4 w-full pt-4 md:pt-0">
             {categoryData.map(entry => (
               <div key={entry.name} className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: entry.color }} />
@@ -263,24 +273,26 @@ export default function AnalyticsPage() {
       {/* Month over Month Chart */}
       <div className="bg-card p-6 rounded-[2rem] shadow-soft border border-border/40">
         <h3 className="font-bold text-foreground mb-6">Cash Flow</h3>
-        <div className="h-[220px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={stackedCashFlow.data} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.5} />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--muted-foreground)', fontWeight: 600 }} dy={10} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--muted-foreground)', fontWeight: 600 }} />
-              <Tooltip 
-                 formatter={(value: any) => ['RM ' + Number(value).toFixed(2), 'Amount']}
-                 cursor={{ fill: 'var(--muted)', opacity: 0.2 }}
-                 contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: 'var(--shadow-heavy)', backgroundColor: 'var(--card)' }}
-                 itemStyle={{ fontWeight: 'bold' }}
-              />
-              <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', fontWeight: 'bold', paddingTop: '10px' }} />
-              {stackedCashFlow.categories.map((cat, i) => (
-                <Bar key={cat} dataKey={cat} stackId="a" fill={stackedCashFlow.colors[i % stackedCashFlow.colors.length]} radius={ i === stackedCashFlow.categories.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0] } maxBarSize={20} />
-              ))}
-            </BarChart>
-          </ResponsiveContainer>
+        <div className="w-full overflow-x-auto pb-4 hide-scrollbar">
+          <div className="h-[220px]" style={{ minWidth: `${Math.max(100, stackedCashFlow.data.length * 60)}px` }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={stackedCashFlow.data} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.5} />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--muted-foreground)', fontWeight: 600 }} dy={10} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--muted-foreground)', fontWeight: 600 }} />
+                <Tooltip 
+                   formatter={(value: any) => ['RM ' + Number(value).toFixed(2), 'Amount']}
+                   cursor={{ fill: 'var(--muted)', opacity: 0.2 }}
+                   contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: 'var(--shadow-heavy)', backgroundColor: 'var(--card)' }}
+                   itemStyle={{ fontWeight: 'bold' }}
+                />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', fontWeight: 'bold', paddingTop: '10px' }} />
+                {stackedCashFlow.categories.map((cat, i) => (
+                  <Bar key={cat} dataKey={cat} stackId="a" fill={stackedCashFlow.colors[i % stackedCashFlow.colors.length]} radius={ i === stackedCashFlow.categories.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0] } maxBarSize={20} />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
       
