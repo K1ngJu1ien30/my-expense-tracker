@@ -5,57 +5,55 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Fingerprint, Delete, ShieldCheck } from "lucide-react";
 import { useAppContext } from "@/lib/context";
 
-let biometricModule: any = null;
-let preferencesModule: any = null;
-
-async function loadCapacitorPlugins() {
+async function isNative(): Promise<boolean> {
   try {
-    if (!biometricModule) {
-      biometricModule = await import("@capacitor-community/biometric-auth").catch(() => null);
-    }
-    if (!preferencesModule) {
-      preferencesModule = await import("@capacitor/preferences").catch(() => null);
-    }
+    // @ts-ignore - Capacitor core may not exist in web builds
+    const { Capacitor } = await import("@capacitor/core");
+    return Capacitor.isNativePlatform();
   } catch {
-    // Plugins not available (web environment)
+    return false;
   }
 }
 
 async function getStoredPin(): Promise<string | null> {
   try {
-    await loadCapacitorPlugins();
-    if (preferencesModule?.Preferences) {
-      const { value } = await preferencesModule.Preferences.get({ key: "app_lock_pin" });
+    if (await isNative()) {
+      // @ts-ignore - Native plugin, not available in web builds
+      const { Preferences } = await import("@capacitor/preferences");
+      const { value } = await Preferences.get({ key: "app_lock_pin" });
       return value;
     }
   } catch {}
-  // Fallback to localStorage for web
-  return localStorage.getItem("app_lock_pin");
+  if (typeof window !== "undefined") return localStorage.getItem("app_lock_pin");
+  return null;
 }
 
 async function setStoredPin(pin: string): Promise<void> {
   try {
-    await loadCapacitorPlugins();
-    if (preferencesModule?.Preferences) {
-      await preferencesModule.Preferences.set({ key: "app_lock_pin", value: pin });
+    if (await isNative()) {
+      // @ts-ignore - Native plugin, not available in web builds
+      const { Preferences } = await import("@capacitor/preferences");
+      await Preferences.set({ key: "app_lock_pin", value: pin });
       return;
     }
   } catch {}
-  localStorage.setItem("app_lock_pin", pin);
+  if (typeof window !== "undefined") localStorage.setItem("app_lock_pin", pin);
 }
 
 async function tryBiometric(): Promise<boolean> {
   try {
-    await loadCapacitorPlugins();
-    if (biometricModule?.BiometricAuth) {
-      await biometricModule.BiometricAuth.authenticate({
-        reason: "Unlock Tracker",
-        cancelTitle: "Use PIN",
-      });
-      return true;
-    }
-  } catch {}
-  return false;
+    if (!(await isNative())) return false;
+    // @ts-ignore - Native plugin, not available in web builds
+    const { BiometricAuth } = await import("@capacitor-community/biometric-auth");
+    if (!BiometricAuth) return false;
+    await BiometricAuth.authenticate({
+      reason: "Unlock Tracker",
+      cancelTitle: "Use PIN",
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
