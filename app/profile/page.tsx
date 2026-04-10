@@ -33,6 +33,9 @@ export default function ProfilePage() {
   } = useAppContext();
 
   const [darkMode, setDarkMode] = useState(false);
+  useEffect(() => {
+     setDarkMode(document.documentElement.classList.contains('dark') || localStorage.getItem('theme') === 'dark');
+  }, []);
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState("");
 
@@ -251,7 +254,17 @@ export default function ProfilePage() {
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
           </button>
           
-          <div className="w-full flex items-center justify-between p-4 border-b border-border/40 active:bg-muted/50 transition-colors cursor-pointer" onClick={() => { setDarkMode(!darkMode); document.documentElement.classList.toggle('dark'); }}>
+          <div className="w-full flex items-center justify-between p-4 border-b border-border/40 active:bg-muted/50 transition-colors cursor-pointer" onClick={() => { 
+            const newMode = !darkMode;
+            setDarkMode(newMode); 
+            if (newMode) {
+              document.documentElement.classList.add('dark');
+              localStorage.setItem('theme', 'dark');
+            } else {
+              document.documentElement.classList.remove('dark');
+              localStorage.setItem('theme', 'light');
+            }
+          }}>
             <div className="flex items-center gap-3">
               <div className="bg-purple-500/10 p-2 rounded-xl text-purple-500"><Moon className="w-5 h-5" /></div>
               <span className="font-semibold text-foreground text-sm">Dark Mode</span>

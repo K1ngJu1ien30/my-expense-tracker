@@ -55,9 +55,14 @@
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  @apply select-none; /* Enforce native app feel globally */
+}
+
+input, textarea {
+  @apply select-text; /* Native exemption for inputs */
 }
 
 /* Hide scrollbar for horizontal lists */
