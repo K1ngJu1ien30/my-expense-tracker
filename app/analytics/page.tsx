@@ -114,12 +114,17 @@ export default function AnalyticsPage() {
   }
 
   const filteredTxs = useMemo(() => {
-     const d = new Date();
-     d.setHours(0,0,0,0);
-     if (timeFilter === "Month") d.setDate(d.getDate() - 30);
-     else if (timeFilter === "Year") d.setFullYear(d.getFullYear() - 1);
-     else return transactions;
-     return transactions.filter(t => new Date(t.date) >= d);
+     const now = new Date();
+     if (timeFilter === "Month") {
+       return transactions.filter(t => {
+         const d = new Date(t.date);
+         return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+       });
+     }
+     if (timeFilter === "Year") {
+       return transactions.filter(t => new Date(t.date).getFullYear() === now.getFullYear());
+     }
+     return transactions;
   }, [transactions, timeFilter]);
 
   const categoryData = useMemo(() => {

@@ -89,14 +89,16 @@ export default function Dashboard() {
 
   const dynamicTrendData = useMemo(() => {
      if (transactions.length === 0) return [];
+     const fmt = new Intl.DateTimeFormat('en-US', { weekday: 'short' });
      const data = [];
      const map: Record<string, any> = {};
      for (let i = 6; i >= 0; i--) {
        const d = new Date();
        d.setDate(d.getDate() - i);
-       const key = `${d.getMonth()+1}/${d.getDate()}`;
-       const item = { name: key, income: 0, value: 0, transactions: 0 };
-       map[key] = item;
+       const dayLabel = fmt.format(d);
+       const dateKey = `${d.getMonth()+1}/${d.getDate()}`;
+       const item = { name: dayLabel, dateKey, income: 0, value: 0, transactions: 0 };
+       map[dateKey] = item;
        data.push(item);
      }
      
@@ -106,11 +108,11 @@ export default function Dashboard() {
      transactions.forEach(t => {
         const d = new Date(t.date);
         if (d < weekAgo) return;
-        const key = `${d.getMonth()+1}/${d.getDate()}`;
-        if (map[key]) {
-           if (t.type === "Income") map[key].income += Number(t.amount);
-           if (t.type === "Expense") map[key].value += Number(t.amount);
-           map[key].transactions += 1;
+        const dateKey = `${d.getMonth()+1}/${d.getDate()}`;
+        if (map[dateKey]) {
+           if (t.type === "Income") map[dateKey].income += Number(t.amount);
+           if (t.type === "Expense") map[dateKey].value += Number(t.amount);
+           map[dateKey].transactions += 1;
         }
      });
      return data;
@@ -234,7 +236,7 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </div>
         <div className="flex justify-between text-xs text-muted-foreground font-medium px-2 mt-2">
-          <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+          {dynamicTrendData.map((d, i) => <span key={i}>{d.name}</span>)}
         </div>
       </div>
     </div>
