@@ -144,6 +144,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [foodDailyLimit, setFoodDailyLimitRaw] = useState(0);
   const [foodMonthlyLimit, setFoodMonthlyLimitRaw] = useState(0);
   const [plannerItems, setPlannerItems] = useState<PlannerItem[]>([]);
+  const [isAppLockEnabled, setIsAppLockEnabledRaw] = useState(false);
 
   const toggleIncludeSavings = async (val: boolean) => {
     setIncludeSavingsRaw(val);
@@ -424,7 +425,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       enableSalaryPlanner, toggleSalaryPlanner,
       foodDailyLimit, setFoodDailyLimit,
       foodMonthlyLimit, setFoodMonthlyLimit,
-      plannerItems, addPlannerItem, deletePlannerItem
+      plannerItems, addPlannerItem, deletePlannerItem,
+      isAppLockEnabled, toggleAppLock
     }}>
       {children}
 
