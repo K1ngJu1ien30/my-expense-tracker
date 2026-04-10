@@ -94,14 +94,6 @@ type AppContextType = {
   deleteAccount: (acc: string) => void;
   accentColor: string;
   setAccentColor: (val: string) => void;
-  isSecurityEnabled: boolean;
-  setIsSecurityEnabled: (val: boolean) => void;
-  securityMethod: string;
-  setSecurityMethod: (val: string) => void;
-  appPin: string;
-  setAppPin: (val: string) => void;
-  isLocked: boolean;
-  setIsLocked: (val: boolean) => void;
   session: Session | null;
   authLoading: boolean;
   confirmAction: (title: string, message: string, onConfirm: () => void) => void;
@@ -148,16 +140,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addCategory = (cat: string) => setCategories(prev => [...prev, cat]);
   const deleteCategory = (cat: string) => setCategories(prev => prev.filter(c => c !== cat));
 
-  // Theming and Security State
+  // Theming
   const [accentColor, setAccentColor] = useState("#3b82f6");
-  const [isSecurityEnabled, setIsSecurityEnabled] = useState(false);
-  const [securityMethod, setSecurityMethod] = useState("PIN");
-  const [appPin, setAppPin] = useState("");
-  const [isLocked, setIsLocked] = useState(false);
-
-  useEffect(() => {
-    if (isSecurityEnabled) setIsLocked(true);
-  }, [isSecurityEnabled]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -334,10 +318,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addGoal, updateGoal, deleteGoal,
       accounts, setAccounts, addAccount, renameAccount, deleteAccount,
       accentColor, setAccentColor,
-      isSecurityEnabled, setIsSecurityEnabled,
-      securityMethod, setSecurityMethod,
-      appPin, setAppPin,
-      isLocked, setIsLocked,
       session, authLoading,
       confirmAction
     }}>

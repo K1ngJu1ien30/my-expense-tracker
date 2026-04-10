@@ -55,16 +55,31 @@ export default function Dashboard() {
 
   const dynamicTrendData = useMemo(() => {
      if (transactions.length === 0) return [];
-     const map: Record<string, { income: number, value: number, transactions: number }> = {};
+     const data = [];
+     const map: Record<string, any> = {};
+     for (let i = 6; i >= 0; i--) {
+       const d = new Date();
+       d.setDate(d.getDate() - i);
+       const key = `${d.getMonth()+1}/${d.getDate()}`;
+       const item = { name: key, income: 0, value: 0, transactions: 0 };
+       map[key] = item;
+       data.push(item);
+     }
+     
+     const weekAgo = new Date();
+     weekAgo.setDate(weekAgo.getDate() - 7);
+     
      transactions.forEach(t => {
         const d = new Date(t.date);
+        if (d < weekAgo) return;
         const key = `${d.getMonth()+1}/${d.getDate()}`;
-        if (!map[key]) map[key] = { income: 0, value: 0, transactions: 0 };
-        if (t.type === "Income") map[key].income += Number(t.amount);
-        if (t.type === "Expense") map[key].value += Number(t.amount);
-        map[key].transactions += 1;
+        if (map[key]) {
+           if (t.type === "Income") map[key].income += Number(t.amount);
+           if (t.type === "Expense") map[key].value += Number(t.amount);
+           map[key].transactions += 1;
+        }
      });
-     return Object.entries(map).reverse().slice(0, 7).map(([name, vals]) => ({ name, ...vals })).reverse();
+     return data;
   }, [transactions]);
 
   return (

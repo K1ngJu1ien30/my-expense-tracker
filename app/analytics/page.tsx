@@ -120,18 +120,36 @@ export default function AnalyticsPage() {
 
   const totalExpense = useMemo(() => categoryData.reduce((acc, curr) => acc + curr.value, 0), [categoryData]);
 
-  const trendData = useMemo(() => {
-     if (transactions.length === 0) return [];
-     const map: Record<string, { income: number, expense: number }> = {};
+  const stackedCashFlow = useMemo(() => {
+     const data = [];
+     const map: Record<string, any> = {};
+     for (let i = 6; i >= 0; i--) {
+       const d = new Date();
+       d.setDate(d.getDate() - i);
+       const key = `${d.getMonth()+1}/${d.getDate()}`;
+       const item = { name: key };
+       map[key] = item;
+       data.push(item);
+     }
+     
+     const weekAgo = new Date();
+     weekAgo.setDate(weekAgo.getDate() - 7);
+     const uniqueCats = new Set<string>();
+     
      transactions.forEach(t => {
         const d = new Date(t.date);
+        if (d < weekAgo || t.type !== "Expense") return;
+        
         const key = `${d.getMonth()+1}/${d.getDate()}`;
-        if (!map[key]) map[key] = { income: 0, expense: 0 };
-        if (t.type === "Income") map[key].income += Number(t.amount);
-        if (t.type === "Expense") map[key].expense += Number(t.amount);
+        if (map[key]) {
+           uniqueCats.add(t.category);
+           map[key][t.category] = (map[key][t.category] || 0) + Number(t.amount);
+        }
      });
-     return Object.entries(map).reverse().slice(0, 7).map(([name, vals]) => ({ name, ...vals })).reverse();
-  }, [transactions, timeFilter]);
+     
+     const colors = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4', '#f43f5e'];
+     return { data, categories: Array.from(uniqueCats), colors };
+  }, [transactions]);
 
   const smartInsightText = useMemo(() => {
      if (transactions && transactions.length === 0) return "Start tracking to uncover your financial personality!";
@@ -244,7 +262,7 @@ export default function AnalyticsPage() {
         <h3 className="font-bold text-foreground mb-6">Cash Flow</h3>
         <div className="h-[220px] w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={trendData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+            <BarChart data={stackedCashFlow.data} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.5} />
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--muted-foreground)', fontWeight: 600 }} dy={10} />
               <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--muted-foreground)', fontWeight: 600 }} />
@@ -254,8 +272,9 @@ export default function AnalyticsPage() {
                  itemStyle={{ fontWeight: 'bold' }}
               />
               <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', fontWeight: 'bold', paddingTop: '10px' }} />
-              <Bar dataKey="income" name="Income" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={20} />
-              <Bar dataKey="expense" name="Expense" fill="#f43f5e" radius={[4, 4, 0, 0]} maxBarSize={20} />
+              {stackedCashFlow.categories.map((cat, i) => (
+                <Bar key={cat} dataKey={cat} stackId="a" fill={stackedCashFlow.colors[i % stackedCashFlow.colors.length]} radius={ i === stackedCashFlow.categories.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0] } maxBarSize={20} />
+              ))}
             </BarChart>
           </ResponsiveContainer>
         </div>

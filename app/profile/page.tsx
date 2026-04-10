@@ -24,9 +24,6 @@ export default function ProfilePage() {
     categories, setCategories, addCategory, deleteCategory,
     accounts, setAccounts, addAccount, renameAccount, deleteAccount,
     accentColor, setAccentColor, confirmAction,
-    isSecurityEnabled, setIsSecurityEnabled,
-    securityMethod, setSecurityMethod,
-    appPin, setAppPin,
     triggerToast,
     transactions, subscriptions, goals, utilities,
     session
@@ -47,9 +44,6 @@ export default function ProfilePage() {
   const [tempHour, setTempHour] = useState("08");
   const [tempMin, setTempMin] = useState("30");
   const [tempAmPm, setTempAmPm] = useState("PM");
-
-  const [isEditingPin, setIsEditingPin] = useState(false);
-  const [tempPin, setTempPin] = useState(appPin);
 
   const [showRawDataModal, setShowRawDataModal] = useState(false);
   const [rawTab, setRawTab] = useState("Tx");
@@ -131,15 +125,18 @@ export default function ProfilePage() {
     try {
       const email = session?.user?.email;
       if (!email) throw new Error("No active session email found.");
-      // Verify password by re-authenticating
       const { error: authError } = await supabase.auth.signInWithPassword({ email, password: clearPassword });
       if (authError) throw new Error("Incorrect password. Data not cleared.");
-      // Clear local context state (backend delete would go here in production)
+      
+      const { error } = await supabase.from('transactions').delete().eq('user_id', session.user.id);
+      if (error) throw new Error(error.message);
+      
       triggerToast("✅ All data wiped successfully.");
       setShowClearModal(false);
       setClearPassword("");
-    } catch (err: any) {
-      triggerToast(err.message || "Failed to verify password.");
+      setTimeout(() => window.location.reload(), 1000);
+    } catch (e: any) {
+      triggerToast(`Error: ${e.message}`);
     } finally {
       setClearLoading(false);
     }
@@ -310,77 +307,7 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Security Hub */}
-      <div>
-        <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 px-2 flex items-center gap-2"><Shield className="w-3.5 h-3.5"/> App Security</h3>
-        <div className="bg-card rounded-3xl shadow-soft border border-border/40 overflow-hidden relative">
-          
-          <div className="w-full flex items-center justify-between p-4 border-b border-border/40 active:bg-muted/50 transition-colors cursor-pointer" onClick={() => { setIsSecurityEnabled(!isSecurityEnabled); setAppPin(""); }}>
-            <div className="flex flex-col gap-1">
-               <span className="font-semibold text-foreground text-sm leading-none pt-0.5">Enable App Lock</span>
-               <span className="text-xs text-muted-foreground font-medium">Require PIN to open the tracker</span>
-            </div>
-            <button className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${isSecurityEnabled ? 'border-transparent' : 'bg-muted border border-border'}`} style={isSecurityEnabled ? { backgroundColor: accentColor } : {}}>
-              <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${isSecurityEnabled ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
-            </button>
-          </div>
 
-          <AnimatePresence>
-            {isSecurityEnabled && (
-                <motion.div 
-                  initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                  className="bg-muted/10 overflow-hidden"
-                >
-                   <div className="p-4 border-b border-border/50 flex items-center justify-between">
-                      <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Unlock Method</span>
-                      <div className="flex bg-muted/60 p-1 rounded-xl">
-                         {["PIN", "Biometrics"].map(method => (
-                           <button 
-                             key={method}
-                             onClick={() => setSecurityMethod(method)}
-                             style={securityMethod === method ? { backgroundColor: accentColor, color: '#fff' } : {}}
-                             className={`px-3 py-1 text-[10px] uppercase font-black tracking-wider rounded-lg transition-all ${securityMethod === method ? 'shadow-sm scale-110 z-10' : 'text-muted-foreground hover:text-foreground'}`}
-                           >
-                             {method}
-                           </button>
-                         ))}
-                      </div>
-                   </div>
-
-                   <div className="p-4 flex items-center justify-between">
-                      <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Passcode Array</span>
-                      {isEditingPin ? (
-                         <div className="flex gap-2">
-                            <input 
-                               value={tempPin} 
-                               onChange={e=>setTempPin(e.target.value.substring(0,4))} 
-                               type="password" 
-                               placeholder="1234" 
-                               className="bg-card w-16 px-2 py-1 rounded text-center text-sm font-bold border border-border outline-none tracking-widest text-foreground" 
-                            />
-                            <button 
-                               onClick={() => { setAppPin(tempPin); setIsEditingPin(false); triggerToast("Security PIN active!"); }} 
-                               style={{ backgroundColor: accentColor }} className="px-3 py-1 text-white font-bold text-xs rounded shadow-soft active:scale-95 transition-transform"
-                            >
-                               Set
-                            </button>
-                         </div>
-                      ) : (
-                         <button 
-                           onClick={() => { setIsEditingPin(true); setTempPin(appPin); }}
-                           style={{ color: accentColor, backgroundColor: `${accentColor}1A` }}
-                           className="px-4 py-1.5 font-bold text-xs tracking-wide rounded-lg active:scale-95 transition-transform"
-                         >
-                            {appPin ? "Change Master PIN" : "Configure PIN"}
-                         </button>
-                      )}
-                   </div>
-                </motion.div>
-            )}
-          </AnimatePresence>
-
-        </div>
-      </div>
       
       {/* Data Management Section */}
       <div>
