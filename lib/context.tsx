@@ -37,6 +37,7 @@ export type Transaction = {
   type: string; 
   amount: number; 
   category: string; 
+  sub_category?: string;
   account: string; 
   to_account?: string;
   date: string; 
