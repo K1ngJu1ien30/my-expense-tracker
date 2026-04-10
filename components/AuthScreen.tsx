@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from "framer-motion";
 export default function AuthScreen() {
     const { triggerToast, accentColor = "#3b82f6" } = useAppContext();
     const [isLogin, setIsLogin] = useState(true);
+    const [isReset, setIsReset] = useState(false);
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
@@ -25,7 +26,14 @@ export default function AuthScreen() {
         }
 
         try {
-            if (isLogin) {
+            if (isReset) {
+                const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                    redirectTo: `${window.location.origin}/reset-password`
+                });
+                if (error) throw error;
+                triggerToast("Password reset email sent! Check your inbox.");
+                setIsReset(false);
+            } else if (isLogin) {
                 const { error } = await supabase.auth.signInWithPassword({ email, password });
                 if (error) throw error;
                 triggerToast("Authentication successful!");
@@ -55,7 +63,7 @@ export default function AuthScreen() {
                 <div className="text-center mb-8">
                     <h1 className="text-3xl font-black text-foreground tracking-tight">Tracker</h1>
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-2">
-                        {isLogin ? "Welcome back" : "Create Account"}
+                        {isReset ? "Reset Password" : (isLogin ? "Welcome back" : "Create Account")}
                     </p>
                 </div>
 
@@ -72,17 +80,29 @@ export default function AuthScreen() {
                         />
                     </div>
                     
-                    <div className="relative">
-                        <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <input 
-                            type="password" 
-                            placeholder="Password" 
-                            value={password}
-                            onChange={e=>setPassword(e.target.value)}
-                            className="w-full bg-muted/60 text-sm font-semibold pl-11 pr-4 py-3.5 rounded-xl border border-border focus:border-primary outline-none transition-colors"
-                            required
-                        />
-                    </div>
+                    <AnimatePresence>
+                      {!isReset && (
+                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="relative">
+                            <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                            <input 
+                                type="password" 
+                                placeholder="Password" 
+                                value={password}
+                                onChange={e=>setPassword(e.target.value)}
+                                className="w-full bg-muted/60 text-sm font-semibold pl-11 pr-4 py-3.5 rounded-xl border border-border focus:border-primary outline-none transition-colors"
+                                required={!isReset}
+                            />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {!isReset && isLogin && (
+                        <div className="flex justify-end pt-1">
+                            <button type="button" onClick={() => setIsReset(true)} className="text-xs font-bold text-muted-foreground hover:text-primary transition-colors">
+                                Forgot Password?
+                            </button>
+                        </div>
+                    )}
 
                     <button 
                         disabled={loading}
@@ -90,15 +110,21 @@ export default function AuthScreen() {
                         style={{ backgroundColor: accentColor, boxShadow: `0 0 20px ${accentColor}60` }}
                         className="w-full text-white py-4 mt-2 rounded-xl font-bold active:scale-[0.98] transition-all flex justify-center items-center gap-2"
                     >
-                        {loading ? "Authenticating..." : (isLogin ? "Sign In" : "Sign Up")}
-                        {!loading && <Lock className="w-4 h-4" />}
+                        {loading ? "Processing..." : (isReset ? "Send Reset Link" : (isLogin ? "Sign In" : "Sign Up"))}
+                        {!loading && !isReset && <Lock className="w-4 h-4" />}
                     </button>
                 </form>
 
-                <div className="mt-6 text-center">
-                    <button onClick={() => setIsLogin(!isLogin)} className="text-xs font-bold text-muted-foreground hover:text-foreground transition-colors">
-                        {isLogin ? "New to Tracker? Create an account." : "Already have an account? Sign In."}
-                    </button>
+                <div className="mt-6 text-center flex flex-col gap-3">
+                    {isReset ? (
+                       <button onClick={() => setIsReset(false)} className="text-xs font-bold text-muted-foreground hover:text-foreground transition-colors">
+                            Back to Sign In
+                       </button>
+                    ) : (
+                       <button onClick={() => setIsLogin(!isLogin)} className="text-xs font-bold text-muted-foreground hover:text-foreground transition-colors">
+                           {isLogin ? "New to Tracker? Create an account." : "Already have an account? Sign In."}
+                       </button>
+                    )}
                 </div>
             </motion.div>
         </div>
