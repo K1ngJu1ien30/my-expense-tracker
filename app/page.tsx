@@ -26,7 +26,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function Dashboard() {
-  const { userName, goals, transactions, includeSavings } = useAppContext();
+  const { userName, goals, transactions, includeSavings, accounts } = useAppContext();
   const pinnedGoals = goals.filter(g => g.isPinned);
 
   const hour = new Date().getHours();
@@ -35,15 +35,25 @@ export default function Dashboard() {
                  : "Good evening,";
 
   const totalBalance = useMemo(() => {
-     return transactions.reduce((acc, tx) => {
-        if (!includeSavings && tx.account && tx.account.toLowerCase().includes('saving')) {
-           return acc;
-        }
-        if (tx.type === "Income") return acc + Number(tx.amount);
-        if (tx.type === "Expense") return acc - Number(tx.amount);
-        return acc;
+     const activeAccounts = includeSavings
+       ? accounts
+       : accounts.filter(acc => !acc.toLowerCase().includes('saving'));
+
+     return activeAccounts.reduce((total, accountName) => {
+       const balance = transactions.reduce((acc, tx) => {
+         let newAcc = acc;
+         if (tx.account?.toLowerCase().trim() === accountName.toLowerCase().trim()) {
+           if (tx.type === "Income") newAcc += Number(tx.amount);
+           if (tx.type === "Expense" || tx.type === "Transfer") newAcc -= Number(tx.amount);
+         }
+         if (tx.type === "Transfer" && tx.to_account?.toLowerCase().trim() === accountName.toLowerCase().trim()) {
+           newAcc += Number(tx.amount);
+         }
+         return newAcc;
+       }, 0);
+       return total + balance;
      }, 0);
-  }, [transactions, includeSavings]);
+  }, [transactions, includeSavings, accounts]);
 
   const todayTransactions = useMemo(() => {
      const today = new Date().toDateString();
