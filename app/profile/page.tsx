@@ -338,7 +338,7 @@ export default function ProfilePage() {
           <button onClick={() => setShowRawDataModal(true)} className="w-full flex items-center justify-between p-4 border-b border-border/40 active:bg-muted/50 transition-colors text-left cursor-pointer">
             <div className="flex items-center gap-3">
               <div className="bg-indigo-500/10 p-2 rounded-xl text-indigo-500"><Database className="w-5 h-5" /></div>
-              <span className="font-semibold text-foreground text-sm">View Raw Data Database</span>
+              <span className="font-semibold text-foreground text-sm">View Raw Data</span>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
           </button>
@@ -606,24 +606,32 @@ export default function ProfilePage() {
                      <table className="w-full text-left text-sm whitespace-nowrap">
                         <thead className="bg-muted text-muted-foreground font-bold sticky top-0 z-10">
                            <tr>
-                              <th className="p-4 border-b border-border/50">ID</th>
-                              <th className="p-4 border-b border-border/50">Type</th>
-                              <th className="p-4 border-b border-border/50">Amount</th>
-                              <th className="p-4 border-b border-border/50">Category</th>
-                              <th className="p-4 border-b border-border/50">Date</th>
+                              <th className="p-3 border-b border-border/50">ID</th>
+                              <th className="p-3 border-b border-border/50">Date</th>
+                              <th className="p-3 border-b border-border/50">Type</th>
+                              <th className="p-3 border-b border-border/50">Category</th>
+                              <th className="p-3 border-b border-border/50">Sub Category</th>
+                              <th className="p-3 border-b border-border/50">Amount</th>
+                              <th className="p-3 border-b border-border/50">Account</th>
+                              <th className="p-3 border-b border-border/50">To Account</th>
+                              <th className="p-3 border-b border-border/50">Note</th>
                            </tr>
                         </thead>
                         <tbody>
                            {transactions.length === 0 ? (
-                              <tr><td colSpan={5} className="p-8 text-center text-muted-foreground font-medium">No transaction records found.</td></tr>
+                              <tr><td colSpan={9} className="p-8 text-center text-muted-foreground font-medium">No transaction records found.</td></tr>
                            ) : (
                               transactions.map((tx, i) => (
                                  <tr key={tx.id || i} className="even:bg-muted/30 hover:bg-muted/50 transition-colors">
-                                    <td className="p-4 border-b border-border/30 font-mono text-xs">{tx.id || 'N/A'}</td>
-                                    <td className="p-4 border-b border-border/30 font-semibold">{tx.type}</td>
-                                    <td className="p-4 border-b border-border/30">RM {tx.amount}</td>
-                                    <td className="p-4 border-b border-border/30 text-muted-foreground max-w-[120px] truncate">{tx.category}</td>
-                                    <td className="p-4 border-b border-border/30 text-muted-foreground">{tx.date}</td>
+                                    <td className="p-3 border-b border-border/30 font-mono text-xs max-w-[100px] truncate" title={tx.id}>{tx.id || 'N/A'}</td>
+                                    <td className="p-3 border-b border-border/30 text-muted-foreground">{tx.date}</td>
+                                    <td className="p-3 border-b border-border/30 font-semibold">{tx.type}</td>
+                                    <td className="p-3 border-b border-border/30 text-muted-foreground max-w-[100px] truncate">{tx.category}</td>
+                                    <td className="p-3 border-b border-border/30 text-muted-foreground max-w-[100px] truncate">{tx.sub_category || '-'}</td>
+                                    <td className="p-3 border-b border-border/30">RM {tx.amount}</td>
+                                    <td className="p-3 border-b border-border/30 text-muted-foreground max-w-[90px] truncate">{tx.account || '-'}</td>
+                                    <td className="p-3 border-b border-border/30 text-muted-foreground max-w-[90px] truncate">{tx.to_account || '-'}</td>
+                                    <td className="p-3 border-b border-border/30 text-muted-foreground max-w-[120px] truncate">{tx.note || '-'}</td>
                                  </tr>
                               ))
                            )}
