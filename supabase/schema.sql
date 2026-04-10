@@ -13,6 +13,7 @@ CREATE TABLE transactions (
     category VARCHAR(255),
     sub_category VARCHAR(255),
     account VARCHAR(255),
+    to_account VARCHAR(255),
     note TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

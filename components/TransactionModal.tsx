@@ -69,6 +69,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
   const [category, setCategory] = useState(categories[0] || "Food");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
+  const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
 
   const isActuallyOpen = isOpen || editTransactionId !== null;
 
@@ -85,12 +86,15 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
          setTxType(tx.type as TxType);
          setCategory(tx.category || categories[0]);
          setAccount(tx.account || "Bank (MBB)");
+         if (tx.to_account) setToAccount(tx.to_account);
          setAmount(String(tx.amount));
          setNote(tx.note || "");
+         setDate(tx.date ? new Date(tx.date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0]);
        }
     } else {
        setAmount("");
        setNote("");
+       setDate(new Date().toISOString().split("T")[0]);
     }
   }, [editTransactionId, transactions, categories]);
 
@@ -199,31 +203,35 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                   </div>
                 )}
 
-                {txType !== "Transfer" && (
-                  <div>
-                    <input 
-                      type="text" 
-                      placeholder="Sub-category / Note (Optional)" 
-                      value={note}
-                      onChange={e=>setNote(e.target.value)}
-                      className="w-full bg-muted text-sm px-4 py-3 rounded-xl border border-border/50 text-foreground outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium placeholder:text-muted-foreground/70"
-                    />
-                  </div>
-                )}
+                <div>
+                  <input 
+                    type="date" 
+                    value={date}
+                    onChange={e=>setDate(e.target.value)}
+                    className="w-full bg-muted text-sm px-4 py-3 rounded-xl border border-border/50 text-foreground outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium mb-3"
+                  />
+                  <input 
+                    type="text" 
+                    placeholder="Sub-category / Note (Optional)" 
+                    value={note}
+                    onChange={e=>setNote(e.target.value)}
+                    className="w-full bg-muted text-sm px-4 py-3 rounded-xl border border-border/50 text-foreground outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium placeholder:text-muted-foreground/70"
+                  />
+                </div>
 
                 <button 
                   style={{ backgroundColor: accentColor, boxShadow: `0 0 15px ${accentColor}4D` }}
                   className="w-full text-white py-4 rounded-xl font-bold active:scale-[0.98] transition-all mt-4"
                   onClick={() => {
                     if (!amount || isNaN(Number(amount))) return;
-                    
                     const payload = {
                        type: txType,
                        amount: Number(amount),
                        category: txType === "Transfer" ? "Transfer" : category,
                        account,
+                       to_account: txType === "Transfer" ? toAccount : undefined,
                        note,
-                       date: new Date().toISOString()
+                       date: new Date(date).toISOString()
                     };
 
                     if (editTransactionId) {

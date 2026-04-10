@@ -38,6 +38,7 @@ export type Transaction = {
   amount: number; 
   category: string; 
   account: string; 
+  to_account?: string;
   date: string; 
   note?: string; 
   user_id?: string; 
