@@ -168,6 +168,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setFoodMonthlyLimitRaw(val);
     if (session?.user) await supabase.auth.updateUser({ data: { food_monthly_limit: val } });
   };
+  const toggleAppLock = async (val: boolean) => {
+    setIsAppLockEnabledRaw(val);
+    if (session?.user) await supabase.auth.updateUser({ data: { app_lock_enabled: val } });
+  };
 
   const [toast, setToast] = useState<ToastType>(null);
   const triggerToast = (message: string) => {
