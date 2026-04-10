@@ -22,7 +22,7 @@ export default function ProfilePage() {
     dailyReminder, setDailyReminder,
     reminderTime, setReminderTime,
     categories, setCategories, addCategory, deleteCategory,
-    accounts, setAccounts, addAccount, renameAccount, deleteAccount,
+    accounts, setAccounts, reorderAccounts, addAccount, renameAccount, deleteAccount,
     accentColor, setAccentColor, confirmAction,
     triggerToast,
     transactions, subscriptions, goals, utilities,
@@ -460,7 +460,7 @@ export default function ProfilePage() {
                 <p className="px-5 pt-4 text-xs font-bold text-muted-foreground uppercase tracking-wider text-center">Drag to reorder</p>
 
                 <div className="flex-1 overflow-y-auto p-4 hide-scrollbar">
-                   <Reorder.Group axis="y" values={accounts} onReorder={setAccounts} className="space-y-2">
+                   <Reorder.Group axis="y" values={accounts} onReorder={reorderAccounts} className="space-y-2">
                      {accounts.map((acc) => (
                        <Reorder.Item key={acc} value={acc} className="flex justify-between items-center bg-card shadow-sm p-3 rounded-xl border border-border/80 cursor-grab active:cursor-grabbing">
                           <div className="flex items-center gap-3 flex-1">

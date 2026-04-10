@@ -37,7 +37,7 @@ export default function AnalyticsPage() {
   const accountBalances = useMemo(() => {
     return accounts.map(accountName => {
       const balance = transactions.reduce((acc, tx) => {
-        if (tx.account === accountName) {
+        if (tx.account?.toLowerCase().trim() === accountName.toLowerCase().trim()) {
            if (tx.type === "Income") return acc + Number(tx.amount);
            if (tx.type === "Expense" || tx.type === "Transfer") return acc - Number(tx.amount);
         }

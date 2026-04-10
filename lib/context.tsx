@@ -89,6 +89,7 @@ type AppContextType = {
   deleteGoal: (id: string) => Promise<void>;
   accounts: string[];
   setAccounts: (val: string[]) => void;
+  reorderAccounts: (val: string[]) => Promise<void>;
   addAccount: (acc: string) => void;
   renameAccount: (old: string, next: string) => void;
   deleteAccount: (acc: string) => void;
@@ -139,6 +140,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       await supabase.auth.updateUser({ data: { custom_accounts: newAccountsArray } });
     }
   };
+  const reorderAccounts = handleUpdateAccounts;
 
   const addAccount = (acc: string) => handleUpdateAccounts([...accounts, acc]);
   const renameAccount = (old: string, next: string) => handleUpdateAccounts(accounts.map(a => a === old ? next : a));
@@ -331,7 +333,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       editTransactionId, setEditTransactionId,
       goals: goals.filter(g => !g.user_id || g.user_id === session?.user?.id),
       addGoal, updateGoal, deleteGoal,
-      accounts, setAccounts, addAccount, renameAccount, deleteAccount,
+      accounts, setAccounts, reorderAccounts, addAccount, renameAccount, deleteAccount,
       accentColor, setAccentColor,
       session, authLoading,
       confirmAction

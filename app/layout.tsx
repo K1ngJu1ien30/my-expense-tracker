@@ -15,8 +15,15 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Aura - Premium Finance Tracker",
+  title: "Tracker",
   description: "Ultra-premium personal finance tracker",
+  applicationName: "Tracker",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    title: "Tracker",
+    statusBarStyle: "default",
+  },
 };
 
 export default function RootLayout({
