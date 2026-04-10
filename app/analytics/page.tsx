@@ -113,6 +113,7 @@ export default function AnalyticsPage() {
     const map: Record<string, number> = {};
     transactions.forEach(t => {
        if (t.type !== "Expense") return;
+       // We can add timeFilter checks here if needed, but the current slice is fully reactive to [transactions].
        map[t.category] = (map[t.category] || 0) + Number(t.amount);
     });
     const colors = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4'];
@@ -226,7 +227,7 @@ export default function AnalyticsPage() {
                 <Pie
                   data={categoryData}
                   innerRadius={60}
-                  outerRadius={75}
+                  outerRadius={65}
                   paddingAngle={5}
                   dataKey="value"
                   stroke="none"
@@ -236,6 +237,7 @@ export default function AnalyticsPage() {
                   ))}
                 </Pie>
                 <Tooltip 
+                  formatter={(value: any) => ['RM ' + Number(value).toFixed(2), 'Amount']}
                   allowEscapeViewBox={{ x: true, y: true }}
                   contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: 'var(--shadow-heavy)', backgroundColor: 'var(--card)' }}
                   itemStyle={{ color: 'var(--foreground)', fontWeight: 'bold' }}
@@ -250,7 +252,7 @@ export default function AnalyticsPage() {
                 <div className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: entry.color }} />
                 <div>
                    <p className="text-xs font-bold text-foreground leading-none">{entry.name}</p>
-                   <p className="text-[10px] text-muted-foreground font-semibold mt-0.5">RM {entry.value.toLocaleString()}</p>
+                   <p className="text-[10px] text-muted-foreground font-semibold mt-0.5">RM {entry.value.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
                 </div>
               </div>
             ))}
@@ -268,6 +270,7 @@ export default function AnalyticsPage() {
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--muted-foreground)', fontWeight: 600 }} dy={10} />
               <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--muted-foreground)', fontWeight: 600 }} />
               <Tooltip 
+                 formatter={(value: any) => ['RM ' + Number(value).toFixed(2), 'Amount']}
                  cursor={{ fill: 'var(--muted)', opacity: 0.2 }}
                  contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: 'var(--shadow-heavy)', backgroundColor: 'var(--card)' }}
                  itemStyle={{ fontWeight: 'bold' }}

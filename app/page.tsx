@@ -48,9 +48,21 @@ export default function Dashboard() {
   }, [transactions]);
 
   const weeklyTotal = useMemo(() => {
-     const weekAgo = new Date();
-     weekAgo.setDate(weekAgo.getDate() - 7);
-     return transactions.filter(t => t.type === "Expense" && new Date(t.date) > weekAgo).reduce((acc, curr) => acc + Number(curr.amount), 0);
+     const now = new Date();
+     const dayOfWeek = now.getDay() || 7; // Convert Sunday(0) to 7
+     const startOfWeek = new Date(now);
+     startOfWeek.setDate(now.getDate() - dayOfWeek + 1);
+     startOfWeek.setHours(0, 0, 0, 0);
+
+     const endOfWeek = new Date(startOfWeek);
+     endOfWeek.setDate(startOfWeek.getDate() + 6);
+     endOfWeek.setHours(23, 59, 59, 999);
+
+     return transactions.filter(t => {
+        if (t.type !== "Expense") return false;
+        const d = new Date(t.date);
+        return d >= startOfWeek && d <= endOfWeek;
+     }).reduce((acc, curr) => acc + Number(curr.amount), 0);
   }, [transactions]);
 
   const dynamicTrendData = useMemo(() => {
