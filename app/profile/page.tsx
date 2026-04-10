@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Trash2, Tags, Moon, ChevronRight, Edit2, Check, Bell, CircleDollarSign, Calendar, X, Plus, GripVertical, Shield, Palette, Database, LogOut, Lock, Wallet } from "lucide-react";
+import { Download, Trash2, Tags, Moon, ChevronRight, Edit2, Check, Bell, CircleDollarSign, Calendar, X, Plus, GripVertical, Shield, Palette, Database, LogOut, Lock, Wallet, PiggyBank } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAppContext } from "@/lib/context";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
@@ -26,8 +26,11 @@ export default function ProfilePage() {
     accentColor, setAccentColor, confirmAction,
     triggerToast,
     transactions, subscriptions, goals, utilities,
+    includeSavings, toggleIncludeSavings,
     session
   } = useAppContext();
+
+  const hasSavingsCategory = categories.some(c => c.toLowerCase().includes('saving'));
 
   const [darkMode, setDarkMode] = useState(false);
   useEffect(() => {
@@ -233,6 +236,24 @@ export default function ProfilePage() {
                  />
                ))}
             </div>
+          </div>
+          
+          <div className="w-full flex items-center justify-between p-4 border-b border-border/40 active:bg-muted/50 transition-colors text-left relative">
+            <div className={`flex items-center gap-3 ${hasSavingsCategory ? '' : 'opacity-50'}`}>
+              <div className="bg-emerald-500/10 p-2 rounded-xl text-emerald-500"><PiggyBank className="w-5 h-5" /></div>
+              <div>
+                 <span className="font-semibold text-foreground text-sm block">Include Savings in Total</span>
+                 {!hasSavingsCategory && <p className="text-[10px] text-muted-foreground leading-none mt-0.5">Requires 'Savings' category</p>}
+              </div>
+            </div>
+            <button 
+              disabled={!hasSavingsCategory}
+              onClick={() => toggleIncludeSavings(!includeSavings)}
+              className={`w-12 h-6 rounded-full relative transition-colors ${includeSavings && hasSavingsCategory ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+              style={includeSavings && hasSavingsCategory ? { backgroundColor: accentColor } : {}}
+            >
+              <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${includeSavings && hasSavingsCategory ? 'translate-x-6' : 'translate-x-0'} ${!hasSavingsCategory && 'opacity-50'}`} />
+            </button>
           </div>
 
           <button onClick={() => setShowCategoriesModal(true)} className="w-full flex items-center justify-between p-4 border-b border-border/40 active:bg-muted/50 transition-colors text-left cursor-pointer">

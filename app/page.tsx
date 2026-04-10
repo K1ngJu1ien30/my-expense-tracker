@@ -26,7 +26,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function Dashboard() {
-  const { userName, goals, transactions } = useAppContext();
+  const { userName, goals, transactions, includeSavings } = useAppContext();
   const pinnedGoals = goals.filter(g => g.isPinned);
 
   const hour = new Date().getHours();
@@ -36,11 +36,14 @@ export default function Dashboard() {
 
   const totalBalance = useMemo(() => {
      return transactions.reduce((acc, tx) => {
+        if (!includeSavings && tx.category && tx.category.toLowerCase().includes('saving')) {
+           return acc;
+        }
         if (tx.type === "Income") return acc + Number(tx.amount);
         if (tx.type === "Expense") return acc - Number(tx.amount);
         return acc;
      }, 0);
-  }, [transactions]);
+  }, [transactions, includeSavings]);
 
   const todayTotal = useMemo(() => {
      const today = new Date().toDateString();

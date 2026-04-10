@@ -95,8 +95,10 @@ type AppContextType = {
   deleteAccount: (acc: string) => void;
   accentColor: string;
   setAccentColor: (val: string) => void;
-  session: Session | null;
   authLoading: boolean;
+  includeSavings: boolean;
+  toggleIncludeSavings: (val: boolean) => void;
+  session: any | null; // using any to avoid import issues if not already there, but wait, it's Session | null in this file originally.
   confirmAction: (title: string, message: string, onConfirm: () => void) => void;
 };
 
@@ -112,6 +114,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [dailyReminder, setDailyReminder] = useState(false);
   const [reminderTime, setReminderTime] = useState("20:00");
   const [categories, setCategories] = useState<string[]>(["Food", "Transport", "Entertainment", "Shopping", "Bills", "Family", "Subs"]);
+  const [includeSavings, setIncludeSavingsRaw] = useState(true);
+
+  const toggleIncludeSavings = async (val: boolean) => {
+    setIncludeSavingsRaw(val);
+    if (session?.user) {
+       await supabase.auth.updateUser({ data: { include_savings: val } });
+    }
+  };
 
   const [toast, setToast] = useState<ToastType>(null);
   const triggerToast = (message: string) => {
@@ -182,6 +192,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setUserNameRaw(metaName || emailName || "User");
 
       const savedAccounts = session.user.user_metadata?.custom_accounts || ['Bank', 'Cash', 'eWallet'];
+      const savedIncludeSavings = session.user.user_metadata?.include_savings ?? true;
+      setIncludeSavingsRaw(savedIncludeSavings);
       
       const fetchData = async () => {
         const [txs, gls, subs] = await Promise.all([
@@ -323,6 +335,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       dailyReminder, setDailyReminder,
       reminderTime, setReminderTime,
       categories, setCategories, addCategory, deleteCategory,
+      includeSavings, toggleIncludeSavings,
       toast, triggerToast,
       subscriptions: subscriptions.filter(s => !s.user_id || s.user_id === session?.user?.id),
       addSubscription, updateSubscription, deleteSubscription,
