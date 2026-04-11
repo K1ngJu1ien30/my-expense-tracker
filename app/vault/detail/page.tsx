@@ -1,23 +1,20 @@
 "use client";
 
-import { useState, useEffect, useMemo, Suspense } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Plus, X, Calendar, Wrench, Edit2, Trash2 } from "lucide-react";
-import Link from "next/link";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useAppContext } from "@/lib/context";
 import { supabase } from "@/lib/supabase";
 import type { AssetLog } from "@/lib/context";
 
 const EMOJI_OPTIONS = ["📱", "💻", "📸", "👟", "⌚", "🎧", "🎮", "🚗", "🏠", "🛋️", "🧳", "👜", "📦", "🔧", "🎸"];
 
-function AssetDetail() {
-  const { assets, accentColor, triggerToast, session, updateAsset, deleteAsset, confirmAction, authLoading } = useAppContext();
-  const searchParams = useSearchParams();
+export default function AssetDetailPage() {
+  const { assets, accentColor, triggerToast, session, updateAsset, deleteAsset, confirmAction, authLoading, activeAssetId, setActiveAssetId } = useAppContext();
   const router = useRouter();
-  const assetId = searchParams.get("id") || "";
 
-  const asset = useMemo(() => assets.find(a => a.id === assetId), [assets, assetId]);
+  const asset = useMemo(() => assets.find(a => a.id === activeAssetId), [assets, activeAssetId]);
 
   const [logs, setLogs] = useState<AssetLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,7 +23,6 @@ function AssetDetail() {
   const [logCost, setLogCost] = useState("");
   const [logDate, setLogDate] = useState(() => new Date().toISOString().split("T")[0]);
 
-  // Edit asset state
   const [showEdit, setShowEdit] = useState(false);
   const [editName, setEditName] = useState("");
   const [editCategory, setEditCategory] = useState("");
@@ -37,7 +33,14 @@ function AssetDetail() {
   const existingCategories = useMemo(() => [...new Set(assets.map(a => a.category).filter(Boolean))], [assets]);
 
   useEffect(() => {
-    if (!assetId || !session) {
+    if (!activeAssetId && !authLoading) {
+      router.replace("/vault");
+      return;
+    }
+  }, [activeAssetId, authLoading, router]);
+
+  useEffect(() => {
+    if (!activeAssetId || !session) {
       if (!authLoading) setLoading(false);
       return;
     }
@@ -46,7 +49,7 @@ function AssetDetail() {
         const { data } = await supabase
           .from("asset_logs")
           .select("*")
-          .eq("asset_id", assetId)
+          .eq("asset_id", activeAssetId)
           .order("log_date", { ascending: false });
         if (data) setLogs(data as AssetLog[]);
       } catch (err) {
@@ -56,11 +59,11 @@ function AssetDetail() {
       }
     };
     fetchLogs();
-  }, [assetId, session, authLoading]);
+  }, [activeAssetId, session, authLoading]);
 
   const handleAddLog = async () => {
-    if (!logDesc) return;
-    const payload = { asset_id: assetId, description: logDesc, cost: Number(logCost) || 0, log_date: logDate };
+    if (!logDesc || !activeAssetId) return;
+    const payload = { asset_id: activeAssetId, description: logDesc, cost: Number(logCost) || 0, log_date: logDate };
     const { data, error } = await supabase.from("asset_logs").insert(payload).select().single();
     if (!error && data) {
       setLogs(prev => [data as AssetLog, ...prev]);
@@ -82,8 +85,8 @@ function AssetDetail() {
   };
 
   const handleSaveEdit = async () => {
-    if (!editName) return;
-    await updateAsset(assetId, {
+    if (!editName || !activeAssetId) return;
+    await updateAsset(activeAssetId, {
       name: editName,
       category: editCategory || "General",
       emoji_icon: editEmoji,
@@ -95,15 +98,21 @@ function AssetDetail() {
   };
 
   const handleDelete = () => {
-    if (!asset) return;
+    if (!asset || !activeAssetId) return;
     confirmAction("Delete Asset", `Permanently remove "${asset.name}" and all its maintenance logs?`, async () => {
-      await deleteAsset(assetId);
+      await deleteAsset(activeAssetId);
+      setActiveAssetId(null);
       triggerToast("Asset deleted");
       router.push("/vault");
     });
   };
 
-  const totalMaintenanceCost = useMemo(() => logs.reduce((sum, l) => sum + Number(l.cost || 0), 0), [logs]);
+  const handleBack = () => {
+    setActiveAssetId(null);
+    router.push("/vault");
+  };
+
+  const totalMaintenanceCost = useMemo(() => (logs || []).reduce((sum, l) => sum + Number(l.cost || 0), 0), [logs]);
 
   const trueTotalInvestment = useMemo(() => {
     return Number(asset?.purchase_price || 0) + totalMaintenanceCost;
@@ -127,7 +136,7 @@ function AssetDetail() {
     return new Date(dateStr).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   };
 
-  if (!assetId || authLoading || loading) {
+  if (!activeAssetId || authLoading || loading) {
     return (
       <div className="p-6 animate-in fade-in duration-500 flex flex-col items-center justify-center min-h-[60vh]">
         <div className="w-8 h-8 border-[3px] border-muted border-t-primary rounded-full animate-spin" />
@@ -139,7 +148,7 @@ function AssetDetail() {
     return (
       <div className="p-6 animate-in fade-in duration-500 flex flex-col items-center justify-center min-h-[60vh]">
         <p className="text-muted-foreground font-medium">Asset not found</p>
-        <Link href="/vault" className="text-primary font-bold text-sm mt-2">Back to Vault</Link>
+        <button onClick={handleBack} className="text-primary font-bold text-sm mt-2">Back to Vault</button>
       </div>
     );
   }
@@ -147,9 +156,9 @@ function AssetDetail() {
   return (
     <div className="p-6 animate-in fade-in duration-500 space-y-6 pb-32">
       <div className="flex items-center gap-3 pt-2">
-        <Link href="/vault" className="p-2 bg-muted rounded-xl hover:bg-border transition-colors">
+        <button onClick={handleBack} className="p-2 bg-muted rounded-xl hover:bg-border transition-colors">
           <ArrowLeft className="w-5 h-5 text-foreground" />
-        </Link>
+        </button>
         <h1 className="text-xl font-bold flex-1 truncate">{asset.name}</h1>
         <button onClick={openEdit} className="p-2 text-muted-foreground hover:text-primary transition-colors">
           <Edit2 className="w-4 h-4" />
@@ -202,9 +211,7 @@ function AssetDetail() {
           </button>
         </div>
 
-        {loading ? (
-          <div className="flex justify-center py-8"><div className="w-6 h-6 border-3 border-primary border-t-transparent rounded-full animate-spin" /></div>
-        ) : (logs || []).length === 0 ? (
+        {(logs || []).length === 0 ? (
           <div className="bg-card p-6 rounded-2xl border border-border/40 text-center">
             <Wrench className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
             <p className="text-sm text-muted-foreground font-medium">No maintenance logs yet.</p>
@@ -307,13 +314,5 @@ function AssetDetail() {
         )}
       </AnimatePresence>
     </div>
-  );
-}
-
-export default function AssetDetailPage() {
-  return (
-    <Suspense fallback={<div className="h-[100dvh] flex items-center justify-center"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>}>
-      <AssetDetail />
-    </Suspense>
   );
 }
