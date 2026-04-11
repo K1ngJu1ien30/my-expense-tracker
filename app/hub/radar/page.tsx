@@ -88,13 +88,10 @@ async function fetchTmdbCinema(source: RadarSource): Promise<RadarItem[]> {
 }
 
 async function fetchTmdbStreaming(source: RadarSource): Promise<RadarItem[]> {
-  const providerMap: Record<string, string> = { "8": "Netflix", "337": "Disney+", "350": "Apple TV+", "9": "Amazon Prime" };
-  const providerMatch = (source.url || "with_watch_providers=8").match(/with_watch_providers=(\d+)/);
-  const providerId = providerMatch ? providerMatch[1] : "8";
-  const platformName = providerMap[providerId] || "Streaming";
+  const providers = source.url || "8";
 
   const res = await fetch(
-    `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&watch_region=MY&with_watch_providers=${providerId}&sort_by=release_date.desc&page=1`
+    `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&watch_region=MY&with_watch_providers=${providers}&sort_by=release_date.desc&page=1`
   );
   const data = await res.json();
   if (!data.results) return [];
@@ -107,7 +104,7 @@ async function fetchTmdbStreaming(source: RadarSource): Promise<RadarItem[]> {
     sourceName: source.name,
     sourceType: "tmdb_streaming" as const,
     link: `https://www.themoviedb.org/movie/${m.id}`,
-    platform: platformName,
+    platform: source.name,
   }));
 }
 

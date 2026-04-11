@@ -22,6 +22,17 @@ const TYPE_META: Record<string, { icon: React.ReactNode; label: string; color: s
   tmdb_streaming: { icon: <Tv className="w-4 h-4" />, label: "Streaming Drops", color: "text-violet-500", bg: "bg-violet-500/10" },
 };
 
+const STREAMING_PLATFORMS = [
+  { label: "Netflix", value: "8" },
+  { label: "Disney+", value: "337" },
+  { label: "Amazon Prime Video", value: "119" },
+  { label: "Apple TV+", value: "350" },
+  { label: "HBO Go", value: "315" },
+  { label: "All Major Platforms", value: "8|337|119|350|315" },
+];
+
+const PLATFORM_LABEL: Record<string, string> = Object.fromEntries(STREAMING_PLATFORMS.map(p => [p.value, p.label]));
+
 export default function RadarSettingsPage() {
   const { session, accentColor, triggerToast, confirmAction } = useAppContext();
   const [sources, setSources] = useState<RadarSource[]>([]);
@@ -34,6 +45,7 @@ export default function RadarSettingsPage() {
   const [formName, setFormName] = useState("");
   const [formUrl, setFormUrl] = useState("");
   const [formKeywords, setFormKeywords] = useState("");
+  const [formProvider, setFormProvider] = useState("8");
 
   useEffect(() => {
     if (!session?.user) return;
@@ -55,6 +67,7 @@ export default function RadarSettingsPage() {
     setFormName("");
     setFormUrl("");
     setFormKeywords("");
+    setFormProvider("8");
   };
 
   const openAdd = () => {
@@ -68,6 +81,7 @@ export default function RadarSettingsPage() {
     setFormName(src.name);
     setFormUrl(src.url || "");
     setFormKeywords(src.keywords || "");
+    setFormProvider(src.source_type === "tmdb_streaming" && src.url ? src.url : "8");
     setShowModal(true);
   };
 
@@ -78,7 +92,7 @@ export default function RadarSettingsPage() {
     const payload: any = {
       source_type: formType,
       name: formName.trim(),
-      url: formType === "rss" ? formUrl.trim() : null,
+      url: formType === "rss" ? formUrl.trim() : formType === "tmdb_streaming" ? formProvider : null,
       keywords: formType === "rss" && formKeywords.trim() ? formKeywords.trim() : null,
     };
 
@@ -168,8 +182,11 @@ export default function RadarSettingsPage() {
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-sm text-foreground leading-snug">{src.name}</p>
                     <p className="text-[11px] text-muted-foreground font-medium mt-0.5">{meta.label}</p>
-                    {src.url && (
+                    {src.source_type === "rss" && src.url && (
                       <p className="text-[10px] text-muted-foreground truncate mt-1">{src.url}</p>
+                    )}
+                    {src.source_type === "tmdb_streaming" && src.url && (
+                      <p className="text-[10px] text-muted-foreground font-medium mt-1">{PLATFORM_LABEL[src.url] || "Streaming"}</p>
                     )}
                     {src.keywords && (
                       <div className="flex flex-wrap gap-1 mt-1.5">
@@ -293,14 +310,33 @@ export default function RadarSettingsPage() {
                 </>
               )}
 
-              {/* TMDB info */}
-              {formType !== "rss" && (
+              {/* TMDB Cinema info */}
+              {formType === "tmdb_cinema" && (
                 <div className="bg-muted/50 rounded-xl p-4 border border-border/30">
                   <p className="text-xs text-muted-foreground font-medium leading-relaxed">
-                    {formType === "tmdb_cinema"
-                      ? "🎬 This will fetch movies currently playing in Malaysian cinemas via TMDB."
-                      : "📺 This will fetch trending streaming drops (Netflix, etc.) available in Malaysia via TMDB."}
+                    🎬 This will fetch movies currently playing in Malaysian cinemas via TMDB.
                   </p>
+                </div>
+              )}
+
+              {/* Streaming Platform Selector */}
+              {formType === "tmdb_streaming" && (
+                <div>
+                  <label className="text-xs font-bold text-muted-foreground mb-1.5 block">Streaming Platform</label>
+                  <div className="relative">
+                    <select
+                      value={formProvider}
+                      onChange={(e) => setFormProvider(e.target.value)}
+                      className="w-full bg-muted rounded-xl px-4 py-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-primary/30 text-foreground appearance-none cursor-pointer"
+                    >
+                      {STREAMING_PLATFORMS.map((p) => (
+                        <option key={p.value} value={p.value}>{p.label}</option>
+                      ))}
+                    </select>
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                      <svg className="w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                    </div>
+                  </div>
                 </div>
               )}
 
