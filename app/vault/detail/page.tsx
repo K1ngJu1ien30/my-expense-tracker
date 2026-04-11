@@ -12,7 +12,7 @@ import type { AssetLog } from "@/lib/context";
 const EMOJI_OPTIONS = ["📱", "💻", "📸", "👟", "⌚", "🎧", "🎮", "🚗", "🏠", "🛋️", "🧳", "👜", "📦", "🔧", "🎸"];
 
 function AssetDetail() {
-  const { assets, accentColor, triggerToast, session, updateAsset, deleteAsset, confirmAction } = useAppContext();
+  const { assets, accentColor, triggerToast, session, updateAsset, deleteAsset, confirmAction, authLoading } = useAppContext();
   const searchParams = useSearchParams();
   const router = useRouter();
   const assetId = searchParams.get("id") || "";
@@ -118,6 +118,14 @@ function AssetDetail() {
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   };
+
+  if (!assetId || authLoading || loading) {
+    return (
+      <div className="p-6 animate-in fade-in duration-500 flex flex-col items-center justify-center min-h-[60vh]">
+        <div className="w-8 h-8 border-[3px] border-muted border-t-primary rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   if (!asset) {
     return (
