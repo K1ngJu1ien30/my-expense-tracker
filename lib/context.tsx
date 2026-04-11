@@ -263,7 +263,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setEnableSalaryPlannerRaw(session.user.user_metadata?.enable_salary_planner === true);
       setFoodDailyLimitRaw(session.user.user_metadata?.food_daily_limit ?? 0);
       setFoodMonthlyLimitRaw(session.user.user_metadata?.food_monthly_limit ?? 0);
-      setIsAppLockEnabledRaw(session.user.user_metadata?.app_lock_enabled === true);
+      setIsPinEnabledRaw(session.user.user_metadata?.pin_enabled === true);
+      setIsBiometricEnabledRaw(session.user.user_metadata?.biometric_enabled === true);
       
       const fetchData = async () => {
         const [txs, gls, subs, plannerRes] = await Promise.all([
