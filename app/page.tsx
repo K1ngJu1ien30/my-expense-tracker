@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
-import { TrendingUp, TrendingDown, Wallet, Target, Plus, Check, X, Trash2 } from "lucide-react";
+import { TrendingUp, TrendingDown, Wallet, Target, Plus, Check, X, Trash2, Clock } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer, Tooltip } from "recharts";
 import Link from "next/link";
 import { useAppContext } from "@/lib/context";
@@ -43,7 +43,7 @@ export default function Dashboard() {
        const balance = transactions.reduce((acc, tx) => {
          let newAcc = acc;
          if (tx.account?.toLowerCase().trim() === accountName?.toLowerCase()?.trim()) {
-           if (tx.type === "Income") newAcc += Number(tx.amount);
+           if (tx.type === "Income" && tx.status !== "pending") newAcc += Number(tx.amount);
            if (tx.type === "Expense" || tx.type === "Transfer") newAcc -= Number(tx.amount);
          }
          if (tx.type === "Transfer" && tx.to_account?.toLowerCase().trim() === accountName?.toLowerCase()?.trim()) {
@@ -54,6 +54,12 @@ export default function Dashboard() {
        return total + balance;
      }, 0);
   }, [transactions, includeSavings, accounts]);
+
+  const pendingIncome = useMemo(() => {
+     return transactions
+       .filter(tx => tx.type === "Income" && tx.status === "pending")
+       .reduce((sum, tx) => sum + Number(tx.amount), 0);
+  }, [transactions]);
 
   const todayTransactions = useMemo(() => {
      const todayStr = new Date().toISOString().split('T')[0];
@@ -146,7 +152,14 @@ export default function Dashboard() {
         <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full blur-xl -ml-8 -mb-8 pointer-events-none" />
         
         <p className="text-primary-foreground/70 font-medium mb-1 relative z-10 text-sm">Total Balance</p>
-        <h2 className="text-4xl font-black mb-6 relative z-10 tracking-tight">RM {totalBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</h2>
+        <h2 className="text-4xl font-black mb-4 relative z-10 tracking-tight">RM {totalBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</h2>
+        
+        {pendingIncome > 0 && (
+          <div className="flex items-center gap-2 bg-amber-400/20 px-3 py-1.5 rounded-full backdrop-blur-md mb-4 w-fit relative z-10">
+            <Clock className="w-3 h-3 text-amber-400" />
+            <span className="text-xs font-bold text-amber-300">RM {pendingIncome.toLocaleString(undefined, {minimumFractionDigits: 2})} Pending</span>
+          </div>
+        )}
         
         <div className="flex gap-4 relative z-10">
           <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-full backdrop-blur-md">

@@ -51,6 +51,9 @@ ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Strict isolation mapping for Transactions" ON transactions
     FOR ALL USING (auth.uid() = user_id);
 
+-- Add status column for pending/cleared income tracking
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'cleared' CHECK (status IN ('cleared', 'pending'));
+
 CREATE POLICY "Strict isolation mapping for Goals" ON goals
     FOR ALL USING (auth.uid() = user_id);
 

@@ -70,6 +70,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [status, setStatus] = useState<"cleared" | "pending">("cleared");
 
   const isActuallyOpen = isOpen || editTransactionId !== null;
 
@@ -90,11 +91,13 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
          setAmount(String(tx.amount));
          setNote(tx.note || "");
          setDate(tx.date ? new Date(tx.date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0]);
+         setStatus((tx.status as "cleared" | "pending") || "cleared");
        }
     } else {
        setAmount("");
        setNote("");
        setDate(new Date().toISOString().split("T")[0]);
+       setStatus("cleared");
     }
   }, [editTransactionId, transactions, categories]);
 
@@ -203,6 +206,33 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                   </div>
                 )}
 
+                {txType === "Income" && (
+                  <div>
+                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-3">Status</label>
+                    <div className="flex bg-muted p-1 rounded-2xl w-full">
+                      {(["cleared", "pending"] as const).map(s => (
+                        <button
+                          key={s}
+                          onClick={() => setStatus(s)}
+                          className={cn(
+                            "flex-1 py-2 text-sm font-semibold rounded-xl relative z-10 transition-colors",
+                            status === s ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          {status === s && (
+                            <motion.div
+                              layoutId="status-active"
+                              className={`absolute inset-0 rounded-xl -z-10 shadow-sm ${s === "cleared" ? "bg-emerald-500" : "bg-amber-500"}`}
+                              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                            />
+                          )}
+                          {s === "cleared" ? "Cleared (In Bank)" : "Pending"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <input 
                     type="date" 
@@ -231,7 +261,8 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                        account,
                        to_account: txType === "Transfer" ? toAccount : undefined,
                        note,
-                       date: new Date(date).toISOString()
+                       date: new Date(date).toISOString(),
+                       status: txType === "Income" ? status : "cleared"
                     };
 
                     if (editTransactionId) {

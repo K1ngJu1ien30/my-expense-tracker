@@ -42,7 +42,8 @@ export type Transaction = {
   to_account?: string;
   date: string; 
   note?: string; 
-  user_id?: string; 
+  user_id?: string;
+  status?: string;
 };
 
 export type ToastType = { message: string; id: number } | null;

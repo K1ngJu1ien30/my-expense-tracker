@@ -24,7 +24,7 @@ export default function SalaryPlanner() {
       const balance = transactions.reduce((acc, tx) => {
         let newAcc = acc;
         if (tx.account?.toLowerCase().trim() === accountName?.toLowerCase()?.trim()) {
-          if (tx.type === "Income") newAcc += Number(tx.amount);
+          if (tx.type === "Income" && tx.status !== "pending") newAcc += Number(tx.amount);
           if (tx.type === "Expense" || tx.type === "Transfer") newAcc -= Number(tx.amount);
         }
         if (tx.type === "Transfer" && tx.to_account?.toLowerCase().trim() === accountName?.toLowerCase()?.trim()) {
