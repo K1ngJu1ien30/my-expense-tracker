@@ -7,8 +7,8 @@ import Link from "next/link";
 import { useAppContext } from "@/lib/context";
 import { supabase } from "@/lib/supabase";
 
-const TMDB_KEY = "b5e1cf33054e0bfb4ff7eb3d0a4bd4a0";
-const TMDB_IMG = "https://image.tmdb.org/t/p/w300";
+const TMDB_KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY || "";
+const TMDB_IMG = "https://image.tmdb.org/t/p/w500";
 
 type RadarSource = {
   id: string;
@@ -39,81 +39,69 @@ function stripHtml(html: string): string {
 }
 
 async function fetchRssSource(source: RadarSource): Promise<RadarItem[]> {
-  try {
-    const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(source.url || "")}`;
-    const res = await fetch(apiUrl);
-    const data = await res.json();
-    if (data.status !== "ok" || !data.items) return [];
+  const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(source.url || "")}`;
+  const res = await fetch(apiUrl);
+  const data = await res.json();
+  if (data.status !== "ok" || !data.items) return [];
 
-    const keywords = source.keywords
-      ? source.keywords.split(",").map((k) => k.trim().toLowerCase()).filter(Boolean)
-      : [];
+  const keywords = source.keywords
+    ? source.keywords.split(",").map((k) => k.trim().toLowerCase()).filter(Boolean)
+    : [];
 
-    let items: any[] = data.items;
-    if (keywords.length > 0) {
-      items = items.filter((item: any) => {
-        const text = ((item.title || "") + " " + (item.description || "")).toLowerCase();
-        return keywords.some((kw) => text.includes(kw));
-      });
-    }
-
-    return items.map((item: any) => ({
-      id: `rss-${item.link}-${item.pubDate}`,
-      title: item.title || "",
-      date: item.pubDate || "",
-      snippet: stripHtml(item.description || "").slice(0, 200),
-      image: item.thumbnail || item.enclosure?.link || "",
-      sourceName: source.name,
-      sourceType: "rss" as const,
-      link: item.link || "",
-    }));
-  } catch {
-    return [];
+  let items: any[] = data.items;
+  if (keywords.length > 0) {
+    items = items.filter((item: any) => {
+      const text = ((item.title || "") + " " + (item.description || "")).toLowerCase();
+      return keywords.some((kw) => text.includes(kw));
+    });
   }
+
+  return items.map((item: any) => ({
+    id: `rss-${item.link}-${item.pubDate}`,
+    title: item.title || "",
+    date: item.pubDate || "",
+    snippet: stripHtml(item.description || "").slice(0, 200),
+    image: item.thumbnail || item.enclosure?.link || "",
+    sourceName: source.name,
+    sourceType: "rss" as const,
+    link: item.link || "",
+  }));
 }
 
 async function fetchTmdbCinema(source: RadarSource): Promise<RadarItem[]> {
-  try {
-    const res = await fetch(
-      `https://api.themoviedb.org/3/movie/now_playing?api_key=${TMDB_KEY}&region=MY&page=1`
-    );
-    const data = await res.json();
-    if (!data.results) return [];
-    return data.results.map((m: any) => ({
-      id: `tmdb-cinema-${m.id}`,
-      title: m.title,
-      date: m.release_date || "",
-      snippet: (m.overview || "").slice(0, 200),
-      image: m.poster_path ? `${TMDB_IMG}${m.poster_path}` : "",
-      sourceName: source.name,
-      sourceType: "tmdb_cinema" as const,
-      link: `https://www.themoviedb.org/movie/${m.id}`,
-    }));
-  } catch {
-    return [];
-  }
+  const res = await fetch(
+    `https://api.themoviedb.org/3/movie/now_playing?api_key=${TMDB_KEY}&region=MY&page=1`
+  );
+  const data = await res.json();
+  if (!data.results) return [];
+  return data.results.map((m: any) => ({
+    id: `tmdb-cinema-${m.id}`,
+    title: m.title || m.original_title || "",
+    date: m.release_date || "",
+    snippet: (m.overview || "").slice(0, 200),
+    image: m.poster_path ? `${TMDB_IMG}${m.poster_path}` : "",
+    sourceName: source.name,
+    sourceType: "tmdb_cinema" as const,
+    link: `https://www.themoviedb.org/movie/${m.id}`,
+  }));
 }
 
 async function fetchTmdbStreaming(source: RadarSource): Promise<RadarItem[]> {
-  try {
-    const res = await fetch(
-      `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&watch_region=MY&with_watch_providers=8&sort_by=release_date.desc&page=1`
-    );
-    const data = await res.json();
-    if (!data.results) return [];
-    return data.results.map((m: any) => ({
-      id: `tmdb-stream-${m.id}`,
-      title: m.title,
-      date: m.release_date || "",
-      snippet: (m.overview || "").slice(0, 200),
-      image: m.poster_path ? `${TMDB_IMG}${m.poster_path}` : "",
-      sourceName: source.name,
-      sourceType: "tmdb_streaming" as const,
-      link: `https://www.themoviedb.org/movie/${m.id}`,
-    }));
-  } catch {
-    return [];
-  }
+  const res = await fetch(
+    `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&watch_region=MY&with_watch_providers=8&sort_by=release_date.desc&page=1`
+  );
+  const data = await res.json();
+  if (!data.results) return [];
+  return data.results.map((m: any) => ({
+    id: `tmdb-stream-${m.id}`,
+    title: m.title || m.original_title || "",
+    date: m.release_date || "",
+    snippet: (m.overview || "").slice(0, 200),
+    image: m.poster_path ? `${TMDB_IMG}${m.poster_path}` : "",
+    sourceName: source.name,
+    sourceType: "tmdb_streaming" as const,
+    link: `https://www.themoviedb.org/movie/${m.id}`,
+  }));
 }
 
 export default function RadarPage() {
@@ -142,16 +130,17 @@ export default function RadarPage() {
         return;
       }
 
+      // Each fetch is individually wrapped in .catch() so one failure doesn't crash the rest
       const fetchers = userSources.map((src) => {
         switch (src.source_type) {
           case "rss":
-            return fetchRssSource(src);
+            return fetchRssSource(src).catch(() => [] as RadarItem[]);
           case "tmdb_cinema":
-            return fetchTmdbCinema(src);
+            return fetchTmdbCinema(src).catch(() => [] as RadarItem[]);
           case "tmdb_streaming":
-            return fetchTmdbStreaming(src);
+            return fetchTmdbStreaming(src).catch(() => [] as RadarItem[]);
           default:
-            return Promise.resolve([]);
+            return Promise.resolve([] as RadarItem[]);
         }
       });
 
@@ -166,8 +155,10 @@ export default function RadarPage() {
     load();
   }, [session]);
 
+  // Deduplicated filter pills
   const filterNames = useMemo(() => {
-    return ["All", ...sources.map((s) => s.name)];
+    const uniqueNames = Array.from(new Set(sources.map((s) => s.name)));
+    return ["All", ...uniqueNames];
   }, [sources]);
 
   const filteredItems = useMemo(() => {
@@ -240,7 +231,7 @@ export default function RadarPage() {
         />
       </div>
 
-      {/* Filter Pills */}
+      {/* Filter Pills (deduplicated) */}
       {filterNames.length > 1 && (
         <div className="-mx-6 px-6 overflow-x-auto hide-scrollbar">
           <div className="flex gap-2 pb-1 w-max">
@@ -317,6 +308,9 @@ export default function RadarPage() {
                       <div className="absolute bottom-0 left-0 right-0 p-4">
                         <p className="font-bold text-sm text-white leading-snug line-clamp-2 drop-shadow-md">
                           {item.title}
+                        </p>
+                        <p className="text-[11px] text-white/60 font-medium mt-1 line-clamp-2 leading-relaxed">
+                          {item.snippet}
                         </p>
                         <div className="flex items-center gap-2 mt-1.5">
                           <span className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${sourceColor(item.sourceType)}`}>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Plus, Trash2, Rss, Film, Tv, X } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Pencil, Rss, Film, Tv, X } from "lucide-react";
 import Link from "next/link";
 import { useAppContext } from "@/lib/context";
 import { supabase } from "@/lib/supabase";
@@ -29,6 +29,7 @@ export default function RadarSettingsPage() {
   const [showModal, setShowModal] = useState(false);
 
   // Form state
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [formType, setFormType] = useState<"rss" | "tmdb_cinema" | "tmdb_streaming">("rss");
   const [formName, setFormName] = useState("");
   const [formUrl, setFormUrl] = useState("");
@@ -36,7 +37,7 @@ export default function RadarSettingsPage() {
 
   useEffect(() => {
     if (!session?.user) return;
-    const fetch = async () => {
+    const fetchSources = async () => {
       const { data } = await supabase
         .from("radar_sources")
         .select("*")
@@ -45,36 +46,68 @@ export default function RadarSettingsPage() {
       if (data) setSources(data as RadarSource[]);
       setLoading(false);
     };
-    fetch();
+    fetchSources();
   }, [session]);
 
   const resetForm = () => {
+    setEditingId(null);
     setFormType("rss");
     setFormName("");
     setFormUrl("");
     setFormKeywords("");
   };
 
-  const handleAdd = async () => {
+  const openAdd = () => {
+    resetForm();
+    setShowModal(true);
+  };
+
+  const openEdit = (src: RadarSource) => {
+    setEditingId(src.id);
+    setFormType(src.source_type);
+    setFormName(src.name);
+    setFormUrl(src.url || "");
+    setFormKeywords(src.keywords || "");
+    setShowModal(true);
+  };
+
+  const handleSave = async () => {
     if (!formName.trim()) return triggerToast("Name is required");
     if (formType === "rss" && !formUrl.trim()) return triggerToast("RSS URL is required");
 
     const payload: any = {
-      user_id: session?.user?.id,
       source_type: formType,
       name: formName.trim(),
       url: formType === "rss" ? formUrl.trim() : null,
       keywords: formType === "rss" && formKeywords.trim() ? formKeywords.trim() : null,
     };
 
-    const { data, error } = await supabase.from("radar_sources").insert(payload).select().single();
-    if (!error && data) {
-      setSources((prev) => [data as RadarSource, ...prev]);
-      triggerToast("Source added");
-      setShowModal(false);
-      resetForm();
+    if (editingId) {
+      const { data, error } = await supabase
+        .from("radar_sources")
+        .update(payload)
+        .eq("id", editingId)
+        .select()
+        .single();
+      if (!error && data) {
+        setSources((prev) => prev.map((s) => (s.id === editingId ? (data as RadarSource) : s)));
+        triggerToast("Source updated");
+        setShowModal(false);
+        resetForm();
+      } else {
+        triggerToast("Failed to update source");
+      }
     } else {
-      triggerToast("Failed to add source");
+      payload.user_id = session?.user?.id;
+      const { data, error } = await supabase.from("radar_sources").insert(payload).select().single();
+      if (!error && data) {
+        setSources((prev) => [data as RadarSource, ...prev]);
+        triggerToast("Source added");
+        setShowModal(false);
+        resetForm();
+      } else {
+        triggerToast("Failed to add source");
+      }
     }
   };
 
@@ -100,7 +133,7 @@ export default function RadarSettingsPage() {
           <p className="text-xs text-muted-foreground font-medium">Manage your custom feeds & trackers</p>
         </div>
         <button
-          onClick={() => { resetForm(); setShowModal(true); }}
+          onClick={openAdd}
           style={{ backgroundColor: accentColor }}
           className="p-2.5 rounded-xl text-white shadow-sm active:scale-95 transition-transform"
         >
@@ -152,12 +185,21 @@ export default function RadarSettingsPage() {
                       </div>
                     )}
                   </div>
-                  <button
-                    onClick={() => handleDelete(src.id, src.name)}
-                    className="p-2 bg-red-500/10 rounded-xl text-red-500 hover:bg-red-500/20 transition-colors shrink-0"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex flex-col gap-1.5 shrink-0">
+                    <button
+                      onClick={() => openEdit(src)}
+                      style={{ color: accentColor, backgroundColor: `${accentColor}1A` }}
+                      className="p-2 rounded-xl transition-colors"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(src.id, src.name)}
+                      className="p-2 bg-red-500/10 rounded-xl text-red-500 hover:bg-red-500/20 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </motion.div>
             );
@@ -165,7 +207,7 @@ export default function RadarSettingsPage() {
         </div>
       )}
 
-      {/* Add Source Modal */}
+      {/* Add / Edit Source Modal */}
       <AnimatePresence>
         {showModal && (
           <div className="fixed inset-0 z-[200] flex items-end justify-center">
@@ -184,7 +226,7 @@ export default function RadarSettingsPage() {
               className="bg-card w-full max-w-lg rounded-t-[2rem] shadow-heavy z-10 p-6 space-y-5 border-t border-border/50 max-h-[85vh] overflow-y-auto"
             >
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold">Add New Source</h2>
+                <h2 className="text-lg font-bold">{editingId ? "Edit Source" : "Add New Source"}</h2>
                 <button onClick={() => setShowModal(false)} className="p-2 bg-muted rounded-xl">
                   <X className="w-4 h-4 text-foreground" />
                 </button>
@@ -264,11 +306,11 @@ export default function RadarSettingsPage() {
 
               {/* Submit */}
               <button
-                onClick={handleAdd}
+                onClick={handleSave}
                 style={{ backgroundColor: accentColor }}
                 className="w-full py-3.5 rounded-xl text-white font-bold text-sm shadow-sm active:scale-[0.98] transition-transform"
               >
-                Add Source
+                {editingId ? "Save Changes" : "Add Source"}
               </button>
             </motion.div>
           </div>
