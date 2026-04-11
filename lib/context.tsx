@@ -177,6 +177,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [isBiometricEnabled, setIsBiometricEnabledRaw] = useState(false);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [isVaultEnabled, setIsVaultEnabledRaw] = useState(false);
+  const [isRadarEnabled, setIsRadarEnabledRaw] = useState(false);
 
   const toggleIncludeSavings = async (val: boolean) => {
     setIncludeSavingsRaw(val);
@@ -463,6 +464,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const toggleVault = async (val: boolean) => {
     setIsVaultEnabledRaw(val);
     if (session?.user) await supabase.auth.updateUser({ data: { vault_enabled: val } });
+  };
+  const toggleRadar = async (val: boolean) => {
+    setIsRadarEnabledRaw(val);
+    if (session?.user) await supabase.auth.updateUser({ data: { radar_enabled: val } });
   };
 
   return (
