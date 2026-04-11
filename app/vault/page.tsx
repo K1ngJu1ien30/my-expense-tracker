@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Trash2, X, Package } from "lucide-react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAppContext } from "@/lib/context";
 
 const EMOJI_OPTIONS = ["📱", "💻", "📸", "👟", "⌚", "🎧", "🎮", "🚗", "🏠", "🛋️", "🧳", "👜", "📦", "🔧", "🎸"];
