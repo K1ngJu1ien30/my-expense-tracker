@@ -211,4 +211,4 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   );
 }
 
-export { getStoredPin, setStoredPin };
+export { getStoredPin, setStoredPin, tryBiometric, isNative };

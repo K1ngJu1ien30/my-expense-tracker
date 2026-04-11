@@ -417,8 +417,22 @@ export default function ProfilePage() {
       <div>
         <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 px-2">Security & Privacy</h3>
         <div className="bg-card rounded-3xl shadow-soft border border-border/40 overflow-hidden relative">
-          <div className="w-full flex items-center justify-between p-4 active:bg-muted/50 transition-colors cursor-pointer" onClick={() => {
+          <div className="w-full flex items-center justify-between p-4 active:bg-muted/50 transition-colors cursor-pointer" onClick={async () => {
             if (!isAppLockEnabled) {
+              try {
+                // @ts-ignore - Native plugin, not available in web builds
+                const { Capacitor } = await import("@capacitor/core").catch(() => ({ Capacitor: null }));
+                if (Capacitor?.isNativePlatform()) {
+                  // @ts-ignore - Native plugin, not available in web builds
+                  const { BiometricAuth } = await import("@capacitor-community/biometric-auth").catch(() => ({ BiometricAuth: null }));
+                  if (BiometricAuth) {
+                    await BiometricAuth.authenticate({ reason: "Authorize App Lock Setup", cancelTitle: "Cancel" });
+                  }
+                }
+              } catch {
+                triggerToast("Biometric authorization cancelled");
+                return;
+              }
               setTempPin("");
               setConfirmPin("");
               setPinStep("enter");
