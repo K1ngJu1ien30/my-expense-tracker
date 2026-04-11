@@ -121,8 +121,10 @@ type AppContextType = {
   plannerItems: PlannerItem[];
   addPlannerItem: (item: Partial<PlannerItem>) => Promise<void>;
   deletePlannerItem: (id: string) => Promise<void>;
-  isAppLockEnabled: boolean;
-  toggleAppLock: (val: boolean) => void;
+  isPinEnabled: boolean;
+  togglePin: (val: boolean) => void;
+  isBiometricEnabled: boolean;
+  toggleBiometric: (val: boolean) => void;
 };
 
 export const AppContext = createContext<AppContextType | null>(null);
@@ -170,8 +172,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (session?.user) await supabase.auth.updateUser({ data: { food_monthly_limit: val } });
   };
   const toggleAppLock = async (val: boolean) => {
-    setIsAppLockEnabledRaw(val);
-    if (session?.user) await supabase.auth.updateUser({ data: { app_lock_enabled: val } });
+    setIsPinEnabledRaw(val);
+    if (!val) setIsBiometricEnabledRaw(false);
+    if (session?.user) {
+      const data: Record<string, boolean> = { pin_enabled: val };
+      if (!val) data.biometric_enabled = false;
+      await supabase.auth.updateUser({ data });
+    }
+  };
+  const togglePin = toggleAppLock;
+  const toggleBiometric = async (val: boolean) => {
+    setIsBiometricEnabledRaw(val);
+    if (session?.user) await supabase.auth.updateUser({ data: { biometric_enabled: val } });
   };
 
   const [toast, setToast] = useState<ToastType>(null);
@@ -426,7 +438,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       foodDailyLimit, setFoodDailyLimit,
       foodMonthlyLimit, setFoodMonthlyLimit,
       plannerItems, addPlannerItem, deletePlannerItem,
-      isAppLockEnabled, toggleAppLock
+      isPinEnabled, togglePin,
+      isBiometricEnabled, toggleBiometric
     }}>
       {children}
 

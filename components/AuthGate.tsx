@@ -57,7 +57,7 @@ async function tryBiometric(): Promise<boolean> {
 }
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
-  const { isAppLockEnabled, session, authLoading } = useAppContext();
+  const { isPinEnabled, isBiometricEnabled, session, authLoading } = useAppContext();
   const [isLocked, setIsLocked] = useState(true);
   const [showPinPad, setShowPinPad] = useState(false);
   const [pinInput, setPinInput] = useState("");
@@ -73,24 +73,27 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!session || authLoading) return;
 
-    if (!isAppLockEnabled) {
+    if (!isPinEnabled) {
       setIsLocked(false);
       setChecking(false);
       return;
     }
 
     setChecking(true);
-    const attemptBiometric = async () => {
-      const success = await tryBiometric();
-      if (success) {
-        unlock();
-      } else {
-        setShowPinPad(true);
+    const attemptUnlock = async () => {
+      if (isBiometricEnabled) {
+        const success = await tryBiometric();
+        if (success) {
+          unlock();
+          setChecking(false);
+          return;
+        }
       }
+      setShowPinPad(true);
       setChecking(false);
     };
-    attemptBiometric();
-  }, [isAppLockEnabled, session, authLoading, unlock]);
+    attemptUnlock();
+  }, [isPinEnabled, isBiometricEnabled, session, authLoading, unlock]);
 
   const handlePinDigit = (digit: string) => {
     if (pinInput.length >= 6) return;
@@ -124,7 +127,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     if (success) unlock();
   };
 
-  if (!isAppLockEnabled || !isLocked) return <>{children}</>;
+  if (!isPinEnabled || !isLocked) return <>{children}</>;
   if (authLoading || checking) {
     return (
       <div className="h-[100dvh] flex items-center justify-center bg-background max-w-md mx-auto">

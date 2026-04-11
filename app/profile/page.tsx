@@ -29,7 +29,7 @@ export default function ProfilePage() {
     includeSavings, toggleIncludeSavings,
     enableFoodBudget, toggleFoodBudget, enableSalaryPlanner, toggleSalaryPlanner,
     foodDailyLimit, setFoodDailyLimit, foodMonthlyLimit, setFoodMonthlyLimit,
-    isAppLockEnabled, toggleAppLock,
+    isPinEnabled, togglePin, isBiometricEnabled, toggleBiometric,
     session
   } = useAppContext();
 
@@ -417,43 +417,72 @@ export default function ProfilePage() {
       <div>
         <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 px-2">Security & Privacy</h3>
         <div className="bg-card rounded-3xl shadow-soft border border-border/40 overflow-hidden relative">
-          <div className="w-full flex items-center justify-between p-4 active:bg-muted/50 transition-colors cursor-pointer" onClick={async () => {
-            if (!isAppLockEnabled) {
-              try {
-                // @ts-ignore - Native plugin, not available in web builds
-                const { Capacitor } = await import("@capacitor/core").catch(() => ({ Capacitor: null }));
-                if (Capacitor?.isNativePlatform()) {
-                  // @ts-ignore - Native plugin, not available in web builds
-                  const { BiometricAuth } = await import("@capacitor-community/biometric-auth").catch(() => ({ BiometricAuth: null }));
-                  if (BiometricAuth) {
-                    await BiometricAuth.authenticate({ reason: "Authorize App Lock Setup", cancelTitle: "Cancel" });
-                  }
-                }
-              } catch {
-                triggerToast("Biometric authorization cancelled");
-                return;
-              }
+
+          {/* PIN Toggle */}
+          <div className="w-full flex items-center justify-between p-4 border-b border-border/40 active:bg-muted/50 transition-colors cursor-pointer" onClick={() => {
+            if (!isPinEnabled) {
               setTempPin("");
               setConfirmPin("");
               setPinStep("enter");
               setPinError("");
               setShowPinSetup(true);
             } else {
-              toggleAppLock(false);
-              triggerToast("App Lock disabled");
+              togglePin(false);
+              triggerToast("PIN Lock disabled");
             }
           }}>
             <div className="flex items-center gap-3">
-              <div className="bg-red-500/10 p-2 rounded-xl text-red-500"><Fingerprint className="w-5 h-5" /></div>
+              <div className="bg-red-500/10 p-2 rounded-xl text-red-500"><Lock className="w-5 h-5" /></div>
               <div>
-                <span className="font-semibold text-foreground text-sm block">App Lock (Biometrics / PIN)</span>
-                <p className="text-[10px] text-muted-foreground leading-none mt-0.5">{isAppLockEnabled ? "Enabled — tap to disable" : "Require auth on app launch"}</p>
+                <span className="font-semibold text-foreground text-sm block">Use PIN to Login</span>
+                <p className="text-[10px] text-muted-foreground leading-none mt-0.5">{isPinEnabled ? "Enabled — tap to disable" : "Set a 6-digit PIN"}</p>
               </div>
             </div>
-            <button className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${isAppLockEnabled ? 'border-transparent' : 'bg-muted border border-border'}`} style={isAppLockEnabled ? { backgroundColor: accentColor } : {}}>
-              <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${isAppLockEnabled ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
+            <button className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${isPinEnabled ? 'border-transparent' : 'bg-muted border border-border'}`} style={isPinEnabled ? { backgroundColor: accentColor } : {}}>
+              <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${isPinEnabled ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
             </button>
           </div>
+
+          {/* Biometric Toggle */}
+          <div className={`w-full flex items-center justify-between p-4 active:bg-muted/50 transition-colors cursor-pointer ${!isPinEnabled ? 'opacity-40 pointer-events-none' : ''}`} onClick={async () => {
+            if (!isPinEnabled) return;
+            if (!isBiometricEnabled) {
+              try {
+                // @ts-ignore - Native plugin, not available in web builds
+                const { Capacitor } = await import("@capacitor/core").catch(() => ({ Capacitor: null }));
+                if (!Capacitor?.isNativePlatform()) {
+                  triggerToast("Biometrics only available on mobile devices");
+                  return;
+                }
+                // @ts-ignore - Native plugin, not available in web builds
+                const { BiometricAuth } = await import("@capacitor-community/biometric-auth").catch(() => ({ BiometricAuth: null }));
+                if (!BiometricAuth) {
+                  triggerToast("Biometric hardware not available");
+                  return;
+                }
+                await BiometricAuth.authenticate({ reason: "Verify device to enable biometric login", cancelTitle: "Cancel" });
+                toggleBiometric(true);
+                triggerToast("Fingerprint / FaceID enabled!");
+              } catch {
+                triggerToast("Biometric verification failed or cancelled");
+              }
+            } else {
+              toggleBiometric(false);
+              triggerToast("Biometrics disabled");
+            }
+          }}>
+            <div className="flex items-center gap-3">
+              <div className="bg-blue-500/10 p-2 rounded-xl text-blue-500"><Fingerprint className="w-5 h-5" /></div>
+              <div>
+                <span className="font-semibold text-foreground text-sm block">Use Fingerprint / FaceID</span>
+                <p className="text-[10px] text-muted-foreground leading-none mt-0.5">{!isPinEnabled ? "Requires PIN to be enabled first" : isBiometricEnabled ? "Enabled — tap to disable" : "Auto-unlock with biometrics"}</p>
+              </div>
+            </div>
+            <button className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${isBiometricEnabled ? 'border-transparent' : 'bg-muted border border-border'}`} style={isBiometricEnabled ? { backgroundColor: accentColor } : {}}>
+              <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${isBiometricEnabled ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
+            </button>
+          </div>
+
         </div>
       </div>
 
@@ -951,9 +980,9 @@ export default function ProfilePage() {
                               }).catch(() => {
                                 localStorage.setItem("app_lock_pin", next);
                               });
-                              toggleAppLock(true);
+                              togglePin(true);
                               setShowPinSetup(false);
-                              triggerToast("App Lock enabled with PIN!");
+                              triggerToast("PIN Lock enabled!");
                             } else {
                               setPinError("PINs do not match");
                               setConfirmPin("");
