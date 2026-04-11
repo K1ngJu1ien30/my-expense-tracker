@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useAppContext } from "@/lib/context";
 
 export default function HubPage() {
-  const { accentColor, enableFoodBudget, enableSalaryPlanner, isVaultEnabled } = useAppContext();
+  const { accentColor, enableFoodBudget, enableSalaryPlanner, isVaultEnabled, isRadarEnabled } = useAppContext();
 
   const modules = [
     {
@@ -27,6 +27,15 @@ export default function HubPage() {
       description: "Track gear, maintenance logs & time-in-service",
       color: "bg-blue-500/10",
       enabled: isVaultEnabled,
+      sub: [],
+    },
+    {
+      href: "/hub/radar",
+      icon: "📡",
+      title: "Radar Tracker",
+      description: "Filtered tech & entertainment news feed",
+      color: "bg-purple-500/10",
+      enabled: isRadarEnabled,
       sub: [],
     },
   ];
@@ -70,6 +79,18 @@ export default function HubPage() {
               <div className="bg-muted p-4 rounded-2xl text-3xl">📦</div>
               <div className="flex-1">
                 <p className="font-bold text-foreground text-lg leading-tight">Asset Vault</p>
+                <p className="text-xs text-muted-foreground font-medium mt-0.5">Enable in Profile → Modules</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!isRadarEnabled && (
+          <div className="bg-card p-5 rounded-3xl shadow-soft border border-border/40 opacity-50">
+            <div className="flex items-center gap-4">
+              <div className="bg-muted p-4 rounded-2xl text-3xl">📡</div>
+              <div className="flex-1">
+                <p className="font-bold text-foreground text-lg leading-tight">Radar Tracker</p>
                 <p className="text-xs text-muted-foreground font-medium mt-0.5">Enable in Profile → Modules</p>
               </div>
             </div>

@@ -150,6 +150,8 @@ type AppContextType = {
   deleteAsset: (id: string) => Promise<void>;
   isVaultEnabled: boolean;
   toggleVault: (val: boolean) => void;
+  isRadarEnabled: boolean;
+  toggleRadar: (val: boolean) => void;
 };
 
 export const AppContext = createContext<AppContextType | null>(null);
@@ -293,6 +295,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setIsPinEnabledRaw(session.user.user_metadata?.pin_enabled === true);
       setIsBiometricEnabledRaw(session.user.user_metadata?.biometric_enabled === true);
       setIsVaultEnabledRaw(session.user.user_metadata?.vault_enabled === true);
+      setIsRadarEnabledRaw(session.user.user_metadata?.radar_enabled === true);
       
       const fetchData = async () => {
         const [txs, gls, subs, plannerRes, assetsRes] = await Promise.all([
@@ -493,7 +496,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       isPinEnabled, togglePin,
       isBiometricEnabled, toggleBiometric,
       assets, addAsset, updateAsset, deleteAsset,
-      isVaultEnabled, toggleVault
+      isVaultEnabled, toggleVault,
+      isRadarEnabled, toggleRadar
     }}>
       {children}
 

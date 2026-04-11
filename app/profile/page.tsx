@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Trash2, Tags, Moon, ChevronRight, Edit2, Check, Bell, CircleDollarSign, Calendar, X, Plus, GripVertical, Shield, Palette, Database, LogOut, Lock, Wallet, PiggyBank, UtensilsCrossed, TrendingUp, Fingerprint, Package } from "lucide-react";
+import { Download, Trash2, Tags, Moon, ChevronRight, Edit2, Check, Bell, CircleDollarSign, Calendar, X, Plus, GripVertical, Shield, Palette, Database, LogOut, Lock, Wallet, PiggyBank, UtensilsCrossed, TrendingUp, Fingerprint, Package, Radio } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAppContext } from "@/lib/context";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
@@ -30,6 +30,7 @@ export default function ProfilePage() {
     enableFoodBudget, toggleFoodBudget, enableSalaryPlanner, toggleSalaryPlanner,
     foodDailyLimit, setFoodDailyLimit, foodMonthlyLimit, setFoodMonthlyLimit,
     isVaultEnabled, toggleVault,
+    isRadarEnabled, toggleRadar,
     isPinEnabled, togglePin, isBiometricEnabled, toggleBiometric,
     session
   } = useAppContext();
@@ -422,6 +423,19 @@ export default function ProfilePage() {
             </div>
             <button className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${isVaultEnabled ? 'border-transparent' : 'bg-muted border border-border'}`} style={isVaultEnabled ? { backgroundColor: accentColor } : {}}>
               <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${isVaultEnabled ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
+            </button>
+          </div>
+
+          <div className="w-full flex items-center justify-between p-4 active:bg-muted/50 transition-colors cursor-pointer" onClick={() => toggleRadar(!isRadarEnabled)}>
+            <div className="flex items-center gap-3">
+              <div className="bg-purple-500/10 p-2 rounded-xl text-purple-500"><Radio className="w-5 h-5" /></div>
+              <div>
+                <span className="font-semibold text-foreground text-sm block">Radar Tracker</span>
+                <p className="text-[10px] text-muted-foreground leading-none mt-0.5">Tech & entertainment news feed</p>
+              </div>
+            </div>
+            <button className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${isRadarEnabled ? 'border-transparent' : 'bg-muted border border-border'}`} style={isRadarEnabled ? { backgroundColor: accentColor } : {}}>
+              <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${isRadarEnabled ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
             </button>
           </div>
         </div>
