@@ -33,7 +33,8 @@ type RadarItem = {
   date: string;
   snippet: string;
   image: string;
-  sourceName: string;
+  category: string;
+  badge: string;
   sourceType: "rss" | "tmdb_cinema" | "tmdb_streaming";
   link: string;
   platform?: string;
@@ -54,7 +55,6 @@ async function fetchRssSource(source: RadarSource): Promise<RadarItem[]> {
   const data = await res.json();
   if (data.status !== "ok" || !data.items) return [];
 
-  const feedTitle = data.feed?.title || source.name;
   const keywords = source.keywords
     ? source.keywords.split(",").map((k) => k.trim().toLowerCase()).filter(Boolean)
     : [];
@@ -67,13 +67,16 @@ async function fetchRssSource(source: RadarSource): Promise<RadarItem[]> {
     });
   }
 
+  const badgeText = source.keywords ? source.keywords.split(",")[0].trim() : source.name;
+
   return items.map((item: any) => ({
     id: `rss-${item.link}-${item.pubDate}`,
     title: item.title || "",
     date: item.pubDate || "",
     snippet: stripHtml(item.description || "").slice(0, 200),
     image: item.thumbnail || item.enclosure?.link || "",
-    sourceName: feedTitle,
+    category: source.name,
+    badge: badgeText,
     sourceType: "rss" as const,
     link: item.link || "",
   }));
@@ -91,7 +94,8 @@ async function fetchTmdbCinema(source: RadarSource): Promise<RadarItem[]> {
     date: m.release_date || "",
     snippet: (m.overview || "").slice(0, 200),
     image: m.poster_path ? `${TMDB_IMG}${m.poster_path}` : "",
-    sourceName: source.name,
+    category: source.name,
+    badge: source.name,
     sourceType: "tmdb_cinema" as const,
     link: `https://www.themoviedb.org/movie/${m.id}`,
   }));
@@ -111,7 +115,8 @@ async function fetchTmdbStreaming(source: RadarSource): Promise<RadarItem[]> {
     date: m.release_date || "",
     snippet: (m.overview || "").slice(0, 200),
     image: m.poster_path ? `${TMDB_IMG}${m.poster_path}` : "",
-    sourceName: source.name,
+    category: source.name,
+    badge: PROVIDER_NAMES[providers] || "Streaming",
     sourceType: "tmdb_streaming" as const,
     link: `https://www.themoviedb.org/movie/${m.id}`,
     platform: PROVIDER_NAMES[providers] || "Streaming",
@@ -169,7 +174,7 @@ export default function RadarPage() {
     load();
   }, [session]);
 
-  // Deduplicated filter pills
+  // Deduplicated filter pills based on category
   const filterNames = useMemo(() => {
     const uniqueNames = Array.from(new Set(sources.map((s) => s.name)));
     return ["All", ...uniqueNames];
@@ -178,7 +183,7 @@ export default function RadarPage() {
   const filteredItems = useMemo(() => {
     let list = items;
     if (activeFilter !== "All") {
-      list = list.filter((i) => i.sourceName === activeFilter);
+      list = list.filter((i) => i.category === activeFilter);
     }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -329,14 +334,8 @@ export default function RadarPage() {
                         <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                           <span className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${sourceColor(item.sourceType)}`}>
                             {sourceIcon(item.sourceType)}
-                            {item.sourceName}
+                            {item.badge}
                           </span>
-                          {item.platform && (
-                            <>
-                              <span className="text-[10px] text-white/40">•</span>
-                              <span className="text-[10px] font-bold text-emerald-400">{item.platform}</span>
-                            </>
-                          )}
                           <span className="text-[10px] text-white/40">•</span>
                           <span className="text-[10px] font-bold text-white/70">
                             {formatDate(item.date)}
@@ -368,7 +367,7 @@ export default function RadarPage() {
                             </span>
                             <span className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${sourceColor(item.sourceType)}`}>
                               {sourceIcon(item.sourceType)}
-                              {item.sourceName}
+                              {item.badge}
                             </span>
                             <ExternalLink className="w-3 h-3 text-muted-foreground ml-auto shrink-0" />
                           </div>
