@@ -27,6 +27,7 @@ type RadarItem = {
   sourceName: string;
   sourceType: "rss" | "tmdb_cinema" | "tmdb_streaming";
   link: string;
+  platform?: string;
 };
 
 function stripHtml(html: string): string {
@@ -87,8 +88,13 @@ async function fetchTmdbCinema(source: RadarSource): Promise<RadarItem[]> {
 }
 
 async function fetchTmdbStreaming(source: RadarSource): Promise<RadarItem[]> {
+  const providerMap: Record<string, string> = { "8": "Netflix", "337": "Disney+", "350": "Apple TV+", "9": "Amazon Prime" };
+  const providerMatch = (source.url || "with_watch_providers=8").match(/with_watch_providers=(\d+)/);
+  const providerId = providerMatch ? providerMatch[1] : "8";
+  const platformName = providerMap[providerId] || "Streaming";
+
   const res = await fetch(
-    `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&watch_region=MY&with_watch_providers=8&sort_by=release_date.desc&page=1`
+    `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&watch_region=MY&with_watch_providers=${providerId}&sort_by=release_date.desc&page=1`
   );
   const data = await res.json();
   if (!data.results) return [];
@@ -101,6 +107,7 @@ async function fetchTmdbStreaming(source: RadarSource): Promise<RadarItem[]> {
     sourceName: source.name,
     sourceType: "tmdb_streaming" as const,
     link: `https://www.themoviedb.org/movie/${m.id}`,
+    platform: platformName,
   }));
 }
 
@@ -304,19 +311,26 @@ export default function RadarPage() {
                         alt=""
                         className="w-full h-48 object-cover bg-muted"
                       />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-black/10" />
                       <div className="absolute bottom-0 left-0 right-0 p-4">
-                        <p className="font-bold text-sm text-white leading-snug line-clamp-2 drop-shadow-md">
+                        <p className="font-bold text-sm text-white leading-snug line-clamp-2 drop-shadow-lg">
                           {item.title}
                         </p>
-                        <p className="text-[11px] text-white/60 font-medium mt-1 line-clamp-2 leading-relaxed">
+                        <p className="text-[11px] text-white/70 font-medium mt-1 line-clamp-2 leading-relaxed drop-shadow-sm">
                           {item.snippet}
                         </p>
-                        <div className="flex items-center gap-2 mt-1.5">
+                        <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                           <span className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${sourceColor(item.sourceType)}`}>
                             {sourceIcon(item.sourceType)}
                             {item.sourceName}
                           </span>
+                          {item.platform && (
+                            <>
+                              <span className="text-[10px] text-white/40">•</span>
+                              <span className="text-[10px] font-bold text-emerald-400">{item.platform}</span>
+                            </>
+                          )}
+                          <span className="text-[10px] text-white/40">•</span>
                           <span className="text-[10px] font-bold text-white/70">
                             {formatDate(item.date)}
                           </span>
