@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Trash2, Tags, Moon, ChevronRight, Edit2, Check, Bell, CircleDollarSign, Calendar, X, Plus, GripVertical, Shield, Palette, Database, LogOut, Lock, Wallet, PiggyBank, UtensilsCrossed, TrendingUp, Fingerprint } from "lucide-react";
+import { Download, Trash2, Tags, Moon, ChevronRight, Edit2, Check, Bell, CircleDollarSign, Calendar, X, Plus, GripVertical, Shield, Palette, Database, LogOut, Lock, Wallet, PiggyBank, UtensilsCrossed, TrendingUp, Fingerprint, Package } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAppContext } from "@/lib/context";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
@@ -29,6 +29,7 @@ export default function ProfilePage() {
     includeSavings, toggleIncludeSavings,
     enableFoodBudget, toggleFoodBudget, enableSalaryPlanner, toggleSalaryPlanner,
     foodDailyLimit, setFoodDailyLimit, foodMonthlyLimit, setFoodMonthlyLimit,
+    isVaultEnabled, toggleVault,
     isPinEnabled, togglePin, isBiometricEnabled, toggleBiometric,
     session
   } = useAppContext();
@@ -398,7 +399,7 @@ export default function ProfilePage() {
             </AnimatePresence>
           </div>
 
-          <div className="w-full flex items-center justify-between p-4 active:bg-muted/50 transition-colors cursor-pointer" onClick={() => toggleSalaryPlanner(!enableSalaryPlanner)}>
+          <div className="w-full flex items-center justify-between p-4 border-b border-border/40 active:bg-muted/50 transition-colors cursor-pointer" onClick={() => toggleSalaryPlanner(!enableSalaryPlanner)}>
             <div className="flex items-center gap-3">
               <div className="bg-cyan-500/10 p-2 rounded-xl text-cyan-500"><TrendingUp className="w-5 h-5" /></div>
               <div>
@@ -408,6 +409,19 @@ export default function ProfilePage() {
             </div>
             <button className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${enableSalaryPlanner ? 'border-transparent' : 'bg-muted border border-border'}`} style={enableSalaryPlanner ? { backgroundColor: accentColor } : {}}>
               <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${enableSalaryPlanner ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
+            </button>
+          </div>
+
+          <div className="w-full flex items-center justify-between p-4 active:bg-muted/50 transition-colors cursor-pointer" onClick={() => toggleVault(!isVaultEnabled)}>
+            <div className="flex items-center gap-3">
+              <div className="bg-indigo-500/10 p-2 rounded-xl text-indigo-500"><Package className="w-5 h-5" /></div>
+              <div>
+                <span className="font-semibold text-foreground text-sm block">Asset Vault</span>
+                <p className="text-[10px] text-muted-foreground leading-none mt-0.5">Track gear & maintenance logs</p>
+              </div>
+            </div>
+            <button className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${isVaultEnabled ? 'border-transparent' : 'bg-muted border border-border'}`} style={isVaultEnabled ? { backgroundColor: accentColor } : {}}>
+              <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${isVaultEnabled ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
             </button>
           </div>
         </div>

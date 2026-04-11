@@ -17,8 +17,21 @@ export default function VaultPage() {
   const [emoji, setEmoji] = useState("📦");
   const [purchaseDate, setPurchaseDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [purchasePrice, setPurchasePrice] = useState("");
+  const [activeFilter, setActiveFilter] = useState("All");
 
-  const totalValue = useMemo(() => assets.reduce((sum, a) => sum + Number(a.purchase_price || 0), 0), [assets]);
+  const uniqueCategories = useMemo(() => {
+    const cats = new Set(assets.map(a => a.category).filter(Boolean));
+    return ["All", ...Array.from(cats)];
+  }, [assets]);
+
+  const filteredAssets = useMemo(() => {
+    if (activeFilter === "All") return assets;
+    return assets.filter(a => a.category === activeFilter);
+  }, [assets, activeFilter]);
+
+  const totalValue = useMemo(() => filteredAssets.reduce((sum, a) => sum + Number(a.purchase_price || 0), 0), [filteredAssets]);
+
+  const existingCategories = useMemo(() => [...new Set(assets.map(a => a.category).filter(Boolean))], [assets]);
 
   const handleAdd = async () => {
     if (!name) return;
@@ -60,19 +73,39 @@ export default function VaultPage() {
         </div>
         <div className="bg-card p-4 rounded-2xl shadow-soft border border-border/40">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Items Tracked</p>
-          <p className="text-xl font-black text-foreground">{assets.length}</p>
+          <p className="text-xl font-black text-foreground">{filteredAssets.length}</p>
         </div>
       </div>
 
+      {/* Category Filter Pills */}
+      {uniqueCategories.length > 1 && (
+        <div className="-mx-6 px-6 overflow-x-auto hide-scrollbar">
+          <div className="flex gap-2 pb-1 w-max">
+            {uniqueCategories.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setActiveFilter(cat)}
+                style={activeFilter === cat ? { backgroundColor: accentColor, color: "#fff" } : {}}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${activeFilter === cat ? "shadow-sm scale-105" : "bg-muted/50 text-muted-foreground hover:bg-muted"}`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Asset Grid */}
-      {assets.length === 0 ? (
+      {filteredAssets.length === 0 ? (
         <div className="bg-card p-8 rounded-3xl shadow-soft border border-border/40 text-center">
           <Package className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-          <p className="text-muted-foreground text-sm font-medium">No assets tracked yet. Tap + to add your first item!</p>
+          <p className="text-muted-foreground text-sm font-medium">
+            {assets.length === 0 ? "No assets tracked yet. Tap + to add your first item!" : "No assets in this category."}
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3">
-          {assets.map(asset => (
+          {filteredAssets.map(asset => (
             <Link key={asset.id} href={`/vault/detail?id=${asset.id}`} className="block">
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
@@ -116,7 +149,6 @@ export default function VaultPage() {
                 <button onClick={() => setShowAdd(false)} className="p-1 px-2 bg-muted hover:bg-border rounded-full transition-colors"><X className="w-5 h-5 text-muted-foreground" /></button>
               </div>
 
-              {/* Emoji Picker */}
               <div>
                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Icon</p>
                 <div className="flex flex-wrap gap-2">
@@ -129,7 +161,12 @@ export default function VaultPage() {
               </div>
 
               <input value={name} onChange={e => setName(e.target.value)} placeholder="Asset name (e.g. MacBook Pro)" className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" autoFocus />
-              <input value={category} onChange={e => setCategory(e.target.value)} placeholder="Category (e.g. Electronics)" className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" />
+              <div className="relative">
+                <input value={category} onChange={e => setCategory(e.target.value)} list="asset-categories" placeholder="Category (e.g. Electronics)" className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" />
+                <datalist id="asset-categories">
+                  {existingCategories.map(c => <option key={c} value={c} />)}
+                </datalist>
+              </div>
               <input type="date" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" />
               <div className="flex items-center gap-2 bg-muted/60 rounded-xl px-4 py-3 border border-border">
                 <span className="font-bold text-muted-foreground text-sm">RM</span>

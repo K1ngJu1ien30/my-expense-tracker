@@ -145,7 +145,10 @@ type AppContextType = {
   toggleBiometric: (val: boolean) => void;
   assets: Asset[];
   addAsset: (asset: Partial<Asset>) => Promise<void>;
+  updateAsset: (id: string, patch: Partial<Asset>) => Promise<void>;
   deleteAsset: (id: string) => Promise<void>;
+  isVaultEnabled: boolean;
+  toggleVault: (val: boolean) => void;
 };
 
 export const AppContext = createContext<AppContextType | null>(null);
@@ -170,6 +173,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [isPinEnabled, setIsPinEnabledRaw] = useState(false);
   const [isBiometricEnabled, setIsBiometricEnabledRaw] = useState(false);
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [isVaultEnabled, setIsVaultEnabledRaw] = useState(false);
 
   const toggleIncludeSavings = async (val: boolean) => {
     setIncludeSavingsRaw(val);
@@ -287,6 +291,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setFoodMonthlyLimitRaw(session.user.user_metadata?.food_monthly_limit ?? 0);
       setIsPinEnabledRaw(session.user.user_metadata?.pin_enabled === true);
       setIsBiometricEnabledRaw(session.user.user_metadata?.biometric_enabled === true);
+      setIsVaultEnabledRaw(session.user.user_metadata?.vault_enabled === true);
       
       const fetchData = async () => {
         const [txs, gls, subs, plannerRes, assetsRes] = await Promise.all([
@@ -447,6 +452,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.from('asset_vault').delete().eq('id', id);
     if (!error) setAssets(prev => prev.filter(a => a.id !== id));
   };
+  const updateAsset = async (id: string, patch: Partial<Asset>) => {
+    const { data, error } = await supabase.from('asset_vault').update(patch).eq('id', id).select().single();
+    if (!error && data) setAssets(prev => prev.map(a => a.id === id ? { ...a, ...data } as Asset : a));
+  };
+  const toggleVault = async (val: boolean) => {
+    setIsVaultEnabledRaw(val);
+    if (session?.user) await supabase.auth.updateUser({ data: { vault_enabled: val } });
+  };
 
   return (
     <AppContext.Provider value={{
@@ -478,7 +491,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       plannerItems, addPlannerItem, deletePlannerItem,
       isPinEnabled, togglePin,
       isBiometricEnabled, toggleBiometric,
-      assets, addAsset, deleteAsset
+      assets, addAsset, updateAsset, deleteAsset,
+      isVaultEnabled, toggleVault
     }}>
       {children}
 

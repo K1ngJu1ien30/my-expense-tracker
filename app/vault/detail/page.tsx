@@ -2,16 +2,19 @@
 
 import { useState, useEffect, useMemo, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Plus, X, Calendar, Wrench } from "lucide-react";
+import { ArrowLeft, Plus, X, Calendar, Wrench, Edit2, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useAppContext } from "@/lib/context";
 import { supabase } from "@/lib/supabase";
 import type { AssetLog } from "@/lib/context";
 
+const EMOJI_OPTIONS = ["📱", "💻", "📸", "👟", "⌚", "🎧", "🎮", "🚗", "🏠", "🛋️", "🧳", "👜", "📦", "🔧", "🎸"];
+
 function AssetDetail() {
-  const { assets, accentColor, triggerToast, session } = useAppContext();
+  const { assets, accentColor, triggerToast, session, updateAsset, deleteAsset, confirmAction } = useAppContext();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const assetId = searchParams.get("id") || "";
 
   const asset = useMemo(() => assets.find(a => a.id === assetId), [assets, assetId]);
@@ -22,6 +25,16 @@ function AssetDetail() {
   const [logDesc, setLogDesc] = useState("");
   const [logCost, setLogCost] = useState("");
   const [logDate, setLogDate] = useState(() => new Date().toISOString().split("T")[0]);
+
+  // Edit asset state
+  const [showEdit, setShowEdit] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editCategory, setEditCategory] = useState("");
+  const [editEmoji, setEditEmoji] = useState("📦");
+  const [editDate, setEditDate] = useState("");
+  const [editPrice, setEditPrice] = useState("");
+
+  const existingCategories = useMemo(() => [...new Set(assets.map(a => a.category).filter(Boolean))], [assets]);
 
   useEffect(() => {
     if (!assetId || !session) return;
@@ -48,6 +61,38 @@ function AssetDetail() {
     setShowAddLog(false);
     setLogDesc("");
     setLogCost("");
+  };
+
+  const openEdit = () => {
+    if (!asset) return;
+    setEditName(asset.name);
+    setEditCategory(asset.category);
+    setEditEmoji(asset.emoji_icon || "📦");
+    setEditDate(asset.purchase_date || "");
+    setEditPrice(String(asset.purchase_price || 0));
+    setShowEdit(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editName) return;
+    await updateAsset(assetId, {
+      name: editName,
+      category: editCategory || "General",
+      emoji_icon: editEmoji,
+      purchase_date: editDate,
+      purchase_price: Number(editPrice) || 0,
+    });
+    triggerToast("Asset updated!");
+    setShowEdit(false);
+  };
+
+  const handleDelete = () => {
+    if (!asset) return;
+    confirmAction("Delete Asset", `Permanently remove "${asset.name}" and all its maintenance logs?`, async () => {
+      await deleteAsset(assetId);
+      triggerToast("Asset deleted");
+      router.push("/vault");
+    });
   };
 
   const totalMaintenanceCost = useMemo(() => logs.reduce((sum, l) => sum + Number(l.cost || 0), 0), [logs]);
@@ -78,6 +123,12 @@ function AssetDetail() {
           <ArrowLeft className="w-5 h-5 text-foreground" />
         </Link>
         <h1 className="text-xl font-bold flex-1 truncate">{asset.name}</h1>
+        <button onClick={openEdit} className="p-2 text-muted-foreground hover:text-primary transition-colors">
+          <Edit2 className="w-4 h-4" />
+        </button>
+        <button onClick={handleDelete} className="p-2 text-muted-foreground hover:text-red-500 transition-colors">
+          <Trash2 className="w-4 h-4" />
+        </button>
       </div>
 
       <div className="bg-card p-6 rounded-3xl shadow-soft border border-border/40 space-y-4">
@@ -88,7 +139,6 @@ function AssetDetail() {
             <p className="text-xs font-semibold text-muted-foreground mt-0.5">{asset.category}</p>
           </div>
         </div>
-
         <div className="grid grid-cols-3 gap-3 pt-2">
           <div className="bg-muted/30 p-3 rounded-xl text-center">
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Purchase</p>
@@ -105,6 +155,7 @@ function AssetDetail() {
         </div>
       </div>
 
+      {/* Maintenance Timeline */}
       <div className="space-y-4">
         <div className="flex justify-between items-center">
           <h3 className="font-bold text-foreground">Maintenance Log</h3>
@@ -114,9 +165,7 @@ function AssetDetail() {
         </div>
 
         {loading ? (
-          <div className="flex justify-center py-8">
-            <div className="w-6 h-6 border-3 border-primary border-t-transparent rounded-full animate-spin" />
-          </div>
+          <div className="flex justify-center py-8"><div className="w-6 h-6 border-3 border-primary border-t-transparent rounded-full animate-spin" /></div>
         ) : logs.length === 0 ? (
           <div className="bg-card p-6 rounded-2xl border border-border/40 text-center">
             <Wrench className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
@@ -126,13 +175,7 @@ function AssetDetail() {
           <div className="relative pl-6">
             <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-border" />
             {logs.map((log, i) => (
-              <motion.div
-                key={log.id}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.05 }}
-                className="relative mb-4 last:mb-0"
-              >
+              <motion.div key={log.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }} className="relative mb-4 last:mb-0">
                 <div className="absolute -left-6 top-1.5 w-3 h-3 rounded-full border-2 border-border bg-card" style={i === 0 ? { borderColor: accentColor, backgroundColor: `${accentColor}30` } : {}} />
                 <div className="bg-card p-4 rounded-2xl border border-border/40 shadow-sm ml-2">
                   <div className="flex items-start justify-between gap-2">
@@ -154,6 +197,7 @@ function AssetDetail() {
         )}
       </div>
 
+      {/* Add Log Modal */}
       <AnimatePresence>
         {showAddLog && (
           <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center p-0 sm:p-4">
@@ -164,16 +208,53 @@ function AssetDetail() {
                 <h3 className="font-bold text-lg text-foreground">Add Maintenance Log</h3>
                 <button onClick={() => setShowAddLog(false)} className="p-1 px-2 bg-muted hover:bg-border rounded-full transition-colors"><X className="w-5 h-5 text-muted-foreground" /></button>
               </div>
-
               <input value={logDesc} onChange={e => setLogDesc(e.target.value)} placeholder="Description (e.g. Replaced battery)" className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" autoFocus />
               <input type="date" value={logDate} onChange={e => setLogDate(e.target.value)} className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" />
               <div className="flex items-center gap-2 bg-muted/60 rounded-xl px-4 py-3 border border-border">
                 <span className="font-bold text-muted-foreground text-sm">RM</span>
                 <input value={logCost} onChange={e => setLogCost(e.target.value)} type="number" placeholder="0.00 (optional)" className="flex-1 bg-transparent text-sm font-bold outline-none text-foreground" />
               </div>
-
               <button onClick={handleAddLog} style={{ backgroundColor: accentColor, boxShadow: `0 0 15px ${accentColor}4D` }} className="w-full text-white py-4 rounded-xl font-bold shadow-soft hover:scale-[1.02] active:scale-[0.98] transition-all">
                 Save Log Entry
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Asset Modal */}
+      <AnimatePresence>
+        {showEdit && (
+          <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center p-0 sm:p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowEdit(false)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="bg-card w-full sm:max-w-md rounded-t-[2.5rem] sm:rounded-[2rem] shadow-heavy z-10 overflow-hidden flex flex-col p-6 space-y-4 max-h-[85vh] overflow-y-auto hide-scrollbar">
+              <div className="w-12 h-1.5 bg-border rounded-full mx-auto mb-2 shrink-0 sm:hidden" />
+              <div className="flex justify-between items-center">
+                <h3 className="font-bold text-lg text-foreground">Edit Asset</h3>
+                <button onClick={() => setShowEdit(false)} className="p-1 px-2 bg-muted hover:bg-border rounded-full transition-colors"><X className="w-5 h-5 text-muted-foreground" /></button>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Icon</p>
+                <div className="flex flex-wrap gap-2">
+                  {EMOJI_OPTIONS.map(e => (
+                    <button key={e} onClick={() => setEditEmoji(e)} className={`text-2xl p-2 rounded-xl transition-all ${editEmoji === e ? "bg-primary/10 scale-110 shadow-sm" : "hover:bg-muted"}`}>{e}</button>
+                  ))}
+                </div>
+              </div>
+              <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Asset name" className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" />
+              <div className="relative">
+                <input value={editCategory} onChange={e => setEditCategory(e.target.value)} list="edit-asset-categories" placeholder="Category" className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" />
+                <datalist id="edit-asset-categories">
+                  {existingCategories.map(c => <option key={c} value={c} />)}
+                </datalist>
+              </div>
+              <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" />
+              <div className="flex items-center gap-2 bg-muted/60 rounded-xl px-4 py-3 border border-border">
+                <span className="font-bold text-muted-foreground text-sm">RM</span>
+                <input value={editPrice} onChange={e => setEditPrice(e.target.value)} type="number" placeholder="0.00" className="flex-1 bg-transparent text-sm font-bold outline-none text-foreground" />
+              </div>
+              <button onClick={handleSaveEdit} style={{ backgroundColor: accentColor, boxShadow: `0 0 15px ${accentColor}4D` }} className="w-full text-white py-4 rounded-xl font-bold shadow-soft hover:scale-[1.02] active:scale-[0.98] transition-all">
+                Save Changes
               </button>
             </motion.div>
           </div>
