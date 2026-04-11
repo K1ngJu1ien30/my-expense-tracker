@@ -3,15 +3,15 @@
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Trash2, X, Package } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useAppContext } from "@/lib/context";
+import AssetDetailOverlay from "@/components/AssetDetailOverlay";
 
 const EMOJI_OPTIONS = ["📱", "💻", "📸", "👟", "⌚", "🎧", "🎮", "🚗", "🏠", "🛋️", "🧳", "👜", "📦", "🔧", "🎸"];
 
 export default function VaultPage() {
-  const { assets, addAsset, deleteAsset, confirmAction, accentColor, triggerToast, setActiveAssetId } = useAppContext();
-  const router = useRouter();
+  const { assets, addAsset, deleteAsset, confirmAction, accentColor, triggerToast } = useAppContext();
 
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
@@ -121,7 +121,7 @@ export default function VaultPage() {
       ) : (
         <div className="grid grid-cols-2 gap-3">
           {filteredAssets.map(asset => (
-            <div key={asset.id} onClick={() => { setActiveAssetId(asset.id); router.push("/vault/detail"); }} className="block cursor-pointer">
+            <div key={asset.id} onClick={() => setSelectedAssetId(asset.id)} className="block cursor-pointer">
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -199,6 +199,13 @@ export default function VaultPage() {
               </button>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* Asset Detail Overlay */}
+      <AnimatePresence>
+        {selectedAssetId && (
+          <AssetDetailOverlay assetId={selectedAssetId} onClose={() => setSelectedAssetId(null)} />
         )}
       </AnimatePresence>
     </div>
