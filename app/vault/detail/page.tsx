@@ -1,18 +1,18 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Plus, X, Calendar, Wrench } from "lucide-react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useAppContext } from "@/lib/context";
 import { supabase } from "@/lib/supabase";
 import type { AssetLog } from "@/lib/context";
 
-export default function AssetDetailPage() {
+function AssetDetail() {
   const { assets, accentColor, triggerToast, session } = useAppContext();
-  const params = useParams();
-  const assetId = params.id as string;
+  const searchParams = useSearchParams();
+  const assetId = searchParams.get("id") || "";
 
   const asset = useMemo(() => assets.find(a => a.id === assetId), [assets, assetId]);
 
@@ -73,7 +73,6 @@ export default function AssetDetailPage() {
 
   return (
     <div className="p-6 animate-in fade-in duration-500 space-y-6 pb-32">
-      {/* Header */}
       <div className="flex items-center gap-3 pt-2">
         <Link href="/vault" className="p-2 bg-muted rounded-xl hover:bg-border transition-colors">
           <ArrowLeft className="w-5 h-5 text-foreground" />
@@ -81,7 +80,6 @@ export default function AssetDetailPage() {
         <h1 className="text-xl font-bold flex-1 truncate">{asset.name}</h1>
       </div>
 
-      {/* Asset Info Card */}
       <div className="bg-card p-6 rounded-3xl shadow-soft border border-border/40 space-y-4">
         <div className="flex items-center gap-4">
           <div className="text-5xl">{asset.emoji_icon || "📦"}</div>
@@ -107,7 +105,6 @@ export default function AssetDetailPage() {
         </div>
       </div>
 
-      {/* Maintenance Timeline */}
       <div className="space-y-4">
         <div className="flex justify-between items-center">
           <h3 className="font-bold text-foreground">Maintenance Log</h3>
@@ -157,7 +154,6 @@ export default function AssetDetailPage() {
         )}
       </div>
 
-      {/* Add Log Modal */}
       <AnimatePresence>
         {showAddLog && (
           <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center p-0 sm:p-4">
@@ -184,5 +180,13 @@ export default function AssetDetailPage() {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+export default function AssetDetailPage() {
+  return (
+    <Suspense fallback={<div className="h-[100dvh] flex items-center justify-center"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>}>
+      <AssetDetail />
+    </Suspense>
   );
 }

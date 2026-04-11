@@ -73,7 +73,7 @@ export default function VaultPage() {
       ) : (
         <div className="grid grid-cols-2 gap-3">
           {assets.map(asset => (
-            <Link key={asset.id} href={`/vault/${asset.id}`} className="block">
+            <Link key={asset.id} href={`/vault/detail?id=${asset.id}`} className="block">
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
