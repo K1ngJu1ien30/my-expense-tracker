@@ -10,6 +10,7 @@ const EMOJI_OPTIONS = ["📱", "💻", "📸", "👟", "⌚", "🎧", "🎮", "�
 
 export default function VaultPage() {
   const { assets, addAsset, deleteAsset, confirmAction, accentColor, triggerToast } = useAppContext();
+  const router = useRouter();
 
   const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState("");
@@ -120,7 +121,7 @@ export default function VaultPage() {
       ) : (
         <div className="grid grid-cols-2 gap-3">
           {filteredAssets.map(asset => (
-            <Link key={asset.id} href={`/vault/detail?id=${asset.id}`} className="block">
+            <div key={asset.id} onClick={() => router.push(`/vault/detail?id=${asset.id}`)} className="block cursor-pointer">
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -128,7 +129,6 @@ export default function VaultPage() {
               >
                 <button
                   onClick={(e) => {
-                    e.preventDefault();
                     e.stopPropagation();
                     confirmAction("Delete Asset", `Remove "${asset.name}"?`, () => deleteAsset(asset.id));
                   }}
@@ -146,7 +146,7 @@ export default function VaultPage() {
                   )}
                 </div>
               </motion.div>
-            </Link>
+            </div>
           ))}
         </div>
       )}
