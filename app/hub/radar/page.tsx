@@ -2,24 +2,31 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, ExternalLink, Loader2, Search } from "lucide-react";
+import { ArrowLeft, ExternalLink, Loader2, Search, Settings, Film, Tv, Rss } from "lucide-react";
 import Link from "next/link";
 import { useAppContext } from "@/lib/context";
+import { supabase } from "@/lib/supabase";
 
-const FEEDS = [
-  "https://api.rss2json.com/v1/api.json?rss_url=https://www.gizmochina.com/feed/",
-  "https://api.rss2json.com/v1/api.json?rss_url=https://bloody-disgusting.com/feed/",
-];
+const TMDB_KEY = "b5e1cf33054e0bfb4ff7eb3d0a4bd4a0";
+const TMDB_IMG = "https://image.tmdb.org/t/p/w300";
 
-const KEYWORDS = ["xiaomi", "cuktech", "horror", "stephen king", "alien", "redmi", "poco", "hyperos", "android", "slasher", "zombie"];
+type RadarSource = {
+  id: string;
+  source_type: "rss" | "tmdb_cinema" | "tmdb_streaming";
+  name: string;
+  url: string | null;
+  keywords: string | null;
+};
 
-type Article = {
+type RadarItem = {
+  id: string;
   title: string;
+  date: string;
+  snippet: string;
+  image: string;
+  sourceName: string;
+  sourceType: "rss" | "tmdb_cinema" | "tmdb_streaming";
   link: string;
-  pubDate: string;
-  description: string;
-  thumbnail: string;
-  source: string;
 };
 
 function stripHtml(html: string): string {
@@ -31,69 +38,195 @@ function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, "");
 }
 
-function matchesKeywords(text: string): boolean {
-  const lower = text.toLowerCase();
-  return KEYWORDS.some(kw => lower.includes(kw));
+async function fetchRssSource(source: RadarSource): Promise<RadarItem[]> {
+  try {
+    const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(source.url || "")}`;
+    const res = await fetch(apiUrl);
+    const data = await res.json();
+    if (data.status !== "ok" || !data.items) return [];
+
+    const keywords = source.keywords
+      ? source.keywords.split(",").map((k) => k.trim().toLowerCase()).filter(Boolean)
+      : [];
+
+    let items: any[] = data.items;
+    if (keywords.length > 0) {
+      items = items.filter((item: any) => {
+        const text = ((item.title || "") + " " + (item.description || "")).toLowerCase();
+        return keywords.some((kw) => text.includes(kw));
+      });
+    }
+
+    return items.map((item: any) => ({
+      id: `rss-${item.link}-${item.pubDate}`,
+      title: item.title || "",
+      date: item.pubDate || "",
+      snippet: stripHtml(item.description || "").slice(0, 200),
+      image: item.thumbnail || item.enclosure?.link || "",
+      sourceName: source.name,
+      sourceType: "rss" as const,
+      link: item.link || "",
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchTmdbCinema(source: RadarSource): Promise<RadarItem[]> {
+  try {
+    const res = await fetch(
+      `https://api.themoviedb.org/3/movie/now_playing?api_key=${TMDB_KEY}&region=MY&page=1`
+    );
+    const data = await res.json();
+    if (!data.results) return [];
+    return data.results.map((m: any) => ({
+      id: `tmdb-cinema-${m.id}`,
+      title: m.title,
+      date: m.release_date || "",
+      snippet: (m.overview || "").slice(0, 200),
+      image: m.poster_path ? `${TMDB_IMG}${m.poster_path}` : "",
+      sourceName: source.name,
+      sourceType: "tmdb_cinema" as const,
+      link: `https://www.themoviedb.org/movie/${m.id}`,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchTmdbStreaming(source: RadarSource): Promise<RadarItem[]> {
+  try {
+    const res = await fetch(
+      `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&watch_region=MY&with_watch_providers=8&sort_by=release_date.desc&page=1`
+    );
+    const data = await res.json();
+    if (!data.results) return [];
+    return data.results.map((m: any) => ({
+      id: `tmdb-stream-${m.id}`,
+      title: m.title,
+      date: m.release_date || "",
+      snippet: (m.overview || "").slice(0, 200),
+      image: m.poster_path ? `${TMDB_IMG}${m.poster_path}` : "",
+      sourceName: source.name,
+      sourceType: "tmdb_streaming" as const,
+      link: `https://www.themoviedb.org/movie/${m.id}`,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 export default function RadarPage() {
-  const { accentColor } = useAppContext();
-  const [articles, setArticles] = useState<Article[]>([]);
+  const { session, accentColor } = useAppContext();
+  const [items, setItems] = useState<RadarItem[]>([]);
+  const [sources, setSources] = useState<RadarSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeFilter, setActiveFilter] = useState("All");
 
   useEffect(() => {
-    const fetchFeeds = async () => {
-      try {
-        const results = await Promise.all(
-          FEEDS.map(url =>
-            fetch(url)
-              .then(r => r.json())
-              .then(data => {
-                if (data.status !== "ok" || !data.items) return [];
-                return data.items.map((item: any) => ({
-                  title: item.title || "",
-                  link: item.link || "",
-                  pubDate: item.pubDate || "",
-                  description: stripHtml(item.description || "").slice(0, 200),
-                  thumbnail: item.thumbnail || item.enclosure?.link || "",
-                  source: data.feed?.title || "Unknown",
-                }));
-              })
-              .catch(() => [])
-          )
-        );
-        const merged = results.flat().sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
-        setArticles(merged);
-      } catch {}
+    if (!session?.user) { setLoading(false); return; }
+
+    const load = async () => {
+      const { data } = await supabase
+        .from("radar_sources")
+        .select("*")
+        .eq("user_id", session.user.id)
+        .order("created_at", { ascending: false });
+
+      const userSources = (data || []) as RadarSource[];
+      setSources(userSources);
+
+      if (userSources.length === 0) {
+        setLoading(false);
+        return;
+      }
+
+      const fetchers = userSources.map((src) => {
+        switch (src.source_type) {
+          case "rss":
+            return fetchRssSource(src);
+          case "tmdb_cinema":
+            return fetchTmdbCinema(src);
+          case "tmdb_streaming":
+            return fetchTmdbStreaming(src);
+          default:
+            return Promise.resolve([]);
+        }
+      });
+
+      const results = await Promise.all(fetchers);
+      const merged = results
+        .flat()
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setItems(merged);
       setLoading(false);
     };
-    fetchFeeds();
-  }, []);
 
-  const filteredArticles = useMemo(() => {
-    const keywordFiltered = articles.filter(a => matchesKeywords(a.title + " " + a.description));
-    if (!searchQuery.trim()) return keywordFiltered;
-    const q = searchQuery.toLowerCase();
-    return keywordFiltered.filter(a => a.title.toLowerCase().includes(q) || a.description.toLowerCase().includes(q));
-  }, [articles, searchQuery]);
+    load();
+  }, [session]);
+
+  const filterNames = useMemo(() => {
+    return ["All", ...sources.map((s) => s.name)];
+  }, [sources]);
+
+  const filteredItems = useMemo(() => {
+    let list = items;
+    if (activeFilter !== "All") {
+      list = list.filter((i) => i.sourceName === activeFilter);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(
+        (i) => i.title.toLowerCase().includes(q) || i.snippet.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [items, activeFilter, searchQuery]);
 
   const formatDate = (dateStr: string) => {
     try {
-      return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
-    } catch { return dateStr; }
+      return new Date(dateStr).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const sourceIcon = (type: string) => {
+    if (type === "tmdb_cinema") return <Film className="w-3 h-3" />;
+    if (type === "tmdb_streaming") return <Tv className="w-3 h-3" />;
+    return <Rss className="w-3 h-3" />;
+  };
+
+  const sourceColor = (type: string) => {
+    if (type === "tmdb_cinema") return "bg-pink-500/10 text-pink-500";
+    if (type === "tmdb_streaming") return "bg-violet-500/10 text-violet-500";
+    return "bg-orange-500/10 text-orange-500";
   };
 
   return (
-    <div className="p-6 animate-in fade-in duration-500 space-y-6 pb-32">
+    <div className="p-6 animate-in fade-in duration-500 space-y-5 pb-32">
+      {/* Header */}
       <div className="flex items-center gap-3 pt-2">
         <Link href="/hub" className="p-2 bg-muted rounded-xl hover:bg-border transition-colors">
           <ArrowLeft className="w-5 h-5 text-foreground" />
         </Link>
         <div className="flex-1">
           <h1 className="text-xl font-bold">Radar Tracker</h1>
-          <p className="text-xs text-muted-foreground font-medium">Filtered tech & entertainment intel</p>
+          <p className="text-xs text-muted-foreground font-medium">
+            {sources.length} source{sources.length !== 1 ? "s" : ""} active
+          </p>
         </div>
+        <Link
+          href="/hub/radar/settings"
+          className="p-2.5 bg-muted rounded-xl hover:bg-border transition-colors"
+        >
+          <Settings className="w-5 h-5 text-foreground" />
+        </Link>
       </div>
 
       {/* Search */}
@@ -101,20 +234,34 @@ export default function RadarPage() {
         <Search className="w-4 h-4 text-muted-foreground shrink-0" />
         <input
           value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-          placeholder="Search articles..."
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search articles & movies..."
           className="flex-1 bg-transparent text-sm font-semibold outline-none text-foreground placeholder:text-muted-foreground"
         />
       </div>
 
-      {/* Keywords */}
-      <div className="-mx-6 px-6 overflow-x-auto hide-scrollbar">
-        <div className="flex gap-2 pb-1 w-max">
-          {KEYWORDS.slice(0, 8).map(kw => (
-            <span key={kw} style={{ color: accentColor, backgroundColor: `${accentColor}1A` }} className="text-[10px] font-bold px-3 py-1 rounded-full capitalize shrink-0">{kw}</span>
-          ))}
+      {/* Filter Pills */}
+      {filterNames.length > 1 && (
+        <div className="-mx-6 px-6 overflow-x-auto hide-scrollbar">
+          <div className="flex gap-2 pb-1 w-max">
+            {filterNames.map((name) => {
+              const active = activeFilter === name;
+              return (
+                <button
+                  key={name}
+                  onClick={() => setActiveFilter(name)}
+                  className={`text-xs font-bold px-4 py-1.5 rounded-full transition-all shrink-0 ${
+                    active ? "text-white shadow-sm" : "text-muted-foreground bg-muted"
+                  }`}
+                  style={active ? { backgroundColor: accentColor } : {}}
+                >
+                  {name}
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Feed */}
       {loading ? (
@@ -122,41 +269,101 @@ export default function RadarPage() {
           <Loader2 className="w-8 h-8 text-primary animate-spin mb-3" />
           <p className="text-sm text-muted-foreground font-medium">Scanning feeds...</p>
         </div>
-      ) : filteredArticles.length === 0 ? (
+      ) : sources.length === 0 ? (
+        <div className="bg-card p-8 rounded-3xl shadow-soft border border-border/40 text-center space-y-3">
+          <p className="text-3xl">📡</p>
+          <p className="text-muted-foreground text-sm font-medium">
+            No sources configured yet.
+          </p>
+          <Link
+            href="/hub/radar/settings"
+            style={{ backgroundColor: accentColor }}
+            className="inline-block px-5 py-2.5 rounded-xl text-white text-sm font-bold shadow-sm active:scale-95 transition-transform"
+          >
+            Add Your First Source
+          </Link>
+        </div>
+      ) : filteredItems.length === 0 ? (
         <div className="bg-card p-8 rounded-3xl shadow-soft border border-border/40 text-center">
-          <p className="text-3xl mb-3">📡</p>
-          <p className="text-muted-foreground text-sm font-medium">No matching articles found. Keywords are scanned against live RSS feeds.</p>
+          <p className="text-3xl mb-3">🔍</p>
+          <p className="text-muted-foreground text-sm font-medium">
+            No matching results. Try a different filter or search term.
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredArticles.map((article, i) => (
-            <motion.div
-              key={article.link + i}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.03 }}
-            >
-              <button
-                onClick={() => window.open(article.link, "_blank")}
-                className="w-full text-left bg-card p-4 rounded-2xl shadow-sm border border-border/40 hover:scale-[1.01] active:scale-[0.98] transition-all"
+          {filteredItems.map((item, i) => {
+            const isTmdb = item.sourceType === "tmdb_cinema" || item.sourceType === "tmdb_streaming";
+            return (
+              <motion.div
+                key={item.id + i}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.03 }}
               >
-                <div className="flex items-start gap-3">
-                  {article.thumbnail && (
-                    <img src={article.thumbnail} alt="" className="w-16 h-16 rounded-xl object-cover shrink-0 bg-muted" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-sm text-foreground leading-snug line-clamp-2">{article.title}</p>
-                    <p className="text-[11px] text-muted-foreground font-medium mt-1 line-clamp-2 leading-relaxed">{article.description}</p>
-                    <div className="flex items-center gap-3 mt-2">
-                      <span className="text-[10px] font-bold text-muted-foreground">{formatDate(article.pubDate)}</span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{article.source}</span>
-                      <ExternalLink className="w-3 h-3 text-muted-foreground ml-auto shrink-0" />
+                <button
+                  onClick={() => window.open(item.link, "_blank")}
+                  className="w-full text-left bg-card rounded-2xl shadow-sm border border-border/40 hover:scale-[1.01] active:scale-[0.98] transition-all overflow-hidden"
+                >
+                  {/* TMDB cards show a larger poster banner */}
+                  {isTmdb && item.image ? (
+                    <div className="relative">
+                      <img
+                        src={item.image}
+                        alt=""
+                        className="w-full h-48 object-cover bg-muted"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+                      <div className="absolute bottom-0 left-0 right-0 p-4">
+                        <p className="font-bold text-sm text-white leading-snug line-clamp-2 drop-shadow-md">
+                          {item.title}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <span className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${sourceColor(item.sourceType)}`}>
+                            {sourceIcon(item.sourceType)}
+                            {item.sourceName}
+                          </span>
+                          <span className="text-[10px] font-bold text-white/70">
+                            {formatDate(item.date)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              </button>
-            </motion.div>
-          ))}
+                  ) : (
+                    <div className="p-4">
+                      <div className="flex items-start gap-3">
+                        {item.image && (
+                          <img
+                            src={item.image}
+                            alt=""
+                            className="w-16 h-16 rounded-xl object-cover shrink-0 bg-muted"
+                          />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-sm text-foreground leading-snug line-clamp-2">
+                            {item.title}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground font-medium mt-1 line-clamp-2 leading-relaxed">
+                            {item.snippet}
+                          </p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className="text-[10px] font-bold text-muted-foreground">
+                              {formatDate(item.date)}
+                            </span>
+                            <span className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${sourceColor(item.sourceType)}`}>
+                              {sourceIcon(item.sourceType)}
+                              {item.sourceName}
+                            </span>
+                            <ExternalLink className="w-3 h-3 text-muted-foreground ml-auto shrink-0" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </button>
+              </motion.div>
+            );
+          })}
         </div>
       )}
     </div>

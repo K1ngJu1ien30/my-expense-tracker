@@ -108,3 +108,19 @@ CREATE POLICY "Strict isolation mapping for Asset Logs" ON asset_logs
     FOR ALL USING (
         EXISTS (SELECT 1 FROM asset_vault WHERE asset_vault.id = asset_logs.asset_id AND asset_vault.user_id = auth.uid())
     );
+
+-- 7. Radar Sources
+CREATE TABLE radar_sources (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    source_type TEXT NOT NULL CHECK (source_type IN ('rss', 'tmdb_cinema', 'tmdb_streaming')),
+    name VARCHAR(255) NOT NULL,
+    url TEXT,
+    keywords TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE radar_sources ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Strict isolation mapping for Radar Sources" ON radar_sources
+    FOR ALL USING (auth.uid() = user_id);
