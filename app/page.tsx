@@ -62,12 +62,14 @@ export default function Dashboard() {
   }, [transactions]);
 
   const todayTransactions = useMemo(() => {
-     const todayStr = new Date().toISOString().split('T')[0];
+     const now = new Date();
+     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+     const startOfTomorrow = startOfToday + 86400000;
      return transactions.filter(t => {
        if (t.type !== "Expense") return false;
        if (!includeSavings && t.account?.toLowerCase().includes('saving')) return false;
-       const txDateStr = t.date.includes('T') ? t.date.split('T')[0] : t.date.includes(' ') ? t.date.split(' ')[0] : t.date;
-       return txDateStr === todayStr;
+       const txTime = new Date(t.date).getTime();
+       return txTime >= startOfToday && txTime < startOfTomorrow;
      });
   }, [transactions, includeSavings]);
 
@@ -78,19 +80,14 @@ export default function Dashboard() {
   const weeklyTransactions = useMemo(() => {
      const now = new Date();
      const dayOfWeek = now.getDay() || 7;
-     const startOfWeek = new Date(now);
-     startOfWeek.setDate(now.getDate() - dayOfWeek + 1);
-     const endOfWeek = new Date(startOfWeek);
-     endOfWeek.setDate(startOfWeek.getDate() + 6);
-
-     const startStr = startOfWeek.toISOString().split('T')[0];
-     const endStr = endOfWeek.toISOString().split('T')[0];
+     const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek + 1).getTime();
+     const endOfWeek = startOfWeek + 7 * 86400000;
 
      return transactions.filter(t => {
         if (t.type !== "Expense") return false;
         if (!includeSavings && t.account?.toLowerCase().includes('saving')) return false;
-        const txDateStr = t.date.includes('T') ? t.date.split('T')[0] : t.date.includes(' ') ? t.date.split(' ')[0] : t.date;
-        return txDateStr >= startStr && txDateStr <= endStr;
+        const txTime = new Date(t.date).getTime();
+        return txTime >= startOfWeek && txTime < endOfWeek;
      });
   }, [transactions, includeSavings]);
 
@@ -101,11 +98,11 @@ export default function Dashboard() {
   const dynamicTrendData = useMemo(() => {
      if (transactions.length === 0) return [];
      const fmt = new Intl.DateTimeFormat('en-US', { weekday: 'short' });
+     const now = new Date();
      const data = [];
      const map: Record<string, any> = {};
      for (let i = 6; i >= 0; i--) {
-       const d = new Date();
-       d.setDate(d.getDate() - i);
+       const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
        const dayLabel = fmt.format(d);
        const dateKey = `${d.getMonth()+1}/${d.getDate()}`;
        const item = { name: dayLabel, dateKey, income: 0, value: 0, transactions: 0 };
@@ -113,12 +110,11 @@ export default function Dashboard() {
        data.push(item);
      }
      
-     const weekAgo = new Date();
-     weekAgo.setDate(weekAgo.getDate() - 7);
+     const weekAgoMs = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6).getTime();
      
      transactions.forEach(t => {
         const d = new Date(t.date);
-        if (d < weekAgo) return;
+        if (d.getTime() < weekAgoMs) return;
         const dateKey = `${d.getMonth()+1}/${d.getDate()}`;
         if (map[dateKey]) {
            if (t.type === "Income") map[dateKey].income += Number(t.amount);

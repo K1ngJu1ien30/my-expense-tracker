@@ -10,7 +10,8 @@ export default function FoodBudgetCard() {
 
   const { spentToday, spentThisMonth } = useMemo(() => {
     const now = new Date();
-    const todayStr = now.toDateString();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startOfTomorrow = startOfToday + 86400000;
     let daily = 0;
     let monthly = 0;
 
@@ -20,7 +21,8 @@ export default function FoodBudgetCard() {
       const d = new Date(tx.date);
       if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()) {
         monthly += Number(tx.amount);
-        if (d.toDateString() === todayStr) {
+        const txTime = d.getTime();
+        if (txTime >= startOfToday && txTime < startOfTomorrow) {
           daily += Number(tx.amount);
         }
       }
