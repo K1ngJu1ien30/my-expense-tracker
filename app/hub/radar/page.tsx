@@ -10,6 +10,15 @@ import { supabase } from "@/lib/supabase";
 const TMDB_KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY || "";
 const TMDB_IMG = "https://image.tmdb.org/t/p/w500";
 
+const PROVIDER_NAMES: Record<string, string> = {
+  "8": "Netflix",
+  "337": "Disney+",
+  "119": "Amazon Prime",
+  "350": "Apple TV+",
+  "315": "HBO Go",
+  "8|337|119|350|315": "All Platforms",
+};
+
 type RadarSource = {
   id: string;
   source_type: "rss" | "tmdb_cinema" | "tmdb_streaming";
@@ -45,6 +54,7 @@ async function fetchRssSource(source: RadarSource): Promise<RadarItem[]> {
   const data = await res.json();
   if (data.status !== "ok" || !data.items) return [];
 
+  const feedTitle = data.feed?.title || source.name;
   const keywords = source.keywords
     ? source.keywords.split(",").map((k) => k.trim().toLowerCase()).filter(Boolean)
     : [];
@@ -63,7 +73,7 @@ async function fetchRssSource(source: RadarSource): Promise<RadarItem[]> {
     date: item.pubDate || "",
     snippet: stripHtml(item.description || "").slice(0, 200),
     image: item.thumbnail || item.enclosure?.link || "",
-    sourceName: source.name,
+    sourceName: feedTitle,
     sourceType: "rss" as const,
     link: item.link || "",
   }));
@@ -104,7 +114,7 @@ async function fetchTmdbStreaming(source: RadarSource): Promise<RadarItem[]> {
     sourceName: source.name,
     sourceType: "tmdb_streaming" as const,
     link: `https://www.themoviedb.org/movie/${m.id}`,
-    platform: source.name,
+    platform: PROVIDER_NAMES[providers] || "Streaming",
   }));
 }
 
@@ -341,6 +351,7 @@ export default function RadarPage() {
                           <img
                             src={item.image}
                             alt=""
+                            onError={(e) => { e.currentTarget.style.display = "none"; }}
                             className="w-16 h-16 rounded-xl object-cover shrink-0 bg-muted"
                           />
                         )}

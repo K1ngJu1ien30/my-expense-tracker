@@ -46,6 +46,7 @@ export default function RadarSettingsPage() {
   const [formUrl, setFormUrl] = useState("");
   const [formKeywords, setFormKeywords] = useState("");
   const [formProvider, setFormProvider] = useState("8");
+  const [providerDropdownOpen, setProviderDropdownOpen] = useState(false);
 
   useEffect(() => {
     if (!session?.user) return;
@@ -324,18 +325,43 @@ export default function RadarSettingsPage() {
                 <div>
                   <label className="text-xs font-bold text-muted-foreground mb-1.5 block">Streaming Platform</label>
                   <div className="relative">
-                    <select
-                      value={formProvider}
-                      onChange={(e) => setFormProvider(e.target.value)}
-                      className="w-full bg-muted rounded-xl px-4 py-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-primary/30 text-foreground appearance-none cursor-pointer"
+                    <button
+                      type="button"
+                      onClick={() => setProviderDropdownOpen(!providerDropdownOpen)}
+                      className="w-full bg-muted rounded-xl px-4 py-3 text-sm font-semibold outline-none text-foreground flex items-center justify-between"
                     >
-                      {STREAMING_PLATFORMS.map((p) => (
-                        <option key={p.value} value={p.value}>{p.label}</option>
-                      ))}
-                    </select>
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                      <svg className="w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                    </div>
+                      <span>{PLATFORM_LABEL[formProvider] || "Select platform"}</span>
+                      <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${providerDropdownOpen ? "rotate-180" : ""}`} />
+                    </button>
+                    <AnimatePresence>
+                      {providerDropdownOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -4, scale: 0.97 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: -4, scale: 0.97 }}
+                          transition={{ duration: 0.15 }}
+                          className="absolute z-50 left-0 right-0 mt-1.5 bg-card rounded-xl border border-border/50 shadow-heavy overflow-hidden"
+                        >
+                          {STREAMING_PLATFORMS.map((p) => {
+                            const selected = formProvider === p.value;
+                            return (
+                              <button
+                                key={p.value}
+                                type="button"
+                                onClick={() => { setFormProvider(p.value); setProviderDropdownOpen(false); }}
+                                className={`w-full px-4 py-3 text-left text-sm font-semibold flex items-center justify-between transition-colors ${
+                                  selected ? "text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                                }`}
+                                style={selected ? { backgroundColor: `${accentColor}15` } : {}}
+                              >
+                                <span>{p.label}</span>
+                                {selected && <Check style={{ color: accentColor }} className="w-4 h-4 shrink-0" />}
+                              </button>
+                            );
+                          })}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 </div>
               )}
