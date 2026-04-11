@@ -146,7 +146,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [foodDailyLimit, setFoodDailyLimitRaw] = useState(0);
   const [foodMonthlyLimit, setFoodMonthlyLimitRaw] = useState(0);
   const [plannerItems, setPlannerItems] = useState<PlannerItem[]>([]);
-  const [isAppLockEnabled, setIsAppLockEnabledRaw] = useState(false);
+  const [isPinEnabled, setIsPinEnabledRaw] = useState(false);
+  const [isBiometricEnabled, setIsBiometricEnabledRaw] = useState(false);
 
   const toggleIncludeSavings = async (val: boolean) => {
     setIncludeSavingsRaw(val);

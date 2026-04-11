@@ -455,7 +455,7 @@ export default function ProfilePage() {
                   return;
                 }
                 // @ts-ignore - Native plugin, not available in web builds
-                const { BiometricAuth } = await import("@capacitor-community/biometric-auth").catch(() => ({ BiometricAuth: null }));
+                const { BiometricAuth } = await import("@aparajita/capacitor-biometric-auth").catch(() => ({ BiometricAuth: null }));
                 if (!BiometricAuth) {
                   triggerToast("Biometric hardware not available");
                   return;

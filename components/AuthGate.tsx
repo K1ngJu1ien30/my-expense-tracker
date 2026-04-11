@@ -44,7 +44,7 @@ async function tryBiometric(): Promise<boolean> {
   try {
     if (!(await isNative())) return false;
     // @ts-ignore - Native plugin, not available in web builds
-    const { BiometricAuth } = await import("@capacitor-community/biometric-auth");
+    const { BiometricAuth } = await import("@aparajita/capacitor-biometric-auth");
     if (!BiometricAuth) return false;
     await BiometricAuth.authenticate({
       reason: "Unlock Tracker",
