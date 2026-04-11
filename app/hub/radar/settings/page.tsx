@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Plus, Trash2, Pencil, Rss, Film, Tv, X } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Pencil, Rss, Film, Tv, X, ChevronDown, Check } from "lucide-react";
 import Link from "next/link";
 import { useAppContext } from "@/lib/context";
 import { supabase } from "@/lib/supabase";
