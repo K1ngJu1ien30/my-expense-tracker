@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, PieChart, Target, User, Plus } from "lucide-react";
+import { Home, PieChart, Target, User, Plus, Package } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -23,7 +23,12 @@ export default function BottomNav({ onOpenAdd }: { onOpenAdd: () => void }) {
         <span className="text-[10px] font-medium">Stats</span>
       </Link>
 
-      {/* FAB - Adjusted position to overlap the nav bar */}
+      <Link href="/vault" style={pathname.startsWith('/vault') ? { color: activeColor } : {}} className={cn("flex flex-col items-center gap-1 transition-colors", !pathname.startsWith('/vault') && 'text-muted-foreground hover:text-foreground')}>
+        <Package className="w-6 h-6" strokeWidth={pathname.startsWith('/vault') ? 2.5 : 2} />
+        <span className="text-[10px] font-medium">Vault</span>
+      </Link>
+
+      {/* FAB */}
       <div className="relative -top-6">
         <button 
           onClick={onOpenAdd}

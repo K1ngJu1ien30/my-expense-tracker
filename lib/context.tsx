@@ -55,6 +55,24 @@ export type PlannerItem = {
   user_id?: string;
 };
 
+export type Asset = {
+  id: string;
+  name: string;
+  category: string;
+  emoji_icon: string;
+  purchase_date: string;
+  purchase_price: number;
+  user_id?: string;
+};
+
+export type AssetLog = {
+  id: string;
+  asset_id: string;
+  log_date: string;
+  description: string;
+  cost: number;
+};
+
 type ConfirmState = {
   isOpen: boolean;
   title: string;
@@ -125,6 +143,9 @@ type AppContextType = {
   togglePin: (val: boolean) => void;
   isBiometricEnabled: boolean;
   toggleBiometric: (val: boolean) => void;
+  assets: Asset[];
+  addAsset: (asset: Partial<Asset>) => Promise<void>;
+  deleteAsset: (id: string) => Promise<void>;
 };
 
 export const AppContext = createContext<AppContextType | null>(null);
@@ -148,6 +169,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [plannerItems, setPlannerItems] = useState<PlannerItem[]>([]);
   const [isPinEnabled, setIsPinEnabledRaw] = useState(false);
   const [isBiometricEnabled, setIsBiometricEnabledRaw] = useState(false);
+  const [assets, setAssets] = useState<Asset[]>([]);
 
   const toggleIncludeSavings = async (val: boolean) => {
     setIncludeSavingsRaw(val);
@@ -267,11 +289,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setIsBiometricEnabledRaw(session.user.user_metadata?.biometric_enabled === true);
       
       const fetchData = async () => {
-        const [txs, gls, subs, plannerRes] = await Promise.all([
+        const [txs, gls, subs, plannerRes, assetsRes] = await Promise.all([
           supabase.from("transactions").select("*").eq('user_id', session.user.id).order("date", { ascending: false }),
           supabase.from("goals").select("*").eq('user_id', session.user.id).order("created_at", { ascending: false }),
           supabase.from("subscriptions").select("*").eq('user_id', session.user.id).order("created_at", { ascending: false }),
-          supabase.from("salary_planner").select("*").eq('user_id', session.user.id).order("created_at", { ascending: false })
+          supabase.from("salary_planner").select("*").eq('user_id', session.user.id).order("created_at", { ascending: false }),
+          supabase.from("asset_vault").select("*").eq('user_id', session.user.id).order("created_at", { ascending: false })
         ]);
         if (txs.data) {
            setTransactions(txs.data as Transaction[]);
@@ -298,6 +321,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           })) as Subscription[]);
         }
         if (plannerRes.data) setPlannerItems(plannerRes.data as PlannerItem[]);
+        if (assetsRes.data) setAssets(assetsRes.data as Asset[]);
       };
       fetchData();
     } else {
@@ -306,6 +330,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
        setSubscriptions([]);
        setUtilities([]);
        setPlannerItems([]);
+       setAssets([]);
     }
   }, [session]);
 
@@ -412,6 +437,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!error) setPlannerItems(prev => prev.filter(p => p.id !== id));
   };
 
+  const addAsset = async (asset: Partial<Asset>) => {
+    delete asset.id;
+    const payload = { ...asset, user_id: session?.user?.id };
+    const { data, error } = await supabase.from('asset_vault').insert(payload).select().single();
+    if (!error && data) setAssets(prev => [data as Asset, ...prev]);
+  };
+  const deleteAsset = async (id: string) => {
+    const { error } = await supabase.from('asset_vault').delete().eq('id', id);
+    if (!error) setAssets(prev => prev.filter(a => a.id !== id));
+  };
+
   return (
     <AppContext.Provider value={{
       userName, setUserName,
@@ -441,7 +477,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       foodMonthlyLimit, setFoodMonthlyLimit,
       plannerItems, addPlannerItem, deletePlannerItem,
       isPinEnabled, togglePin,
-      isBiometricEnabled, toggleBiometric
+      isBiometricEnabled, toggleBiometric,
+      assets, addAsset, deleteAsset
     }}>
       {children}
 

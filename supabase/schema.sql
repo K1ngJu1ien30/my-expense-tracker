@@ -71,3 +71,37 @@ ALTER TABLE salary_planner ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Strict isolation mapping for Salary Planner" ON salary_planner
     FOR ALL USING (auth.uid() = user_id);
+
+-- 5. Asset Vault
+CREATE TABLE asset_vault (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    category VARCHAR(255),
+    emoji_icon TEXT DEFAULT '📦',
+    purchase_date DATE,
+    purchase_price DECIMAL(12,2) DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE asset_vault ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Strict isolation mapping for Asset Vault" ON asset_vault
+    FOR ALL USING (auth.uid() = user_id);
+
+-- 6. Asset Maintenance Logs
+CREATE TABLE asset_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    asset_id UUID REFERENCES asset_vault(id) ON DELETE CASCADE,
+    log_date DATE DEFAULT CURRENT_DATE,
+    description TEXT NOT NULL,
+    cost DECIMAL(12,2) DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE asset_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Strict isolation mapping for Asset Logs" ON asset_logs
+    FOR ALL USING (
+        EXISTS (SELECT 1 FROM asset_vault WHERE asset_vault.id = asset_logs.asset_id AND asset_vault.user_id = auth.uid())
+    );

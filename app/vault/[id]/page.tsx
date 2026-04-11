@@ -1,0 +1,188 @@
+"use client";
+
+import { useState, useEffect, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ArrowLeft, Plus, X, Calendar, Wrench } from "lucide-react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { useAppContext } from "@/lib/context";
+import { supabase } from "@/lib/supabase";
+import type { AssetLog } from "@/lib/context";
+
+export default function AssetDetailPage() {
+  const { assets, accentColor, triggerToast, session } = useAppContext();
+  const params = useParams();
+  const assetId = params.id as string;
+
+  const asset = useMemo(() => assets.find(a => a.id === assetId), [assets, assetId]);
+
+  const [logs, setLogs] = useState<AssetLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAddLog, setShowAddLog] = useState(false);
+  const [logDesc, setLogDesc] = useState("");
+  const [logCost, setLogCost] = useState("");
+  const [logDate, setLogDate] = useState(() => new Date().toISOString().split("T")[0]);
+
+  useEffect(() => {
+    if (!assetId || !session) return;
+    const fetchLogs = async () => {
+      const { data } = await supabase
+        .from("asset_logs")
+        .select("*")
+        .eq("asset_id", assetId)
+        .order("log_date", { ascending: false });
+      if (data) setLogs(data as AssetLog[]);
+      setLoading(false);
+    };
+    fetchLogs();
+  }, [assetId, session]);
+
+  const handleAddLog = async () => {
+    if (!logDesc) return;
+    const payload = { asset_id: assetId, description: logDesc, cost: Number(logCost) || 0, log_date: logDate };
+    const { data, error } = await supabase.from("asset_logs").insert(payload).select().single();
+    if (!error && data) {
+      setLogs(prev => [data as AssetLog, ...prev]);
+      triggerToast("Maintenance log added!");
+    }
+    setShowAddLog(false);
+    setLogDesc("");
+    setLogCost("");
+  };
+
+  const totalMaintenanceCost = useMemo(() => logs.reduce((sum, l) => sum + Number(l.cost || 0), 0), [logs]);
+
+  const getDaysActive = (dateStr: string) => {
+    if (!dateStr) return 0;
+    const diff = new Date().getTime() - new Date(dateStr).getTime();
+    return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
+  };
+
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  };
+
+  if (!asset) {
+    return (
+      <div className="p-6 animate-in fade-in duration-500 flex flex-col items-center justify-center min-h-[60vh]">
+        <p className="text-muted-foreground font-medium">Asset not found</p>
+        <Link href="/vault" className="text-primary font-bold text-sm mt-2">Back to Vault</Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 animate-in fade-in duration-500 space-y-6 pb-32">
+      {/* Header */}
+      <div className="flex items-center gap-3 pt-2">
+        <Link href="/vault" className="p-2 bg-muted rounded-xl hover:bg-border transition-colors">
+          <ArrowLeft className="w-5 h-5 text-foreground" />
+        </Link>
+        <h1 className="text-xl font-bold flex-1 truncate">{asset.name}</h1>
+      </div>
+
+      {/* Asset Info Card */}
+      <div className="bg-card p-6 rounded-3xl shadow-soft border border-border/40 space-y-4">
+        <div className="flex items-center gap-4">
+          <div className="text-5xl">{asset.emoji_icon || "📦"}</div>
+          <div className="flex-1 min-w-0">
+            <p className="font-black text-xl text-foreground leading-tight">{asset.name}</p>
+            <p className="text-xs font-semibold text-muted-foreground mt-0.5">{asset.category}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3 pt-2">
+          <div className="bg-muted/30 p-3 rounded-xl text-center">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Purchase</p>
+            <p className="text-sm font-black text-foreground mt-0.5">RM {Number(asset.purchase_price).toFixed(2)}</p>
+          </div>
+          <div className="bg-muted/30 p-3 rounded-xl text-center">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Active</p>
+            <p className="text-sm font-black mt-0.5" style={{ color: accentColor }}>{getDaysActive(asset.purchase_date)} days</p>
+          </div>
+          <div className="bg-muted/30 p-3 rounded-xl text-center">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Maint. Cost</p>
+            <p className="text-sm font-black text-foreground mt-0.5">RM {totalMaintenanceCost.toFixed(2)}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Maintenance Timeline */}
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h3 className="font-bold text-foreground">Maintenance Log</h3>
+          <button onClick={() => setShowAddLog(true)} style={{ color: accentColor, backgroundColor: `${accentColor}1A` }} className="p-2 rounded-full hover:scale-105 active:scale-95 transition-all">
+            <Plus className="w-4 h-4" />
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="flex justify-center py-8">
+            <div className="w-6 h-6 border-3 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : logs.length === 0 ? (
+          <div className="bg-card p-6 rounded-2xl border border-border/40 text-center">
+            <Wrench className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground font-medium">No maintenance logs yet</p>
+          </div>
+        ) : (
+          <div className="relative pl-6">
+            <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-border" />
+            {logs.map((log, i) => (
+              <motion.div
+                key={log.id}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.05 }}
+                className="relative mb-4 last:mb-0"
+              >
+                <div className="absolute -left-6 top-1.5 w-3 h-3 rounded-full border-2 border-border bg-card" style={i === 0 ? { borderColor: accentColor, backgroundColor: `${accentColor}30` } : {}} />
+                <div className="bg-card p-4 rounded-2xl border border-border/40 shadow-sm ml-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-foreground leading-snug">{log.description}</p>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <Calendar className="w-3 h-3 text-muted-foreground" />
+                        <p className="text-[10px] font-semibold text-muted-foreground">{formatDate(log.log_date)}</p>
+                      </div>
+                    </div>
+                    {Number(log.cost) > 0 && (
+                      <span className="text-xs font-black text-rose-500 shrink-0 bg-rose-500/10 px-2 py-1 rounded-lg">RM {Number(log.cost).toFixed(2)}</span>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Add Log Modal */}
+      <AnimatePresence>
+        {showAddLog && (
+          <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center p-0 sm:p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowAddLog(false)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="bg-card w-full sm:max-w-md rounded-t-[2.5rem] sm:rounded-[2rem] shadow-heavy z-10 overflow-hidden flex flex-col p-6 space-y-4">
+              <div className="w-12 h-1.5 bg-border rounded-full mx-auto mb-2 shrink-0 sm:hidden" />
+              <div className="flex justify-between items-center">
+                <h3 className="font-bold text-lg text-foreground">Add Maintenance Log</h3>
+                <button onClick={() => setShowAddLog(false)} className="p-1 px-2 bg-muted hover:bg-border rounded-full transition-colors"><X className="w-5 h-5 text-muted-foreground" /></button>
+              </div>
+
+              <input value={logDesc} onChange={e => setLogDesc(e.target.value)} placeholder="Description (e.g. Replaced battery)" className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" autoFocus />
+              <input type="date" value={logDate} onChange={e => setLogDate(e.target.value)} className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" />
+              <div className="flex items-center gap-2 bg-muted/60 rounded-xl px-4 py-3 border border-border">
+                <span className="font-bold text-muted-foreground text-sm">RM</span>
+                <input value={logCost} onChange={e => setLogCost(e.target.value)} type="number" placeholder="0.00 (optional)" className="flex-1 bg-transparent text-sm font-bold outline-none text-foreground" />
+              </div>
+
+              <button onClick={handleAddLog} style={{ backgroundColor: accentColor, boxShadow: `0 0 15px ${accentColor}4D` }} className="w-full text-white py-4 rounded-xl font-bold shadow-soft hover:scale-[1.02] active:scale-[0.98] transition-all">
+                Save Log Entry
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
