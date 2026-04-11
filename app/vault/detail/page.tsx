@@ -97,6 +97,18 @@ function AssetDetail() {
 
   const totalMaintenanceCost = useMemo(() => logs.reduce((sum, l) => sum + Number(l.cost || 0), 0), [logs]);
 
+  const trueTotalInvestment = useMemo(() => {
+    return Number(asset?.purchase_price || 0) + totalMaintenanceCost;
+  }, [asset, totalMaintenanceCost]);
+
+  const costPerDay = useMemo(() => {
+    if (!asset) return 0;
+    const price = Number(asset.purchase_price || 0);
+    if (price === 0) return 0;
+    const days = Math.max(1, getDaysActive(asset.purchase_date));
+    return trueTotalInvestment / days;
+  }, [asset, trueTotalInvestment]);
+
   const getDaysActive = (dateStr: string) => {
     if (!dateStr) return 0;
     const diff = new Date().getTime() - new Date(dateStr).getTime();
@@ -149,8 +161,18 @@ function AssetDetail() {
             <p className="text-sm font-black mt-0.5" style={{ color: accentColor }}>{getDaysActive(asset.purchase_date)} days</p>
           </div>
           <div className="bg-muted/30 p-3 rounded-xl text-center">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Cost / Day</p>
+            <p className="text-sm font-black mt-0.5" style={{ color: accentColor }}>RM {costPerDay.toFixed(2)}</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-muted/30 p-3 rounded-xl text-center">
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Maint. Cost</p>
             <p className="text-sm font-black text-foreground mt-0.5">RM {totalMaintenanceCost.toFixed(2)}</p>
+          </div>
+          <div className="bg-muted/30 p-3 rounded-xl text-center">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">True Total</p>
+            <p className="text-sm font-black text-foreground mt-0.5">RM {trueTotalInvestment.toFixed(2)}</p>
           </div>
         </div>
       </div>
@@ -169,7 +191,8 @@ function AssetDetail() {
         ) : logs.length === 0 ? (
           <div className="bg-card p-6 rounded-2xl border border-border/40 text-center">
             <Wrench className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground font-medium">No maintenance logs yet</p>
+            <p className="text-sm text-muted-foreground font-medium">No maintenance logs yet.</p>
+            <p className="text-xs text-muted-foreground/60 font-medium mt-1">This asset is running clean.</p>
           </div>
         ) : (
           <div className="relative pl-6">

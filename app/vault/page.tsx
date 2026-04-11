@@ -31,6 +31,16 @@ export default function VaultPage() {
 
   const totalValue = useMemo(() => filteredAssets.reduce((sum, a) => sum + Number(a.purchase_price || 0), 0), [filteredAssets]);
 
+  const avgCostPerDay = useMemo(() => {
+    return filteredAssets.reduce((sum, a) => {
+      const price = Number(a.purchase_price || 0);
+      if (price === 0) return sum;
+      const now = new Date();
+      const days = Math.max(1, Math.floor((now.getTime() - new Date(a.purchase_date).getTime()) / 86400000));
+      return sum + price / days;
+    }, 0);
+  }, [filteredAssets]);
+
   const existingCategories = useMemo(() => [...new Set(assets.map(a => a.category).filter(Boolean))], [assets]);
 
   const handleAdd = async () => {
@@ -66,14 +76,18 @@ export default function VaultPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-3">
         <div className="bg-card p-4 rounded-2xl shadow-soft border border-border/40">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Total Value</p>
-          <p className="text-xl font-black text-foreground">RM {totalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+          <p className="text-lg font-black text-foreground">RM {totalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
         </div>
         <div className="bg-card p-4 rounded-2xl shadow-soft border border-border/40">
-          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Items Tracked</p>
-          <p className="text-xl font-black text-foreground">{filteredAssets.length}</p>
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Items</p>
+          <p className="text-lg font-black text-foreground">{filteredAssets.length}</p>
+        </div>
+        <div className="bg-card p-4 rounded-2xl shadow-soft border border-border/40">
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Cost / Day</p>
+          <p className="text-lg font-black" style={{ color: accentColor }}>RM {avgCostPerDay.toFixed(2)}</p>
         </div>
       </div>
 
