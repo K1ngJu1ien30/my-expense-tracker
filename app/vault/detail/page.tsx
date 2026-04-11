@@ -37,18 +37,26 @@ function AssetDetail() {
   const existingCategories = useMemo(() => [...new Set(assets.map(a => a.category).filter(Boolean))], [assets]);
 
   useEffect(() => {
-    if (!assetId || !session) return;
+    if (!assetId || !session) {
+      if (!authLoading) setLoading(false);
+      return;
+    }
     const fetchLogs = async () => {
-      const { data } = await supabase
-        .from("asset_logs")
-        .select("*")
-        .eq("asset_id", assetId)
-        .order("log_date", { ascending: false });
-      if (data) setLogs(data as AssetLog[]);
-      setLoading(false);
+      try {
+        const { data } = await supabase
+          .from("asset_logs")
+          .select("*")
+          .eq("asset_id", assetId)
+          .order("log_date", { ascending: false });
+        if (data) setLogs(data as AssetLog[]);
+      } catch (err) {
+        console.error("Failed to fetch asset logs:", err);
+      } finally {
+        setLoading(false);
+      }
     };
     fetchLogs();
-  }, [assetId, session]);
+  }, [assetId, session, authLoading]);
 
   const handleAddLog = async () => {
     if (!logDesc) return;
@@ -196,7 +204,7 @@ function AssetDetail() {
 
         {loading ? (
           <div className="flex justify-center py-8"><div className="w-6 h-6 border-3 border-primary border-t-transparent rounded-full animate-spin" /></div>
-        ) : logs.length === 0 ? (
+        ) : (logs || []).length === 0 ? (
           <div className="bg-card p-6 rounded-2xl border border-border/40 text-center">
             <Wrench className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
             <p className="text-sm text-muted-foreground font-medium">No maintenance logs yet.</p>
@@ -205,7 +213,7 @@ function AssetDetail() {
         ) : (
           <div className="relative pl-6">
             <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-border" />
-            {logs.map((log, i) => (
+            {(logs || []).map((log, i) => (
               <motion.div key={log.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }} className="relative mb-4 last:mb-0">
                 <div className="absolute -left-6 top-1.5 w-3 h-3 rounded-full border-2 border-border bg-card" style={i === 0 ? { borderColor: accentColor, backgroundColor: `${accentColor}30` } : {}} />
                 <div className="bg-card p-4 rounded-2xl border border-border/40 shadow-sm ml-2">
