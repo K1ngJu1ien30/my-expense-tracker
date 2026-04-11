@@ -142,7 +142,7 @@ export default function VaultPage() {
         {showAdd && (
           <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center p-0 sm:p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowAdd(false)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="bg-card w-full sm:max-w-md rounded-t-[2.5rem] sm:rounded-[2rem] shadow-heavy z-10 overflow-hidden flex flex-col p-6 space-y-4 max-h-[85vh] overflow-y-auto hide-scrollbar">
+            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="bg-card w-full sm:max-w-md rounded-t-[2.5rem] sm:rounded-[2rem] shadow-heavy z-10 overflow-hidden flex flex-col p-6 pb-32 space-y-4 max-h-[85vh] overflow-y-auto hide-scrollbar">
               <div className="w-12 h-1.5 bg-border rounded-full mx-auto mb-2 shrink-0 sm:hidden" />
               <div className="flex justify-between items-center">
                 <h3 className="font-bold text-lg text-foreground">Add Asset</h3>
@@ -162,7 +162,14 @@ export default function VaultPage() {
 
               <input value={name} onChange={e => setName(e.target.value)} placeholder="Asset name (e.g. MacBook Pro)" className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" autoFocus />
               <div className="relative">
-                <input value={category} onChange={e => setCategory(e.target.value)} list="asset-categories" placeholder="Category (e.g. Electronics)" className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" />
+                <input
+                  value={category}
+                  onChange={e => setCategory(e.target.value)}
+                  list="asset-categories"
+                  placeholder="Category (e.g. Electronics)"
+                  className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground"
+                  onFocus={e => { const el = e.currentTarget; setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "center" }), 300); }}
+                />
                 <datalist id="asset-categories">
                   {existingCategories.map(c => <option key={c} value={c} />)}
                 </datalist>
