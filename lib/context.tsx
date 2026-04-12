@@ -154,6 +154,8 @@ type AppContextType = {
   toggleRadar: (val: boolean) => void;
   activeAssetId: string | null;
   setActiveAssetId: (id: string | null) => void;
+  showTransactionModal: boolean;
+  setShowTransactionModal: (val: boolean) => void;
 };
 
 export const AppContext = createContext<AppContextType | null>(null);
@@ -234,6 +236,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [accounts, setAccounts] = useState<string[]>(["Bank", "Cash", "eWallet"]);
   const [editTransactionId, setEditTransactionId] = useState<string | null>(null);
   const [activeAssetId, setActiveAssetId] = useState<string | null>(null);
+  const [showTransactionModal, setShowTransactionModal] = useState(false);
   
   const [confirmState, setConfirmState] = useState<ConfirmState>({ isOpen: false, title: "", message: "", onConfirm: () => {} });
 
@@ -506,7 +509,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       assets, addAsset, updateAsset, deleteAsset,
       isVaultEnabled, toggleVault,
       isRadarEnabled, toggleRadar,
-      activeAssetId, setActiveAssetId
+      activeAssetId, setActiveAssetId,
+      showTransactionModal, setShowTransactionModal
     }}>
       {children}
 

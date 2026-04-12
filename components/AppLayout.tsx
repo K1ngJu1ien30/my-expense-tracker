@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import BottomNav from "./BottomNav";
 import TransactionModal from "./TransactionModal";
@@ -11,11 +11,10 @@ import { useAppContext } from "@/lib/context";
 import { AnimatePresence, motion } from "framer-motion";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const [isModalOpen, setModalOpen] = useState(false);
-  const { toast, session, authLoading } = useAppContext();
+  const { toast, session, authLoading, showTransactionModal, setShowTransactionModal } = useAppContext();
   const pathname = usePathname();
   useEffect(() => {
-    setModalOpen(false);
+    setShowTransactionModal(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -63,8 +62,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </main>
       
       <InstallPrompt />
-      <TransactionModal isOpen={isModalOpen} onClose={() => setModalOpen(false)} />
-      <BottomNav onOpenAdd={() => setModalOpen(true)} />
+      <TransactionModal isOpen={showTransactionModal} onClose={() => setShowTransactionModal(false)} />
+      <BottomNav onOpenAdd={() => setShowTransactionModal(true)} />
     </div>
     </AuthGate>
   );
