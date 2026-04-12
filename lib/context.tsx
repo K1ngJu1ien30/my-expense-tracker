@@ -183,6 +183,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [isVaultEnabled, setIsVaultEnabledRaw] = useState(false);
   const [isRadarEnabled, setIsRadarEnabledRaw] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
 
   const toggleIncludeSavings = async (val: boolean) => {
     setIncludeSavingsRaw(val);
@@ -308,6 +309,53 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => { if (cleanup) cleanup(); };
   }, []);
 
+  // Network status + offline queue sync
+  const syncOfflineQueue = async () => {
+    try {
+      const raw = localStorage.getItem("offline_tx_queue");
+      if (!raw) return;
+      const queue = JSON.parse(raw) as Partial<Transaction>[];
+      if (queue.length === 0) return;
+      for (const tx of queue) {
+        await supabase.from("transactions").insert({ ...tx, user_id: session?.user?.id });
+      }
+      localStorage.removeItem("offline_tx_queue");
+      triggerToast(`${queue.length} offline expense${queue.length > 1 ? "s" : ""} synced to cloud!`);
+    } catch (err) {
+      console.error("Offline sync failed:", err);
+    }
+  };
+
+  useEffect(() => {
+    // Browser fallback
+    const handleOnline = () => { setIsOffline(false); syncOfflineQueue(); };
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    setIsOffline(!navigator.onLine);
+
+    // Capacitor native network listener
+    let nativeCleanup: (() => void) | undefined;
+    try {
+      // @ts-ignore
+      import('@capacitor/network').then(({ Network }) => {
+        Network.getStatus().then((status: any) => setIsOffline(!status.connected)).catch(() => {});
+        Network.addListener('networkStatusChange', (status: any) => {
+          const wasOffline = !navigator.onLine;
+          setIsOffline(!status.connected);
+          if (status.connected && wasOffline) syncOfflineQueue();
+        });
+        nativeCleanup = () => { Network.removeAllListeners().catch(() => {}); };
+      }).catch(() => {});
+    } catch {}
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+      if (nativeCleanup) nativeCleanup();
+    };
+  }, [session]);
+
   useEffect(() => {
     if (session?.user) {
       const metaName = session.user.user_metadata?.display_name;
@@ -328,39 +376,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setIsRadarEnabledRaw(session.user.user_metadata?.radar_enabled === true);
       
       const fetchData = async () => {
-        const [txs, gls, subs, plannerRes, assetsRes] = await Promise.all([
-          supabase.from("transactions").select("*").eq('user_id', session.user.id).order("date", { ascending: false }),
-          supabase.from("goals").select("*").eq('user_id', session.user.id).order("created_at", { ascending: false }),
-          supabase.from("subscriptions").select("*").eq('user_id', session.user.id).order("created_at", { ascending: false }),
-          supabase.from("salary_planner").select("*").eq('user_id', session.user.id).order("created_at", { ascending: false }),
-          supabase.from("asset_vault").select("*").eq('user_id', session.user.id).order("created_at", { ascending: false })
-        ]);
-        if (txs.data) {
-           setTransactions(txs.data as Transaction[]);
-           setAccounts(savedAccounts);
+        try {
+          const [txs, gls, subs, plannerRes, assetsRes] = await Promise.all([
+            supabase.from("transactions").select("*").eq('user_id', session.user.id).order("date", { ascending: false }),
+            supabase.from("goals").select("*").eq('user_id', session.user.id).order("created_at", { ascending: false }),
+            supabase.from("subscriptions").select("*").eq('user_id', session.user.id).order("created_at", { ascending: false }),
+            supabase.from("salary_planner").select("*").eq('user_id', session.user.id).order("created_at", { ascending: false }),
+            supabase.from("asset_vault").select("*").eq('user_id', session.user.id).order("created_at", { ascending: false })
+          ]);
+          if (txs.data) {
+             setTransactions(txs.data as Transaction[]);
+             setAccounts(savedAccounts);
+          }
+          if (gls.data) setGoals(gls.data.map((g: any) => ({
+               id: g.id, 
+               title: g.title, 
+               subtitle: 'Goal', 
+               current: Number(g.current_amount), 
+               target: Number(g.target_amount),
+               isPinned: g.is_pinned,
+               color: "bg-emerald-500",
+               bg: "bg-emerald-500/10",
+               iconName: "Target",
+               user_id: g.user_id
+          })) as Goal[]);
+          if (subs.data) {
+            setSubscriptions(subs.data.filter((s:any) => s.type === "subscription").map((s:any) => ({
+               id: s.id, name: s.name, cost: Number(s.amount), billingDay: s.billing_day, sourceAccount: s.source_account, autoDeduct: s.auto_deduct, user_id: s.user_id, icon: "MonitorPlay", bg: "bg-red-500/10", color: "text-red-500"
+            })) as Subscription[]);
+            setUtilities(subs.data.filter((s:any) => s.type === "utility").map((s:any) => ({
+               id: s.id, name: s.name, cost: Number(s.amount), billingDay: s.billing_day, sourceAccount: s.source_account, autoDeduct: s.auto_deduct, user_id: s.user_id, icon: "Zap", bg: "bg-yellow-500/10", color: "text-yellow-500"
+            })) as Subscription[]);
+          }
+          if (plannerRes.data) setPlannerItems(plannerRes.data as PlannerItem[]);
+          if (assetsRes.data) setAssets(assetsRes.data as Asset[]);
+        } catch (err) {
+          console.error("Data fetch failed (possibly offline):", err);
+          setAccounts(savedAccounts);
         }
-        if (gls.data) setGoals(gls.data.map((g: any) => ({
-             id: g.id, 
-             title: g.title, 
-             subtitle: 'Goal', 
-             current: Number(g.current_amount), 
-             target: Number(g.target_amount),
-             isPinned: g.is_pinned,
-             color: "bg-emerald-500",
-             bg: "bg-emerald-500/10",
-             iconName: "Target",
-             user_id: g.user_id
-        })) as Goal[]);
-        if (subs.data) {
-          setSubscriptions(subs.data.filter((s:any) => s.type === "subscription").map((s:any) => ({
-             id: s.id, name: s.name, cost: Number(s.amount), billingDay: s.billing_day, sourceAccount: s.source_account, autoDeduct: s.auto_deduct, user_id: s.user_id, icon: "MonitorPlay", bg: "bg-red-500/10", color: "text-red-500"
-          })) as Subscription[]);
-          setUtilities(subs.data.filter((s:any) => s.type === "utility").map((s:any) => ({
-             id: s.id, name: s.name, cost: Number(s.amount), billingDay: s.billing_day, sourceAccount: s.source_account, autoDeduct: s.auto_deduct, user_id: s.user_id, icon: "Zap", bg: "bg-yellow-500/10", color: "text-yellow-500"
-          })) as Subscription[]);
-        }
-        if (plannerRes.data) setPlannerItems(plannerRes.data as PlannerItem[]);
-        if (assetsRes.data) setAssets(assetsRes.data as Asset[]);
       };
       fetchData();
     } else {
@@ -384,6 +437,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   
   const addTransaction = async (tx: Partial<Transaction>) => {
     delete tx.id;
+    if (isOffline) {
+      const offlineTx = { ...tx, id: `offline-${Date.now()}`, user_id: session?.user?.id };
+      setTransactions(prev => [offlineTx as Transaction, ...prev]);
+      try {
+        const existing = JSON.parse(localStorage.getItem("offline_tx_queue") || "[]");
+        existing.push({ ...tx, user_id: session?.user?.id });
+        localStorage.setItem("offline_tx_queue", JSON.stringify(existing));
+      } catch {}
+      triggerToast("No connection. Expense saved offline.");
+      return;
+    }
     const { data, error } = await supabase.from('transactions').insert({ ...tx, user_id: session?.user?.id }).select().single();
     if (!error && data) setTransactions(prev => [data as Transaction, ...prev]);
   };
@@ -533,7 +597,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       isVaultEnabled, toggleVault,
       isRadarEnabled, toggleRadar,
       activeAssetId, setActiveAssetId,
-      showTransactionModal, setShowTransactionModal
+      showTransactionModal, setShowTransactionModal,
+      isOffline
     }}>
       {children}
 
