@@ -1,6 +1,6 @@
 "use client";
 
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useAppContext } from "@/lib/context";
 import { MonitorPlay, Music, Wifi, CreditCard, Plus, Trash2, Edit2, Zap, Smartphone, Droplet, X, Sparkles } from "lucide-react";
 import React, { useState, useMemo } from "react";
@@ -57,6 +57,23 @@ const BarTooltip = ({ active, payload, label }: any) => {
             </div>
           ))}
         </div>
+      </div>
+    );
+  }
+  return null;
+};
+
+const VelocityTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-card/95 backdrop-blur-xl border border-border/50 rounded-2xl shadow-heavy p-3 min-w-[130px]">
+        <p className="text-xs font-bold text-muted-foreground mb-2 pb-2 border-b border-border/50">Day {label}</p>
+        {payload.map((entry: any, i: number) => (
+          <div key={i} className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: entry.stroke || entry.color }} />
+            <span className="text-xs font-black text-foreground">RM {Number(entry.value).toFixed(2)}</span>
+          </div>
+        ))}
       </div>
     );
   }
@@ -225,6 +242,52 @@ export default function AnalyticsPage() {
      return "All Time";
   }, [timeFilter]);
 
+  // Velocity Projection (current month only)
+  const velocityData = useMemo(() => {
+    const now = new Date();
+    const currentDay = now.getDate();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+
+    // Build cumulative actual spend by day
+    const dailySpend: Record<number, number> = {};
+    transactions.forEach(t => {
+      if (t.type !== "Expense") return;
+      const d = new Date(t.date);
+      if (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear()) return;
+      const day = d.getDate();
+      dailySpend[day] = (dailySpend[day] || 0) + Number(t.amount);
+    });
+
+    let cumulative = 0;
+    const data: { day: number; actual?: number; projected?: number }[] = [];
+
+    // Actual line up to today
+    for (let d = 1; d <= daysInMonth; d++) {
+      if (d <= currentDay) {
+        cumulative += dailySpend[d] || 0;
+        data.push({ day: d, actual: cumulative, projected: d === currentDay ? cumulative : undefined });
+      } else {
+        data.push({ day: d });
+      }
+    }
+
+    // Projected line from today to end of month
+    const dailyAvg = currentDay > 0 ? cumulative / currentDay : 0;
+    let projCumulative = cumulative;
+    for (let d = currentDay + 1; d <= daysInMonth; d++) {
+      projCumulative += dailyAvg;
+      const existing = data.find(item => item.day === d);
+      if (existing) existing.projected = Math.round(projCumulative * 100) / 100;
+    }
+    // Set projected on the current day entry to bridge the lines
+    const todayEntry = data.find(item => item.day === currentDay);
+    if (todayEntry) todayEntry.projected = cumulative;
+
+    const projectedTotal = Math.round(dailyAvg * daysInMonth * 100) / 100;
+
+    return { data, projectedTotal, dailyAvg, currentDay, daysInMonth, totalSoFar: cumulative };
+  }, [transactions]);
+
   return (
     <div className="p-6 animate-in fade-in duration-500 space-y-6 pb-[120px] relative min-h-screen overflow-x-hidden">
       
@@ -354,6 +417,70 @@ export default function AnalyticsPage() {
           </div>
         </div>
       </div>
+
+      {/* Velocity Projection Chart */}
+      {timeFilter === "Month" && velocityData.totalSoFar > 0 && (
+        <div className="bg-card p-6 rounded-[2rem] shadow-soft border border-border/40 space-y-4">
+          <div>
+            <h3 className="font-bold text-foreground">Spending Velocity</h3>
+            <p className="text-xs text-muted-foreground font-medium mt-1">
+              At your current pace of <span className="font-bold" style={{ color: accentColor }}>RM {velocityData.dailyAvg.toFixed(2)}/day</span>, you are projected to spend:
+            </p>
+            <p className="text-2xl font-black mt-2" style={{ color: accentColor }}>
+              RM {velocityData.projectedTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            </p>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mt-0.5">end-of-month projection</p>
+          </div>
+
+          <div className="h-[200px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={velocityData.data} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.4} />
+                <XAxis
+                  dataKey="day"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 10, fill: 'var(--muted-foreground)', fontWeight: 600 }}
+                  interval={4}
+                />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--muted-foreground)', fontWeight: 600 }} />
+                <Tooltip content={<VelocityTooltip />} />
+                <Line
+                  type="monotone"
+                  dataKey="actual"
+                  stroke={accentColor}
+                  strokeWidth={2.5}
+                  dot={false}
+                  activeDot={{ r: 5, fill: accentColor }}
+                  connectNulls={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="projected"
+                  stroke={accentColor}
+                  strokeWidth={2}
+                  strokeDasharray="6 4"
+                  strokeOpacity={0.4}
+                  dot={false}
+                  activeDot={{ r: 4, fill: accentColor, strokeOpacity: 0.4 }}
+                  connectNulls={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="flex items-center gap-4 pt-1">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-0.5 rounded-full" style={{ backgroundColor: accentColor }} />
+              <span className="text-[10px] font-bold text-muted-foreground">Actual</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-0.5 rounded-full opacity-40" style={{ backgroundColor: accentColor, borderTop: '2px dashed' }} />
+              <span className="text-[10px] font-bold text-muted-foreground">Projected</span>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Subscriptions & Utilities Hub */}
       <div className="space-y-6 pt-4">
