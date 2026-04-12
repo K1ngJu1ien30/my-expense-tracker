@@ -26,7 +26,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function Dashboard() {
-  const { userName, goals, transactions, includeSavings, accounts } = useAppContext();
+  const { userName, goals, transactions, includeSavings, accounts, formatCurrency } = useAppContext();
   const pinnedGoals = goals.filter(g => g.isPinned);
 
   const hour = new Date().getHours();
@@ -187,7 +187,7 @@ export default function Dashboard() {
             <TrendingUp className="w-4 h-4 text-rose-500" />
           </div>
           <p className="text-muted-foreground text-xs font-bold uppercase tracking-wider mb-1">Weekly</p>
-          <p className="text-lg font-black dark:text-foreground">RM {weeklyTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+          <p className="text-lg font-black dark:text-foreground">{formatCurrency(weeklyTotal)}</p>
         </Link>
       </div>
 

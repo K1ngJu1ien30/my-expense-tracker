@@ -86,6 +86,7 @@ type AppContextType = {
   setUserName: (val: string) => void;
   currency: string;
   setCurrency: (val: string) => void;
+  formatCurrency: (amount: number) => string;
   billingCycle: string;
   setBillingCycle: (val: string) => void;
   dailyReminder: boolean;
@@ -262,6 +263,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Theming
   const [accentColor, setAccentColor] = useState("#3b82f6");
 
+  // Currency formatter
+  const formatCurrency = (amount: number) => `${currency} ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
   useEffect(() => {
     const initSession = async () => {
       try {
@@ -283,6 +287,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => subscription.unsubscribe();
+  }, []);
+
+  // Capacitor hardware back button
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    try {
+      // @ts-ignore
+      import('@capacitor/app').then(({ App }) => {
+        App.addListener('backButton', ({ canGoBack }: { canGoBack: boolean }) => {
+          if (canGoBack) {
+            window.history.back();
+          } else {
+            App.exitApp();
+          }
+        });
+        cleanup = () => { App.removeAllListeners().catch(() => {}); };
+      }).catch(() => {});
+    } catch {}
+    return () => { if (cleanup) cleanup(); };
   }, []);
 
   useEffect(() => {
@@ -479,7 +502,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppContext.Provider value={{
       userName, setUserName,
-      currency, setCurrency,
+      currency, setCurrency, formatCurrency,
       billingCycle, setBillingCycle,
       dailyReminder, setDailyReminder,
       reminderTime, setReminderTime,
