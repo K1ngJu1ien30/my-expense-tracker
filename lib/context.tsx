@@ -157,6 +157,7 @@ type AppContextType = {
   setActiveAssetId: (id: string | null) => void;
   showTransactionModal: boolean;
   setShowTransactionModal: (val: boolean) => void;
+  isOffline: boolean;
 };
 
 export const AppContext = createContext<AppContextType | null>(null);
