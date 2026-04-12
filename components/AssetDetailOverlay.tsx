@@ -23,6 +23,7 @@ export default function AssetDetailOverlay({ assetId, onClose }: Props) {
   const [loading, setLoading] = useState(true);
 
   const [showAddLog, setShowAddLog] = useState(false);
+  const [editingLog, setEditingLog] = useState<AssetLog | null>(null);
   const [logDesc, setLogDesc] = useState("");
   const [logCost, setLogCost] = useState("");
   const [logDate, setLogDate] = useState(() => new Date().toISOString().split("T")[0]);
@@ -58,17 +59,61 @@ export default function AssetDetailOverlay({ assetId, onClose }: Props) {
     fetchLogs();
   }, [assetId, session]);
 
-  const handleAddLog = async () => {
-    if (!logDesc) return;
-    const payload = { asset_id: assetId, description: logDesc, cost: Number(logCost) || 0, log_date: logDate };
-    const { data, error } = await supabase.from("asset_logs").insert(payload).select().single();
-    if (!error && data) {
-      setLogs(prev => [data as AssetLog, ...prev]);
-      triggerToast("Maintenance log added!");
-    }
-    setShowAddLog(false);
+  const resetLogForm = () => {
+    setEditingLog(null);
     setLogDesc("");
     setLogCost("");
+    setLogDate(new Date().toISOString().split("T")[0]);
+  };
+
+  const openAddLog = () => {
+    resetLogForm();
+    setShowAddLog(true);
+  };
+
+  const openEditLog = (log: AssetLog) => {
+    setEditingLog(log);
+    setLogDesc(log.description);
+    setLogCost(String(log.cost || 0));
+    setLogDate(log.log_date);
+    setShowAddLog(true);
+  };
+
+  const handleSaveLog = async () => {
+    if (!logDesc) return;
+
+    if (editingLog) {
+      const { data, error } = await supabase
+        .from("asset_logs")
+        .update({ description: logDesc, cost: Number(logCost) || 0, log_date: logDate })
+        .eq("id", editingLog.id)
+        .select()
+        .single();
+      if (!error && data) {
+        setLogs(prev => prev.map(l => l.id === editingLog.id ? (data as AssetLog) : l));
+        triggerToast("Log updated!");
+      }
+    } else {
+      const payload = { asset_id: assetId, description: logDesc, cost: Number(logCost) || 0, log_date: logDate };
+      const { data, error } = await supabase.from("asset_logs").insert(payload).select().single();
+      if (!error && data) {
+        setLogs(prev => [data as AssetLog, ...prev]);
+        triggerToast("Maintenance log added!");
+      }
+    }
+
+    setShowAddLog(false);
+    resetLogForm();
+  };
+
+  const handleDeleteLog = (logId: string) => {
+    confirmAction("Delete Log", "Remove this maintenance entry?", async () => {
+      const { error } = await supabase.from("asset_logs").delete().eq("id", logId);
+      if (!error) {
+        setLogs(prev => prev.filter(l => l.id !== logId));
+        triggerToast("Log removed");
+      }
+    });
   };
 
   const openEdit = () => {
@@ -200,7 +245,7 @@ export default function AssetDetailOverlay({ assetId, onClose }: Props) {
         <div className="space-y-4">
           <div className="flex justify-between items-center">
             <h3 className="font-bold text-foreground">Maintenance Log</h3>
-            <button onClick={() => setShowAddLog(true)} style={{ color: accentColor, backgroundColor: `${accentColor}1A` }} className="p-2 rounded-full hover:scale-105 active:scale-95 transition-all">
+            <button onClick={openAddLog} style={{ color: accentColor, backgroundColor: `${accentColor}1A` }} className="p-2 rounded-full hover:scale-105 active:scale-95 transition-all">
               <Plus className="w-4 h-4" />
             </button>
           </div>
@@ -226,9 +271,17 @@ export default function AssetDetailOverlay({ assetId, onClose }: Props) {
                           <p className="text-[10px] font-semibold text-muted-foreground">{formatDate(log.log_date)}</p>
                         </div>
                       </div>
-                      {Number(log.cost) > 0 && (
-                        <span className="text-xs font-black text-rose-500 shrink-0 bg-rose-500/10 px-2 py-1 rounded-lg">+ RM {Number(log.cost).toFixed(2)}</span>
-                      )}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {Number(log.cost) > 0 && (
+                          <span className="text-xs font-black text-rose-500 bg-rose-500/10 px-2 py-1 rounded-lg">+ RM {Number(log.cost).toFixed(2)}</span>
+                        )}
+                        <button onClick={() => openEditLog(log)} className="p-1.5 text-muted-foreground hover:text-primary transition-colors">
+                          <Edit2 className="w-3 h-3" />
+                        </button>
+                        <button onClick={() => handleDeleteLog(log.id)} className="p-1.5 text-muted-foreground hover:text-red-500 transition-colors">
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </motion.div>
@@ -238,16 +291,16 @@ export default function AssetDetailOverlay({ assetId, onClose }: Props) {
         </div>
       </div>
 
-      {/* Add Log Modal */}
+      {/* Add / Edit Log Modal */}
       <AnimatePresence>
         {showAddLog && (
           <div className="fixed inset-0 z-[250] flex items-end justify-center sm:items-center p-0 sm:p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowAddLog(false)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => { setShowAddLog(false); resetLogForm(); }} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
             <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="bg-card w-full sm:max-w-md rounded-t-[2.5rem] sm:rounded-[2rem] shadow-heavy z-10 overflow-hidden flex flex-col p-6 space-y-4">
               <div className="w-12 h-1.5 bg-border rounded-full mx-auto mb-2 shrink-0 sm:hidden" />
               <div className="flex justify-between items-center">
-                <h3 className="font-bold text-lg text-foreground">Add Maintenance Log</h3>
-                <button onClick={() => setShowAddLog(false)} className="p-1 px-2 bg-muted hover:bg-border rounded-full transition-colors"><X className="w-5 h-5 text-muted-foreground" /></button>
+                <h3 className="font-bold text-lg text-foreground">{editingLog ? "Edit Log" : "Add Maintenance Log"}</h3>
+                <button onClick={() => { setShowAddLog(false); resetLogForm(); }} className="p-1 px-2 bg-muted hover:bg-border rounded-full transition-colors"><X className="w-5 h-5 text-muted-foreground" /></button>
               </div>
               <input value={logDesc} onChange={e => setLogDesc(e.target.value)} placeholder="Description (e.g. Replaced battery)" className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" autoFocus />
               <input type="date" value={logDate} onChange={e => setLogDate(e.target.value)} className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" />
@@ -255,8 +308,8 @@ export default function AssetDetailOverlay({ assetId, onClose }: Props) {
                 <span className="font-bold text-muted-foreground text-sm">RM</span>
                 <input value={logCost} onChange={e => setLogCost(e.target.value)} type="number" placeholder="0.00 (optional)" className="flex-1 bg-transparent text-sm font-bold outline-none text-foreground" />
               </div>
-              <button onClick={handleAddLog} style={{ backgroundColor: accentColor, boxShadow: `0 0 15px ${accentColor}4D` }} className="w-full text-white py-4 rounded-xl font-bold shadow-soft hover:scale-[1.02] active:scale-[0.98] transition-all">
-                Save Log Entry
+              <button onClick={handleSaveLog} style={{ backgroundColor: accentColor, boxShadow: `0 0 15px ${accentColor}4D` }} className="w-full text-white py-4 rounded-xl font-bold shadow-soft hover:scale-[1.02] active:scale-[0.98] transition-all">
+                {editingLog ? "Save Changes" : "Save Log Entry"}
               </button>
             </motion.div>
           </div>
