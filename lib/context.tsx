@@ -315,7 +315,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => { if (cleanup) cleanup(); };
   }, []);
 
-  // V82: Hoisted fetchData so it can be called from syncOfflineQueue for hard refresh
+  // V82+V83: Hoisted fetchData — background revalidation fetch
+  // On success: overwrites state with fresh data & updates the localStorage cache.
+  // On failure: does NOT reset state — the eager cache loaded before this call remains intact.
   const fetchData = async () => {
     if (!session?.user) return;
     const savedAccounts = session.user.user_metadata?.custom_accounts || ['Bank', 'Cash', 'eWallet'];
@@ -365,7 +367,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (plannerRes.data) setPlannerItems(parsedPlanner);
       if (assetsRes.data) setAssets(parsedAssets);
 
-      // V81: Cache successful fetch to localStorage for offline hydration
+      // Update the localStorage cache with the freshest payload
       try {
         localStorage.setItem('cached_tracker_data', JSON.stringify({
           transactions: parsedTransactions,
@@ -379,40 +381,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       } catch {}
 
     } catch (err) {
-      console.error("Data fetch failed (possibly offline):", err);
-
-      // V81: Hydrate from localStorage cache to prevent zero-state on offline cold boot
-      try {
-        const cached = localStorage.getItem('cached_tracker_data');
-        if (cached) {
-          const data = JSON.parse(cached);
-          let cachedTx: Transaction[] = data.transactions || [];
-
-          // Append any pending offline queue items so the math stays accurate
-          const queueRaw = localStorage.getItem('offline_tx_queue');
-          if (queueRaw) {
-            const queue = JSON.parse(queueRaw) as Partial<Transaction>[];
-            const offlineTxs = queue.map((tx, i) => ({
-              ...tx,
-              id: `offline-${Date.now()}-${i}`,
-              user_id: session?.user?.id,
-            } as Transaction));
-            cachedTx = [...offlineTxs, ...cachedTx];
-          }
-
-          setTransactions(cachedTx);
-          setGoals(data.goals || []);
-          setSubscriptions(data.subscriptions || []);
-          setUtilities(data.utilities || []);
-          setPlannerItems(data.plannerItems || []);
-          setAssets(data.assets || []);
-          setAccounts(data.accounts || savedAccounts);
-        } else {
-          setAccounts(savedAccounts);
-        }
-      } catch {
-        setAccounts(savedAccounts);
-      }
+      // V83: Do NOT reset state to empty — the eager cache is already powering the UI
+      console.warn("V83: Background revalidation failed (offline or network error):", err);
     }
   };
 
@@ -484,7 +454,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setIsVaultEnabledRaw(session.user.user_metadata?.vault_enabled === true);
       setIsRadarEnabledRaw(session.user.user_metadata?.radar_enabled === true);
       setIsClaimsEnabledRaw(session.user.user_metadata?.claims_enabled === true);
-      
+
+      // V83: Stale-While-Revalidate — eagerly hydrate from localStorage BEFORE the network call
+      try {
+        const cached = localStorage.getItem('cached_tracker_data');
+        if (cached) {
+          const data = JSON.parse(cached);
+          let cachedTx: Transaction[] = data.transactions || [];
+
+          // Append any pending offline queue items so the math is accurate immediately
+          const queueRaw = localStorage.getItem('offline_tx_queue');
+          if (queueRaw) {
+            const queue = JSON.parse(queueRaw) as Partial<Transaction>[];
+            const offlineTxs = queue.map((tx, i) => ({
+              ...tx,
+              id: `offline-${Date.now()}-${i}`,
+              user_id: session.user.id,
+            } as Transaction));
+            cachedTx = [...offlineTxs, ...cachedTx];
+          }
+
+          setTransactions(cachedTx);
+          setGoals(data.goals || []);
+          setSubscriptions(data.subscriptions || []);
+          setUtilities(data.utilities || []);
+          setPlannerItems(data.plannerItems || []);
+          setAssets(data.assets || []);
+          setAccounts(data.accounts || session.user.user_metadata?.custom_accounts || ['Bank', 'Cash', 'eWallet']);
+        }
+      } catch {}
+
+      // Background revalidation — fetch fresh data from Supabase, overwrites state on success
       fetchData();
     } else {
        setTransactions([]);
