@@ -160,6 +160,8 @@ type AppContextType = {
   showTransactionModal: boolean;
   setShowTransactionModal: (val: boolean) => void;
   isOffline: boolean;
+  isClaimsEnabled: boolean;
+  toggleClaims: (val: boolean) => void;
 };
 
 export const AppContext = createContext<AppContextType | null>(null);
