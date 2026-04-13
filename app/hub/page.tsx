@@ -7,7 +7,7 @@ import { useAppContext } from "@/lib/context";
 import { supabase } from "@/lib/supabase";
 
 export default function HubPage() {
-  const { accentColor, enableFoodBudget, enableSalaryPlanner, isVaultEnabled, isRadarEnabled, transactions, session, setShowTransactionModal } = useAppContext();
+  const { accentColor, enableFoodBudget, enableSalaryPlanner, isVaultEnabled, isRadarEnabled, isClaimsEnabled, transactions, session, setShowTransactionModal } = useAppContext();
 
   const [radarCount, setRadarCount] = useState(0);
 
@@ -98,6 +98,15 @@ export default function HubPage() {
       enabled: isRadarEnabled,
       sub: [],
     },
+    {
+      href: "/hub/claims",
+      icon: "🧾",
+      title: "Claims & Splits",
+      description: "Track reimbursable & shared expenses",
+      color: "bg-amber-500/10",
+      enabled: isClaimsEnabled,
+      sub: [],
+    },
   ];
 
   return (
@@ -184,6 +193,18 @@ export default function HubPage() {
               <div className="bg-muted p-4 rounded-2xl text-3xl">📡</div>
               <div className="flex-1">
                 <p className="font-bold text-foreground text-lg leading-tight">Radar Tracker</p>
+                <p className="text-xs text-muted-foreground font-medium mt-0.5">Enable in Profile → Modules</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!isClaimsEnabled && (
+          <div className="bg-card p-5 rounded-3xl shadow-soft border border-border/40 opacity-50">
+            <div className="flex items-center gap-4">
+              <div className="bg-muted p-4 rounded-2xl text-3xl">🧾</div>
+              <div className="flex-1">
+                <p className="font-bold text-foreground text-lg leading-tight">Claims & Splits</p>
                 <p className="text-xs text-muted-foreground font-medium mt-0.5">Enable in Profile → Modules</p>
               </div>
             </div>

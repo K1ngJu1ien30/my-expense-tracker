@@ -186,6 +186,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [isVaultEnabled, setIsVaultEnabledRaw] = useState(false);
   const [isRadarEnabled, setIsRadarEnabledRaw] = useState(false);
+  const [isClaimsEnabled, setIsClaimsEnabledRaw] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
 
   const toggleIncludeSavings = async (val: boolean) => {
@@ -377,6 +378,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setIsBiometricEnabledRaw(session.user.user_metadata?.biometric_enabled === true);
       setIsVaultEnabledRaw(session.user.user_metadata?.vault_enabled === true);
       setIsRadarEnabledRaw(session.user.user_metadata?.radar_enabled === true);
+      setIsClaimsEnabledRaw(session.user.user_metadata?.claims_enabled === true);
       
       const fetchData = async () => {
         try {
@@ -564,6 +566,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const toggleRadar = async (val: boolean) => {
     setIsRadarEnabledRaw(val);
     if (session?.user) await supabase.auth.updateUser({ data: { radar_enabled: val } });
+  };
+  const toggleClaims = async (val: boolean) => {
+    setIsClaimsEnabledRaw(val);
+    if (session?.user) await supabase.auth.updateUser({ data: { claims_enabled: val } });
   };
 
   return (
