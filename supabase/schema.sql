@@ -54,6 +54,10 @@ CREATE POLICY "Strict isolation mapping for Transactions" ON transactions
 -- Add status column for pending/cleared income tracking
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'cleared' CHECK (status IN ('cleared', 'pending'));
 
+-- Add claimable/split bill columns
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS is_claimable BOOLEAN DEFAULT false;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS claim_status TEXT DEFAULT 'none' CHECK (claim_status IN ('none', 'pending', 'cleared'));
+
 CREATE POLICY "Strict isolation mapping for Goals" ON goals
     FOR ALL USING (auth.uid() = user_id);
 

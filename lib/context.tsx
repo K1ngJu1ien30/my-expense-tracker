@@ -44,6 +44,8 @@ export type Transaction = {
   note?: string; 
   user_id?: string;
   status?: string;
+  is_claimable?: boolean;
+  claim_status?: string;
 };
 
 export type ToastType = { message: string; id: number } | null;

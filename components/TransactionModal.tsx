@@ -71,6 +71,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
   const [note, setNote] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [status, setStatus] = useState<"cleared" | "pending">("cleared");
+  const [isClaimable, setIsClaimable] = useState(false);
 
   const isActuallyOpen = isOpen || editTransactionId !== null;
 
@@ -92,12 +93,14 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
          setNote(tx.note || "");
          setDate(tx.date ? new Date(tx.date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0]);
          setStatus((tx.status as "cleared" | "pending") || "cleared");
+         setIsClaimable(tx.is_claimable === true);
        }
     } else {
        setAmount("");
        setNote("");
        setDate(new Date().toISOString().split("T")[0]);
        setStatus("cleared");
+       setIsClaimable(false);
     }
   }, [editTransactionId, transactions, categories]);
 
@@ -233,6 +236,24 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                   </div>
                 )}
 
+                {txType === "Expense" && (
+                  <div
+                    className="flex items-center justify-between p-4 bg-muted/30 rounded-2xl border border-border/50 cursor-pointer"
+                    onClick={() => setIsClaimable(!isClaimable)}
+                  >
+                    <div>
+                      <p className="text-sm font-bold text-foreground">Claimable / Split Bill</p>
+                      <p className="text-[10px] text-muted-foreground font-medium mt-0.5">Mark as reimbursable or shared expense</p>
+                    </div>
+                    <button
+                      className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${isClaimable ? "" : "bg-muted border border-border"}`}
+                      style={isClaimable ? { backgroundColor: accentColor } : {}}
+                    >
+                      <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${isClaimable ? "translate-x-[24px]" : "translate-x-[3px]"}`} />
+                    </button>
+                  </div>
+                )}
+
                 <div>
                   <input 
                     type="date" 
@@ -262,7 +283,9 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                        to_account: txType === "Transfer" ? toAccount : undefined,
                        note,
                        date: new Date(date).toISOString(),
-                       status: txType === "Income" ? status : "cleared"
+                       status: txType === "Income" ? status : "cleared",
+                       is_claimable: txType === "Expense" ? isClaimable : false,
+                       claim_status: txType === "Expense" && isClaimable ? "pending" : "none"
                     };
 
                     if (editTransactionId) {
