@@ -367,18 +367,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (plannerRes.data) setPlannerItems(parsedPlanner);
       if (assetsRes.data) setAssets(parsedAssets);
 
-      // Update the localStorage cache with the freshest payload
-      try {
-        localStorage.setItem('cached_tracker_data', JSON.stringify({
-          transactions: parsedTransactions,
-          goals: parsedGoals,
-          subscriptions: parsedSubscriptions,
-          utilities: parsedUtilities,
-          plannerItems: parsedPlanner,
-          assets: parsedAssets,
-          accounts: savedAccounts,
-        }));
-      } catch {}
+      // V84: Cache Lock — only persist to localStorage if Supabase actually returned data.
+      // Prevents empty arrays from overwriting a good cache during soft network failures.
+      const hasData = (txs.data && txs.data.length > 0) || (gls.data && gls.data.length > 0) || (subs.data && subs.data.length > 0) || (plannerRes.data && plannerRes.data.length > 0) || (assetsRes.data && assetsRes.data.length > 0);
+      if (hasData) {
+        try {
+          localStorage.setItem('cached_tracker_data', JSON.stringify({
+            transactions: parsedTransactions,
+            goals: parsedGoals,
+            subscriptions: parsedSubscriptions,
+            utilities: parsedUtilities,
+            plannerItems: parsedPlanner,
+            assets: parsedAssets,
+            accounts: savedAccounts,
+          }));
+        } catch {}
+      }
 
     } catch (err) {
       // V83: Do NOT reset state to empty — the eager cache is already powering the UI
