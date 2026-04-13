@@ -605,6 +605,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       assets, addAsset, updateAsset, deleteAsset,
       isVaultEnabled, toggleVault,
       isRadarEnabled, toggleRadar,
+      isClaimsEnabled, toggleClaims,
       activeAssetId, setActiveAssetId,
       showTransactionModal, setShowTransactionModal,
       isOffline
