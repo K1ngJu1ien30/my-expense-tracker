@@ -18,13 +18,7 @@ export default function AuthScreen() {
         e.preventDefault();
         setLoading(true);
 
-        // Fallback fake logic if Supabase placeholder triggers
-        if (process.env.NEXT_PUBLIC_SUPABASE_URL === undefined && password.length > 3) {
-            triggerToast("Cannot run Auth: Missing ENV keys locally! Waiting for host DB.");
-            setLoading(false);
-            return;
-        }
-
+        
         try {
             if (isReset) {
                 const { error } = await supabase.auth.resetPasswordForEmail(email, {
