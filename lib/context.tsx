@@ -4,6 +4,8 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 import { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import { motion, AnimatePresence } from "framer-motion";
+import { Capacitor } from '@capacitor/core';
+import { CapacitorUpdater } from '@capgo/capacitor-updater';
 
 export type Goal = {
   id: string;
@@ -191,6 +193,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [isClaimsEnabled, setIsClaimsEnabledRaw] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
 
+  // Capgo OTA Safe Boot Trigger
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      CapacitorUpdater.notifyAppReady();
+    }
+  }, []);
+
   const toggleIncludeSavings = async (val: boolean) => {
     setIncludeSavingsRaw(val);
     if (session?.user) {
@@ -315,6 +324,104 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => { if (cleanup) cleanup(); };
   }, []);
 
+  // Standalone data refresh — used by initial load and post-sync
+  const refreshData = async (currentUser: { id: string; user_metadata?: any }) => {
+    const savedAccounts = currentUser.user_metadata?.custom_accounts || ['Bank', 'Cash', 'eWallet'];
+
+    try {
+      const [txs, gls, subs, plannerRes, assetsRes] = await Promise.all([
+        supabase.from("transactions").select("*").eq('user_id', currentUser.id).order("date", { ascending: false }),
+        supabase.from("goals").select("*").eq('user_id', currentUser.id).order("created_at", { ascending: false }),
+        supabase.from("subscriptions").select("*").eq('user_id', currentUser.id).order("created_at", { ascending: false }),
+        supabase.from("salary_planner").select("*").eq('user_id', currentUser.id).order("created_at", { ascending: false }),
+        supabase.from("asset_vault").select("*").eq('user_id', currentUser.id).order("created_at", { ascending: false })
+      ]);
+
+      // Supabase select() does not throw on network failure — force it
+      if (txs.error || gls.error || subs.error || plannerRes.error || assetsRes.error) {
+        throw new Error("Offline");
+      }
+
+      const parsedTransactions = (txs.data ?? []) as Transaction[];
+      const parsedGoals = (gls.data ?? []).map((g: any) => ({
+        id: g.id,
+        title: g.title,
+        subtitle: 'Goal',
+        current: Number(g.current_amount),
+        target: Number(g.target_amount),
+        isPinned: g.is_pinned,
+        color: "bg-emerald-500",
+        bg: "bg-emerald-500/10",
+        iconName: "Target",
+        user_id: g.user_id
+      })) as Goal[];
+      const allSubs = (subs.data ?? []);
+      const parsedSubscriptions = allSubs.filter((s: any) => s.type === "subscription").map((s: any) => ({
+        id: s.id, name: s.name, cost: Number(s.amount), billingDay: s.billing_day, sourceAccount: s.source_account, autoDeduct: s.auto_deduct, user_id: s.user_id, icon: "MonitorPlay", bg: "bg-red-500/10", color: "text-red-500"
+      })) as Subscription[];
+      const parsedUtilities = allSubs.filter((s: any) => s.type === "utility").map((s: any) => ({
+        id: s.id, name: s.name, cost: Number(s.amount), billingDay: s.billing_day, sourceAccount: s.source_account, autoDeduct: s.auto_deduct, user_id: s.user_id, icon: "Zap", bg: "bg-yellow-500/10", color: "text-yellow-500"
+      })) as Subscription[];
+      const parsedPlanner = (plannerRes.data ?? []) as PlannerItem[];
+      const parsedAssets = (assetsRes.data ?? []) as Asset[];
+
+      setTransactions(parsedTransactions);
+      setGoals(parsedGoals);
+      setSubscriptions(parsedSubscriptions);
+      setUtilities(parsedUtilities);
+      setPlannerItems(parsedPlanner);
+      setAssets(parsedAssets);
+      setAccounts(savedAccounts);
+
+      // Cache the successful payload for offline cold-boot hydration
+      try {
+        localStorage.setItem('tracker_data_cache', JSON.stringify({
+          transactions: parsedTransactions,
+          goals: parsedGoals,
+          subscriptions: parsedSubscriptions,
+          utilities: parsedUtilities,
+          plannerItems: parsedPlanner,
+          assets: parsedAssets,
+          accounts: savedAccounts,
+        }));
+      } catch {}
+    } catch (err) {
+      console.error("Data fetch failed (possibly offline):", err);
+      setAccounts(savedAccounts);
+
+      // Hydrate from localStorage cache on offline cold-boot
+      try {
+        const cached = localStorage.getItem('tracker_data_cache');
+        if (cached) {
+          const data = JSON.parse(cached);
+          let cachedTx = (data.transactions ?? []) as Transaction[];
+          setGoals((data.goals ?? []) as Goal[]);
+          setSubscriptions((data.subscriptions ?? []) as Subscription[]);
+          setUtilities((data.utilities ?? []) as Subscription[]);
+          setPlannerItems((data.plannerItems ?? []) as PlannerItem[]);
+          setAssets((data.assets ?? []) as Asset[]);
+          if (data.accounts) setAccounts(data.accounts);
+
+          // Prepend any pending offline transactions so balance stays accurate
+          const offlineRaw = localStorage.getItem('offline_tx_queue');
+          if (offlineRaw) {
+            const offlineQueue = JSON.parse(offlineRaw) as Partial<Transaction>[];
+            const offlineTxs = offlineQueue.map((tx, i) => ({
+              ...tx,
+              id: `offline-${Date.now()}-${i}`,
+              user_id: currentUser.id,
+            })) as Transaction[];
+            cachedTx = [...offlineTxs, ...cachedTx];
+          }
+
+          setTransactions(cachedTx);
+        }
+      } catch (cacheErr) {
+        console.error("Cache hydration failed:", cacheErr);
+      }
+    }
+  };
+
   // Network status + offline queue sync
   const syncOfflineQueue = async () => {
     try {
@@ -327,6 +434,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       localStorage.removeItem("offline_tx_queue");
       triggerToast(`${queue.length} offline expense${queue.length > 1 ? "s" : ""} synced to cloud!`);
+
+      // Post-sync: refresh state with server-assigned UUIDs
+      if (session?.user) await refreshData(session.user);
     } catch (err) {
       console.error("Offline sync failed:", err);
     }
@@ -368,7 +478,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const emailName = session.user.email?.split('@')[0];
       setUserNameRaw(metaName || emailName || "User");
 
-      const savedAccounts = session.user.user_metadata?.custom_accounts || ['Bank', 'Cash', 'eWallet'];
       const savedIncludeSavings = session.user.user_metadata?.include_savings ?? true;
       setIncludeSavingsRaw(savedIncludeSavings);
 
@@ -381,48 +490,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setIsVaultEnabledRaw(session.user.user_metadata?.vault_enabled === true);
       setIsRadarEnabledRaw(session.user.user_metadata?.radar_enabled === true);
       setIsClaimsEnabledRaw(session.user.user_metadata?.claims_enabled === true);
-      
-      const fetchData = async () => {
-        try {
-          const [txs, gls, subs, plannerRes, assetsRes] = await Promise.all([
-            supabase.from("transactions").select("*").eq('user_id', session.user.id).order("date", { ascending: false }),
-            supabase.from("goals").select("*").eq('user_id', session.user.id).order("created_at", { ascending: false }),
-            supabase.from("subscriptions").select("*").eq('user_id', session.user.id).order("created_at", { ascending: false }),
-            supabase.from("salary_planner").select("*").eq('user_id', session.user.id).order("created_at", { ascending: false }),
-            supabase.from("asset_vault").select("*").eq('user_id', session.user.id).order("created_at", { ascending: false })
-          ]);
-          if (txs.data) {
-             setTransactions(txs.data as Transaction[]);
-             setAccounts(savedAccounts);
-          }
-          if (gls.data) setGoals(gls.data.map((g: any) => ({
-               id: g.id, 
-               title: g.title, 
-               subtitle: 'Goal', 
-               current: Number(g.current_amount), 
-               target: Number(g.target_amount),
-               isPinned: g.is_pinned,
-               color: "bg-emerald-500",
-               bg: "bg-emerald-500/10",
-               iconName: "Target",
-               user_id: g.user_id
-          })) as Goal[]);
-          if (subs.data) {
-            setSubscriptions(subs.data.filter((s:any) => s.type === "subscription").map((s:any) => ({
-               id: s.id, name: s.name, cost: Number(s.amount), billingDay: s.billing_day, sourceAccount: s.source_account, autoDeduct: s.auto_deduct, user_id: s.user_id, icon: "MonitorPlay", bg: "bg-red-500/10", color: "text-red-500"
-            })) as Subscription[]);
-            setUtilities(subs.data.filter((s:any) => s.type === "utility").map((s:any) => ({
-               id: s.id, name: s.name, cost: Number(s.amount), billingDay: s.billing_day, sourceAccount: s.source_account, autoDeduct: s.auto_deduct, user_id: s.user_id, icon: "Zap", bg: "bg-yellow-500/10", color: "text-yellow-500"
-            })) as Subscription[]);
-          }
-          if (plannerRes.data) setPlannerItems(plannerRes.data as PlannerItem[]);
-          if (assetsRes.data) setAssets(assetsRes.data as Asset[]);
-        } catch (err) {
-          console.error("Data fetch failed (possibly offline):", err);
-          setAccounts(savedAccounts);
-        }
-      };
-      fetchData();
+
+      refreshData(session.user);
     } else {
        setTransactions([]);
        setGoals([]);

@@ -1,14 +1,9 @@
-// @ts-nocheck
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.tracker.app',
   appName: 'Tracker',
-  webDir: 'out',
-  server: {
-    url: 'https://my-expense-tracker-pearl.vercel.app',
-    cleartext: true,
-  },
+  webDir: 'out'
 };
 
 export default config;
