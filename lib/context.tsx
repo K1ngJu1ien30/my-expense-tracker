@@ -329,6 +329,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const savedAccounts = currentUser.user_metadata?.custom_accounts || ['Bank', 'Cash', 'eWallet'];
 
     try {
+      console.log("[refreshData] Fetching live data...");
       const [txs, gls, subs, plannerRes, assetsRes] = await Promise.all([
         supabase.from("transactions").select("*").eq('user_id', currentUser.id).order("date", { ascending: false }),
         supabase.from("goals").select("*").eq('user_id', currentUser.id).order("created_at", { ascending: false }),
@@ -339,11 +340,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       // Supabase select() does not throw on network failure — force it
       if (txs.error || gls.error || subs.error || plannerRes.error || assetsRes.error) {
-        throw new Error("Offline");
+        console.log("[refreshData] Supabase returned error objects:", { txs: txs.error, gls: gls.error, subs: subs.error, planner: plannerRes.error, assets: assetsRes.error });
+        throw new Error("Supabase fetch returned errors");
       }
 
-      const parsedTransactions = (txs.data ?? []) as Transaction[];
-      const parsedGoals = (gls.data ?? []).map((g: any) => ({
+      // Strict null check — if Supabase returned no data arrays, treat as failure
+      if (!txs.data || !gls.data || !subs.data || !plannerRes.data || !assetsRes.data) {
+        console.log("[refreshData] Supabase returned null data arrays — treating as offline");
+        throw new Error("Supabase returned null data");
+      }
+
+      const parsedTransactions = txs.data as Transaction[];
+      const parsedGoals = gls.data.map((g: any) => ({
         id: g.id,
         title: g.title,
         subtitle: 'Goal',
@@ -355,15 +363,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         iconName: "Target",
         user_id: g.user_id
       })) as Goal[];
-      const allSubs = (subs.data ?? []);
-      const parsedSubscriptions = allSubs.filter((s: any) => s.type === "subscription").map((s: any) => ({
+      const parsedSubscriptions = subs.data.filter((s: any) => s.type === "subscription").map((s: any) => ({
         id: s.id, name: s.name, cost: Number(s.amount), billingDay: s.billing_day, sourceAccount: s.source_account, autoDeduct: s.auto_deduct, user_id: s.user_id, icon: "MonitorPlay", bg: "bg-red-500/10", color: "text-red-500"
       })) as Subscription[];
-      const parsedUtilities = allSubs.filter((s: any) => s.type === "utility").map((s: any) => ({
+      const parsedUtilities = subs.data.filter((s: any) => s.type === "utility").map((s: any) => ({
         id: s.id, name: s.name, cost: Number(s.amount), billingDay: s.billing_day, sourceAccount: s.source_account, autoDeduct: s.auto_deduct, user_id: s.user_id, icon: "Zap", bg: "bg-yellow-500/10", color: "text-yellow-500"
       })) as Subscription[];
-      const parsedPlanner = (plannerRes.data ?? []) as PlannerItem[];
-      const parsedAssets = (assetsRes.data ?? []) as Asset[];
+      const parsedPlanner = plannerRes.data as PlannerItem[];
+      const parsedAssets = assetsRes.data as Asset[];
+
+      console.log("[refreshData] Live data fetch successful. Saving to cache...", { tx: parsedTransactions.length, goals: parsedGoals.length, subs: parsedSubscriptions.length, utils: parsedUtilities.length, planner: parsedPlanner.length, assets: parsedAssets.length });
 
       setTransactions(parsedTransactions);
       setGoals(parsedGoals);
@@ -373,26 +382,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setAssets(parsedAssets);
       setAccounts(savedAccounts);
 
-      // Cache the successful payload for offline cold-boot hydration
+      // Only cache when we confirmed valid non-null data above
+      const cachePayload = {
+        transactions: parsedTransactions,
+        goals: parsedGoals,
+        subscriptions: parsedSubscriptions,
+        utilities: parsedUtilities,
+        plannerItems: parsedPlanner,
+        assets: parsedAssets,
+        accounts: savedAccounts,
+      };
       try {
-        localStorage.setItem('tracker_data_cache', JSON.stringify({
-          transactions: parsedTransactions,
-          goals: parsedGoals,
-          subscriptions: parsedSubscriptions,
-          utilities: parsedUtilities,
-          plannerItems: parsedPlanner,
-          assets: parsedAssets,
-          accounts: savedAccounts,
-        }));
-      } catch {}
+        localStorage.setItem('tracker_data_cache', JSON.stringify(cachePayload));
+        console.log("[refreshData] Cache saved successfully.");
+      } catch (storageErr) {
+        console.warn("[refreshData] localStorage.setItem failed:", storageErr);
+      }
     } catch (err) {
-      console.error("Data fetch failed (possibly offline):", err);
+      console.log("[refreshData] Network error caught. Attempting to read cache...", err);
       setAccounts(savedAccounts);
 
       // Hydrate from localStorage cache on offline cold-boot
       try {
         const cached = localStorage.getItem('tracker_data_cache');
         if (cached) {
+          console.log("[refreshData] Cache found! Hydrating state...");
           const data = JSON.parse(cached);
           let cachedTx = (data.transactions ?? []) as Transaction[];
           setGoals((data.goals ?? []) as Goal[]);
@@ -412,12 +426,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               user_id: currentUser.id,
             })) as Transaction[];
             cachedTx = [...offlineTxs, ...cachedTx];
+            console.log("[refreshData] Prepended", offlineTxs.length, "offline queue items to cached transactions.");
           }
 
           setTransactions(cachedTx);
+          console.log("[refreshData] Cache hydration complete.", { tx: cachedTx.length, goals: (data.goals ?? []).length });
+        } else {
+          console.log("[refreshData] Cache empty or missing!");
         }
       } catch (cacheErr) {
-        console.error("Cache hydration failed:", cacheErr);
+        console.error("[refreshData] Cache hydration failed:", cacheErr);
       }
     }
   };
