@@ -1,260 +1,193 @@
-# Tracker — Expense & Lifestyle Super App v2.0
+# Tracker — Offline-First Native Android Expense App
 
-> A mobile-first, offline-capable financial and lifestyle aggregator purpose-built for native Android deployment via Capacitor. Combines real-time double-entry expense tracking, predictive spend analytics, reimbursement claim automation, asset amortization management, and a dynamic content radar into a single unified experience — engineered for one-handed use during a daily commute, with full offline resilience.
-
-**Live:** [my-expense-tracker-pearl.vercel.app](https://my-expense-tracker-pearl.vercel.app/)
+> A true native Android application — not a web app, not a PWA. Built with Next.js compiled to static assets, wrapped into a native APK via Capacitor, powered by Supabase, and updated over-the-air via Capgo. Designed for zero-connectivity resilience from the ground up.
 
 ---
 
 ## Table of Contents
 
-1. [Tech Stack](#tech-stack)
-2. [Core Architecture & Modules](#core-architecture--modules)
-3. [System Architecture](#system-architecture)
-4. [Local Setup & Environment](#local-setup--environment)
-5. [Database Schema](#database-schema)
-6. [Project Structure](#project-structure)
+1. [Project Overview & Architecture](#project-overview--architecture)
+2. [Key Features](#key-features)
+3. [Tech Stack](#tech-stack)
+4. [Developer Deployment Workflow](#developer-deployment-workflow)
+5. [Local Development Setup](#local-development-setup)
+6. [Database Schema](#database-schema)
+7. [Project Structure](#project-structure)
+8. [User Manual](#user-manual)
+
+---
+
+## Project Overview & Architecture
+
+This is **not** a website deployed to Vercel. This is a native Android application.
+
+The codebase is a Next.js (React) project configured with `output: "export"` which compiles the entire app into static HTML, CSS, and JavaScript files. These static assets are then bundled into a native Android APK using **Capacitor**, which runs them inside a native WebView with full access to device APIs (biometrics, network status, hardware back button).
+
+The backend is powered by **Supabase** — providing PostgreSQL, email/password authentication, Row Level Security, and user metadata storage. The app communicates with Supabase over HTTPS, but is engineered to function fully when that connection is unavailable.
+
+```
+┌──────────────────────────────────────────────────────┐
+│                  Android Device                       │
+│                                                      │
+│  ┌────────────────────────────────────────────────┐  │
+│  │          Capacitor Native Shell (APK)          │  │
+│  │  ┌──────────────────────────────────────────┐  │  │
+│  │  │     Next.js Static Assets (WebView)      │  │  │
+│  │  │                                          │  │  │
+│  │  │  ┌──────────────────────────────────┐    │  │  │
+│  │  │  │     lib/context.tsx               │    │  │  │
+│  │  │  │   Global State + Offline Engine   │    │  │  │
+│  │  │  │                                   │    │  │  │
+│  │  │  │  try: Supabase fetch ──► setState │    │  │  │
+│  │  │  │       + save localStorage cache   │    │  │  │
+│  │  │  │                                   │    │  │  │
+│  │  │  │  catch: read localStorage cache   │    │  │  │
+│  │  │  │       + prepend offline queue     │    │  │  │
+│  │  │  │       ──► setState (hydrate UI)   │    │  │  │
+│  │  │  └──────────────────────────────────┘    │  │  │
+│  │  │                   │                      │  │  │
+│  │  │          localStorage (device)           │  │  │
+│  │  │    ├── tracker_data_cache (full state)   │  │  │
+│  │  │    └── offline_tx_queue (pending sync)   │  │  │
+│  │  └──────────────────────────────────────────┘  │  │
+│  │                      │                         │  │
+│  │  Capacitor Plugins: Network, Biometric, App    │  │
+│  └──────────────────────┬─────────────────────────┘  │
+│                         │ HTTPS (when available)      │
+└─────────────────────────┼────────────────────────────┘
+                          │
+               ┌──────────▼──────────┐
+               │   Supabase Cloud    │
+               │  PostgreSQL + Auth  │
+               │  + Row Level Sec.   │
+               └─────────────────────┘
+                          │
+               ┌──────────▼──────────┐
+               │    Capgo Cloud      │
+               │  OTA Bundle Dist.   │
+               └─────────────────────┘
+```
+
+---
+
+## Key Features
+
+### Offline-First Hydration
+
+The app uses a bulletproof `localStorage` caching system built into `lib/context.tsx`:
+
+- On every successful Supabase fetch, the entire data payload (transactions, goals, subscriptions, utilities, planner items, assets, accounts) is saved to `localStorage` under the key `tracker_data_cache`.
+- On a cold boot with no network, Supabase's `select()` returns error objects instead of throwing exceptions. The app explicitly detects these errors and throws into a `catch` block that reads the cache.
+- A **hydration loading screen** (`"Loading Tracker..."`) blocks the UI until data is fully loaded — whether from the network or the cache. The user never sees empty arrays or zero balances.
+
+### Background Syncing
+
+Users can log transactions completely offline:
+
+1. The expense is assigned a temporary `offline-${timestamp}` ID and added to React state immediately (UI updates instantly).
+2. The transaction is pushed to a `localStorage` queue under `offline_tx_queue`.
+3. The user sees: *"No connection. Expense saved offline."*
+4. The moment the network reconnects (detected via both browser events and Capacitor's native `Network` plugin), the queue is automatically flushed to Supabase.
+5. After sync, `refreshData()` is called to pull server-assigned UUIDs and refresh the entire UI.
+6. The user sees: *"3 offline expenses synced to cloud!"*
+
+During offline cold boots, any pending items in `offline_tx_queue` are prepended to the cached transactions so balances and history stay accurate.
+
+### Over-The-Air (OTA) Updates
+
+Powered by **Capgo**. The traditional update cycle (code → build → upload to Play Store → wait for review → user manually updates) is completely bypassed:
+
+1. Developer pushes a new bundle via `npx @capgo/cli bundle upload`.
+2. Capgo distributes the bundle to all devices on the target channel.
+3. The app downloads the new bundle in the background.
+4. On the next cold boot, the app loads the updated code seamlessly.
+5. `CapacitorUpdater.notifyAppReady()` confirms the update is stable (safe boot mechanism).
+
+Users never need to visit the Play Store for feature updates or bug fixes.
+
+### Additional Features
+
+- **Double-Entry Claims Engine** — Flag expenses as claimable; marking them cleared auto-generates a matching income entry.
+- **Asset Vault** — Track physical assets with purchase price, maintenance logs, and cost-per-day calculations.
+- **Radar Tracker** — Aggregated RSS feeds, cinema listings, and streaming drops in one feed.
+- **Predictive Velocity** — Projected end-of-month spending based on daily velocity.
+- **Food Budget Tracking** — Daily and monthly food spend limits with real-time tracking.
+- **Salary Planner** — Pre-allocate income to budget categories.
+- **PIN & Biometric Lock** — Device-level security via Capacitor.
+- **Dark Mode + Accent Colors** — Full theming support.
 
 ---
 
 ## Tech Stack
 
-| Technology | Role |
-|---|---|
-| **Next.js** (App Router, `output: "export"`, `trailingSlash: true`) | Static site generation for Capacitor WebView compatibility |
-| **Capacitor** | Native Android wrapper — biometric auth, hardware back button, network detection |
-| **TypeScript** | Full type safety across 600+ line context provider and all modules |
-| **Tailwind CSS** | Utility-first styling with CSS custom properties for dynamic accent theming |
-| **Supabase** | PostgreSQL database, email/password auth, Row Level Security, user metadata storage |
-| **Recharts** | Data visualization — `LineChart`, `PieChart`, `BarChart` with custom glassmorphism tooltips |
-| **Framer Motion** | Spring-physics animations, `AnimatePresence` transitions, drag-to-dismiss modals |
-| **@capacitor/app** | Hardware back button interception + app exit control |
-| **@capacitor/network** | Native network status detection powering the offline queue engine |
+| Layer | Technology | Role |
+|---|---|---|
+| **Frontend** | Next.js 16, React 19, TypeScript | Static site generation (`output: "export"`) for Capacitor compatibility |
+| **Styling** | Tailwind CSS 4, Framer Motion | Utility-first CSS + spring-physics animations |
+| **Charts** | Recharts | Line, pie, and bar charts with custom tooltips |
+| **Icons** | Lucide React | Consistent icon library |
+| **Backend** | Supabase | PostgreSQL, email/password auth, RLS, user metadata |
+| **Native Wrapper** | Capacitor 8 | Android APK generation, native API access |
+| **Native Plugins** | @capacitor/network, @capacitor/app, capacitor-biometric-auth | Network detection, back button, fingerprint |
+| **Live Updates** | @capgo/capacitor-updater | OTA bundle distribution, safe boot |
 
 ---
 
-## Core Architecture & Modules
+## Developer Deployment Workflow
 
-### 1. Double-Entry Claims Engine
+### Understanding the Two Deployment Targets
 
-The claims system transforms simple expense tracking into a full reimbursement workflow with automated accounting.
+| Target | Method | Affects |
+|---|---|---|
+| **Web Preview** (Vercel) | `git push` to GitHub → Vercel auto-deploys | Browser preview only — **has zero effect on the Android app** |
+| **Android App** (OTA) | `npx @capgo/cli bundle upload` | All installed Android devices on the target channel |
 
-**Schema Extension:**
-```sql
-ALTER TABLE transactions
-  ADD COLUMN is_claimable BOOLEAN DEFAULT false,
-  ADD COLUMN claim_status TEXT DEFAULT 'none'
-    CHECK (claim_status IN ('none', 'pending', 'cleared'));
+> **CRITICAL:** Pushing to GitHub/Vercel does **nothing** for Android users. The Android app loads static assets from its local bundle, not from Vercel. You must explicitly push an OTA update for changes to reach Android devices.
+
+### Pushing a Live OTA Update to Android
+
+This is the command sequence to ship a code update to every installed Android device:
+
+```bash
+# 1. Build the static export
+npm run build
+
+# 2. Upload the bundle to Capgo for OTA distribution
+npx @capgo/cli bundle upload --channel production
 ```
 
-**Transaction Modal Integration** (`components/TransactionModal.tsx`)
-- When `txType === "Expense"`, a toggle appears: "Claimable / Split Bill"
-- When enabled: `is_claimable: true`, `claim_status: 'pending'`
-- When disabled: `is_claimable: false`, `claim_status: 'none'`
-- Pre-fills correctly on edit mode from existing transaction data
+That's it. Capgo handles distribution. Devices download the bundle in the background and apply it on the next cold boot.
 
-**Claims Hub** (`app/hub/claims/page.tsx`)
-- Summary pills: **Total Pending** (sum of all `claim_status === 'pending'` amounts) + **Pending Count**
-- Tabbed view: Pending | Cleared — filters `transactions.filter(tx => tx.is_claimable === true)` by `claim_status`
-- Enabled via Profile → Modules → Claims & Splits (persisted to `user_metadata.claims_enabled`)
+### Building the Master APK (For New Installations)
 
-**The "Mark Cleared" Double-Entry Logic:**
-When a user taps "Mark as Cleared" on a pending claim, the system executes a two-step accounting sequence:
+New users need a one-time APK install. This is how you build it:
 
-1. **UPDATE** the original expense: `claim_status = 'cleared'`
-2. **INSERT** a new income transaction:
-   ```
-   type: "Income"
-   amount: [original expense amount]
-   account: [original expense account]
-   category: "Reimbursement"
-   note: "Claim Cleared: [original category]"
-   date: [today]
-   ```
+```bash
+# 1. Build the static export
+npm run build
 
-This automatically restores the user's total balance by the claimed amount. The income entry appears in all analytics and the dashboard immediately via optimistic state updates.
+# 2. Sync web assets into the native Android project
+npx cap sync
 
----
-
-### 2. Offline-First Sync (LRT Mode)
-
-Designed for commuters who lose signal in tunnels and underground stations. The app never crashes on network failure and queues transactions for automatic sync on reconnect.
-
-**Network Detection — Dual Layer:**
-- **Browser**: `navigator.onLine` + `window.addEventListener('online'/'offline')` for web/PWA
-- **Capacitor Native**: Dynamic `import('@capacitor/network')` with `Network.addListener('networkStatusChange')` for Android
-- `isOffline: boolean` exposed via global context — any component can read network state
-- Initial status checked via `Network.getStatus()` on mount
-
-**Offline Transaction Queue** (`addTransaction` in `lib/context.tsx`):
-```
-if (isOffline) {
-  1. Generate temporary ID: `offline-${Date.now()}`
-  2. Append to React state immediately (UI updates instantly)
-  3. Push to localStorage["offline_tx_queue"] JSON array
-  4. Toast: "No connection. Expense saved offline."
-  return; // Skip Supabase entirely
-}
+# 3. Open in Android Studio
+npx cap open android
 ```
 
-**Auto-Sync Engine** (`syncOfflineQueue`):
-- Triggered when `networkStatusChange` fires `connected: true` OR browser `online` event
-- Reads `localStorage["offline_tx_queue"]`, iterates through queued transactions
-- Inserts each into Supabase with the user's real `user_id`
-- Clears the localStorage queue on success
-- Toast: "{N} offline expense(s) synced to cloud!"
+Then in Android Studio: **Build → Build Bundle(s) / APK(s) → Build APK(s)**
 
-**Graceful Degradation:**
-- Initial 5-table `Promise.all` fetch wrapped in `try/catch` — on failure, app renders with empty state instead of white screen
-- All Capacitor imports use dynamic `import()` + `// @ts-ignore` + `.catch()` — Vercel web builds never crash on missing native modules
+The generated APK can be distributed directly or uploaded to the Google Play Store. After the initial install, all subsequent updates are delivered via OTA — users never need to re-download the APK.
 
 ---
 
-### 3. State-Driven Overlays
-
-**The Problem:** Next.js `output: "export"` generates static HTML files. Capacitor's Android WebView resolves routes like `/vault/detail?id=abc` by looking for a physical file at that path — which doesn't exist. This crashes the WebView with `ERR_FILE_NOT_FOUND`.
-
-**Failed Approaches:**
-- `useSearchParams()` + query strings → WebView crash
-- Global context `activeAssetId` + `router.push('/vault/detail')` → still requires a separate route file
-- `trailingSlash: true` → generates `/vault/detail/index.html` (helps but doesn't solve query params)
-
-**The Solution: Full-Screen React State Overlays**
-
-The Asset Vault detail view (`components/AssetDetailOverlay.tsx`) renders as a `fixed inset-0 z-[200] bg-background` overlay, triggered purely by local state in the parent page:
-
-```tsx
-// app/vault/page.tsx
-const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
-
-// Card click:
-onClick={() => setSelectedAssetId(asset.id)}
-
-// Render:
-<AnimatePresence>
-  {selectedAssetId && (
-    <AssetDetailOverlay assetId={selectedAssetId} onClose={() => setSelectedAssetId(null)} />
-  )}
-</AnimatePresence>
-```
-
-**Benefits:**
-- Zero Next.js routing involved — completely bypasses static file resolution
-- Framer Motion spring slide-in animation (`initial={{ x: "100%" }}`)
-- Back button clears state and unmounts the overlay
-- All CRUD (edit asset, add/edit/delete maintenance logs) happens within the overlay with optimistic state updates
-- Modals inside the overlay use `z-[250]` to layer above the `z-[200]` overlay itself
-
----
-
-### 4. Financial Hub & Predictive Analytics
-
-**Predictive Velocity** (`app/analytics/page.tsx`)
-- Computes cumulative daily spend for the current calendar month
-- **Daily Velocity** = `totalMonthSpend / currentDayOfMonth`
-- **Projected End-of-Month** = `dailyVelocity × daysInMonth`
-- Dual-line Recharts `LineChart`: solid accent line (actual cumulative) + dashed line (projected trajectory)
-- Updates in real-time as new expenses are added
-
-**Commute Mode — Morning Briefing** (`app/hub/page.tsx`)
-- "Today's Velocity" card using strict local-timezone boundaries
-- Radar Alert badge counting today's new articles/movies
-- "Quick Log Expense" button triggers global `showTransactionModal` via context
-
-**Strict Local-Timezone Filtering** (V55 fix applied globally)
-- **Today**: `new Date(year, month, date).getTime()` → `startOfToday` / `startOfTomorrow`
-- **Weekly (Mon–Sun)**: `distanceToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1`
-- Applied in: Dashboard (today/weekly pills), History page (filter tabs), Food Budget card, Spending Trend chart
-- Eliminates the UTC midnight bug where 12:00–8:00 AM MYT showed yesterday's data
-
-**History Filtering** (`app/history/page.tsx`)
-- Three filter pills: Today | This Week | Show All
-- Dynamic subtitle: "Today — 3 transactions"
-- Empty state adapts per filter with "Show All" escape hatch
-
-**Global Currency Formatter** (`formatCurrency` in context)
-- `${currency} ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-- Uses user's stored currency symbol (RM, $, €) — consistent across all modules
-
----
-
-### 5. The Asset Vault & Radar Engine
-
-**Asset Vault** (`app/vault/page.tsx` + `components/AssetDetailOverlay.tsx`)
-- Dashboard: 3-column summary — Total Value | Items | **Avg Cost / Day**
-- Cost / Day = `purchase_price / Math.max(1, daysActive)` — recalculates per filter pill
-- Detail overlay: **True Total** = `purchase_price + SUM(asset_logs.cost)`
-- **Cost / Day** = `trueTotalInvestment / daysActive`
-- Maintenance Timeline: vertical left-border line with accent-colored dots, full CRUD (add/edit/delete logs)
-
-**Radar Engine** (`app/hub/radar/page.tsx`)
-- User-configured sources stored in `radar_sources` table (3 types: RSS, TMDB Cinema, TMDB Streaming)
-- Parallel fetch via `Promise.all` with per-source `.catch()` isolation
-- RSS: `rss2json` API with optional keyword filtering; badge text = first keyword or feed title
-- TMDB Cinema: `/movie/now_playing?region=MY`
-- TMDB Streaming: `/discover/movie?watch_region=MY&with_watch_providers={id}` — dynamic provider from `source.url`
-- Provider selector: Netflix (8), Disney+ (337), Amazon Prime (119), Apple TV+ (350), HBO Go (315), All
-- Unified `RadarItem` interface with `category` (for filtering) + `badge` (for display)
-- Deduplicated filter pills, broken image `onError` fallback, custom dropdown (no native `<select>`)
-
----
-
-## System Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    app/layout.tsx                        │
-│  ┌───────────────────────────────────────────────────┐  │
-│  │              <AppProvider>                         │  │
-│  │   Context: auth, transactions, goals, assets,     │  │
-│  │   claims, offline queue, modal triggers, network  │  │
-│  │   ┌─────────────────────────────────────────┐     │  │
-│  │   │          <AppLayout>                    │     │  │
-│  │   │  ┌──────────┐  ┌────────────────────┐  │     │  │
-│  │   │  │ AuthGate │  │   Page Components  │  │     │  │
-│  │   │  │ (PIN/Bio)│  │  + State Overlays  │  │     │  │
-│  │   │  └──────────┘  └────────────────────┘  │     │  │
-│  │   │  ┌──────────────────────────────────┐  │     │  │
-│  │   │  │ BottomNav + TransactionModal     │  │     │  │
-│  │   │  └──────────────────────────────────┘  │     │  │
-│  │   └─────────────────────────────────────────┘     │  │
-│  └───────────────────────────────────────────────────┘  │
-│                          │                              │
-│              ┌───────────▼───────────┐                  │
-│              │   lib/context.tsx      │                  │
-│              │   Single Source of     │──── localStorage │
-│              │   Truth + Offline Q    │   (offline_tx_q) │
-│              │   + Claims Engine      │                  │
-│              └───────────┬───────────┘                  │
-│                          │                              │
-│              ┌───────────▼───────────┐                  │
-│              │   Supabase Client     │                  │
-│              └───────────┬───────────┘                  │
-└──────────────────────────┼──────────────────────────────┘
-                           │
-                ┌──────────▼──────────┐
-                │   Supabase Cloud    │
-                │  PostgreSQL + Auth  │
-                │  + Row Level Sec.   │
-                └─────────────────────┘
-```
-
-**Key Patterns:**
-- **Context-Driven Architecture**: `lib/context.tsx` (650+ lines) manages auth, 7 data domains, offline queue, UI triggers, network listeners, and Capacitor integrations
-- **Optimistic UI**: All CRUD updates local React state first, then syncs to Supabase
-- **Double-Entry Accounting**: Claims generate mirrored income transactions; transfers debit source and credit destination
-- **Static Export + Overlay Navigation**: `output: "export"` + `trailingSlash: true` for Capacitor; complex views use state overlays instead of routes
-- **Dynamic Native Imports**: All Capacitor plugins loaded via `import().catch()` for web compatibility
-
----
-
-## Local Setup & Environment
+## Local Development Setup
 
 ### Prerequisites
+
 - Node.js 18+
 - npm 9+
-- A Supabase project (free tier)
-- TMDB API key (free at [themoviedb.org](https://www.themoviedb.org/settings/api))
+- A Supabase project (free tier works)
+- Android Studio (for APK builds only)
+- TMDB API key (free at [themoviedb.org](https://www.themoviedb.org/settings/api)) — optional, for Radar module
 
 ### 1. Clone & Install
 
@@ -276,7 +209,7 @@ NEXT_PUBLIC_TMDB_API_KEY=your-tmdb-api-key
 
 ### 3. Setup Database
 
-Run `supabase/schema.sql` in your Supabase SQL Editor. This creates all 7 tables with UUID primary keys, foreign key cascades, CHECK constraints, and RLS policies.
+Run `supabase/schema.sql` in your Supabase SQL Editor. This creates all tables with UUID primary keys, foreign key cascades, CHECK constraints, and RLS policies.
 
 ### 4. Run Development Server
 
@@ -284,15 +217,9 @@ Run `supabase/schema.sql` in your Supabase SQL Editor. This creates all 7 tables
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000) for the browser preview.
 
-### 5. Build for Production / Capacitor
-
-```bash
-npm run build          # Static export to /out
-npx cap sync           # Sync web assets to Android project
-npx cap open android   # Open in Android Studio
-```
+> **Note:** Capacitor-specific features (biometric auth, native network detection, OTA updates) only work in the compiled APK, not in the browser dev server.
 
 ---
 
@@ -302,28 +229,17 @@ All tables use `uuid_generate_v4()` primary keys, `user_id UUID REFERENCES auth.
 
 | Table | Purpose | Key Columns |
 |---|---|---|
-| **`transactions`** | Core financial ledger | `amount`, `type` (Income/Expense/Transfer), `category`, `account`, `to_account`, `date`, `status` (cleared/pending), **`is_claimable`** (boolean), **`claim_status`** (none/pending/cleared) |
-| **`goals`** | Savings goal tracking | `title`, `current_amount`, `target_amount`, `is_pinned` |
-| **`subscriptions`** | Recurring payments | `name`, `amount`, `billing_day`, `source_account`, `auto_deduct`, `type` (subscription/utility) |
-| **`salary_planner`** | Budget allocation items | `category`, `item_name`, `amount` |
-| **`asset_vault`** | Physical asset registry | `name`, `category`, `emoji_icon`, `purchase_date`, `purchase_price` |
-| **`asset_logs`** | Maintenance timeline | `asset_id` (FK → asset_vault), `log_date`, `description`, `cost` |
-| **`radar_sources`** | Feed source config | `source_type` (rss/tmdb_cinema/tmdb_streaming), `name`, `url`, `keywords` |
+| `transactions` | Core financial ledger | `amount`, `type`, `category`, `account`, `to_account`, `date`, `status`, `is_claimable`, `claim_status` |
+| `goals` | Savings goal tracking | `title`, `current_amount`, `target_amount`, `is_pinned` |
+| `subscriptions` | Recurring payments | `name`, `amount`, `billing_day`, `source_account`, `auto_deduct`, `type` |
+| `salary_planner` | Budget allocation | `category`, `item_name`, `amount` |
+| `asset_vault` | Physical asset registry | `name`, `category`, `emoji_icon`, `purchase_date`, `purchase_price` |
+| `asset_logs` | Maintenance timeline | `asset_id` (FK), `log_date`, `description`, `cost` |
+| `radar_sources` | Content feed config | `source_type`, `name`, `url`, `keywords` |
 
-**User Metadata** (stored in `auth.users.raw_user_meta_data` via `supabase.auth.updateUser`):
+**User Metadata** (stored in `auth.users.raw_user_meta_data`):
 
-| Key | Type | Purpose |
-|---|---|---|
-| `display_name` | string | User's display name |
-| `custom_accounts` | string[] | Account list with preserved order |
-| `include_savings` | boolean | Include savings in total balance |
-| `enable_food_budget` | boolean | Food Budget module toggle |
-| `enable_salary_planner` | boolean | Salary Planner toggle |
-| `food_daily_limit` / `food_monthly_limit` | number | Budget caps |
-| `pin_enabled` / `biometric_enabled` | boolean | Security locks |
-| `vault_enabled` | boolean | Asset Vault toggle |
-| `radar_enabled` | boolean | Radar Tracker toggle |
-| `claims_enabled` | boolean | Claims & Splits toggle |
+`display_name`, `custom_accounts`, `include_savings`, `enable_food_budget`, `enable_salary_planner`, `food_daily_limit`, `food_monthly_limit`, `pin_enabled`, `biometric_enabled`, `vault_enabled`, `radar_enabled`, `claims_enabled`
 
 ---
 
@@ -333,36 +249,82 @@ All tables use `uuid_generate_v4()` primary keys, `user_id UUID REFERENCES auth.
 my-expense-tracker/
 ├── app/
 │   ├── layout.tsx              # Root — AppProvider + AppLayout
-│   ├── page.tsx                # Dashboard — balance, today/weekly, trend
+│   ├── page.tsx                # Dashboard — balance, velocity, trends
 │   ├── analytics/page.tsx      # Stats — pie, bar, velocity projection
-│   ├── history/page.tsx        # Filtered transaction history (Today/Week/All)
+│   ├── history/page.tsx        # Filtered transaction history
 │   ├── goals/page.tsx          # Goals + Food Budget + Salary Planner
-│   ├── hub/page.tsx            # Hub — Morning Briefing + module launcher
-│   ├── hub/claims/page.tsx     # Claims & Splits — pending/cleared tabs
-│   ├── hub/radar/page.tsx      # Radar feed — RSS + TMDB aggregator
+│   ├── hub/page.tsx            # Hub — Morning Briefing + modules
+│   ├── hub/claims/page.tsx     # Claims & Splits
+│   ├── hub/radar/page.tsx      # Radar feed — RSS + TMDB
 │   ├── hub/radar/settings/     # Radar source CRUD
-│   ├── vault/page.tsx          # Asset Vault + overlay injection
-│   └── profile/page.tsx        # Settings, modules, data, security
+│   ├── vault/page.tsx          # Asset Vault
+│   └── profile/page.tsx        # Settings, modules, security
 ├── components/
-│   ├── AppLayout.tsx           # Shell — toast, nav, transaction modal
-│   ├── AssetDetailOverlay.tsx  # Full-screen asset detail + maintenance
-│   ├── AuthGate.tsx            # Biometric/PIN lock screen
+│   ├── AppLayout.tsx           # Shell — toast, nav, modal
+│   ├── AssetDetailOverlay.tsx  # Asset detail + maintenance logs
+│   ├── AuthGate.tsx            # PIN / biometric lock screen
 │   ├── AuthScreen.tsx          # Login / Signup
 │   ├── BottomNav.tsx           # 5-tab navigation with FAB
-│   ├── FoodBudgetCard.tsx      # Daily/monthly food tracker
+│   ├── FoodBudgetCard.tsx      # Food spend tracker
 │   ├── SalaryPlanner.tsx       # Salary cashflow planner
-│   └── TransactionModal.tsx    # Add/Edit transaction + claimable toggle
+│   └── TransactionModal.tsx    # Add/Edit transaction + claims toggle
 ├── lib/
-│   ├── context.tsx             # Global state — auth, data, offline, claims
+│   ├── context.tsx             # Global state, offline engine, cache, sync
 │   ├── supabase.ts             # Supabase client init
 │   └── utils.ts                # Utility functions
 ├── supabase/
-│   └── schema.sql              # Full schema + RLS + claims columns
-├── capacitor.config.ts         # Native config
-├── next.config.ts              # Static export + trailing slash
-├── USER_MANUAL.md              # End-user guide
+│   └── schema.sql              # Full schema + RLS
+├── capacitor.config.ts         # Native Android configuration
+├── next.config.ts              # Static export config
 └── package.json
 ```
+
+---
+
+## User Manual
+
+### Installation (One-Time)
+
+1. Receive the APK file from the developer.
+2. Install it on your Android device (you may need to enable "Install from Unknown Sources" in Settings).
+3. Open the app and create an account.
+
+**That's it.** You will never need to reinstall or update manually. All future updates are delivered automatically in the background.
+
+### How Updates Work
+
+- The app checks for updates every time it opens.
+- If a new version is available, it downloads silently in the background.
+- The update is applied the next time you fully close and reopen the app.
+- You don't need to do anything — no Play Store, no download prompts, no waiting.
+
+### Using the App Offline
+
+You can use this app with **zero internet connectivity**. Here's what to expect:
+
+**Logging expenses offline:**
+1. Open the app normally — even in Airplane Mode.
+2. Your last-known data (balances, transactions, goals) loads from the device cache.
+3. Tap **+** and log an expense as usual. It saves locally on your device.
+4. You'll see: *"No connection. Expense saved offline."*
+5. Your dashboard updates immediately with the offline entry included.
+
+**When you reconnect:**
+1. The app detects the network automatically.
+2. All queued expenses upload to the cloud invisibly.
+3. You'll see: *"3 offline expenses synced to cloud!"*
+4. The UI refreshes with server-confirmed data.
+
+**The bottom line:** Use the app exactly the same way whether you have signal or not. Log your coffee in the train tunnel, your lunch in the basement food court, your parking at the underground lot. Everything syncs when you surface. No data is ever lost.
+
+### Quick Tips
+
+- **Quick Log:** Tap the center **+** button on the bottom bar from any screen.
+- **Claims:** Flag an expense as "Claimable" when adding it. Mark it cleared later to auto-generate a matching income entry.
+- **Asset Vault:** Track your gadgets and see their cost-per-day drop over time. Add maintenance logs for the true total cost.
+- **Radar:** Set up RSS feeds, cinema listings, or streaming alerts in one aggregated feed.
+- **Dark Mode & Themes:** Profile → toggle Dark Mode or change your accent color.
+- **Security:** Profile → Security → set a PIN or enable fingerprint lock.
 
 ---
 
