@@ -171,6 +171,7 @@ export const AppContext = createContext<AppContextType | null>(null);
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [isHydrating, setIsHydrating] = useState(true);
 
   const [userName, setUserNameRaw] = useState("User");
   const [currency, setCurrency] = useState("RM");
@@ -509,7 +510,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setIsRadarEnabledRaw(session.user.user_metadata?.radar_enabled === true);
       setIsClaimsEnabledRaw(session.user.user_metadata?.claims_enabled === true);
 
-      refreshData(session.user);
+      refreshData(session.user).finally(() => setIsHydrating(false));
     } else {
        setTransactions([]);
        setGoals([]);
@@ -517,6 +518,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
        setUtilities([]);
        setPlannerItems([]);
        setAssets([]);
+       setIsHydrating(false);
     }
   }, [session]);
 
@@ -660,6 +662,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setIsClaimsEnabledRaw(val);
     if (session?.user) await supabase.auth.updateUser({ data: { claims_enabled: val } });
   };
+
+  if (isHydrating || authLoading) {
+    return (
+      <div className="fixed inset-0 z-[999] flex flex-col items-center justify-center bg-background">
+        <p className="text-muted-foreground animate-pulse font-medium text-sm">Loading Tracker...</p>
+      </div>
+    );
+  }
 
   return (
     <AppContext.Provider value={{
