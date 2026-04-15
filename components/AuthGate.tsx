@@ -48,7 +48,6 @@ async function tryBiometric(): Promise<boolean> {
     if (!BiometricAuth) return false;
     await BiometricAuth.authenticate({
       reason: "Unlock Tracker",
-      subtitle: "Log in",
       cancelTitle: "Cancel",
       allowDeviceCredential: false,
       androidConfirmationRequired: true,
