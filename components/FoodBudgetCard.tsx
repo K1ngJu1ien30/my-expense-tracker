@@ -6,7 +6,7 @@ import { UtensilsCrossed } from "lucide-react";
 import { useAppContext } from "@/lib/context";
 
 export default function FoodBudgetCard() {
-  const { transactions, foodDailyLimit, foodMonthlyLimit, accentColor } = useAppContext();
+  const { currency, transactions, foodDailyLimit, foodMonthlyLimit, accentColor } = useAppContext();
 
   const { spentToday, spentThisMonth } = useMemo(() => {
     const now = new Date();

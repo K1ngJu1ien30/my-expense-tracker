@@ -7,7 +7,7 @@ import { useAppContext } from "@/lib/context";
 import { supabase } from "@/lib/supabase";
 
 export default function HubPage() {
-  const { accentColor, enableFoodBudget, enableSalaryPlanner, isVaultEnabled, isRadarEnabled, isClaimsEnabled, transactions, session, setShowTransactionModal } = useAppContext();
+  const { accentColor, enableFoodBudget, enableSalaryPlanner, isVaultEnabled, isRadarEnabled, isClaimsEnabled, transactions, session, setShowTransactionModal,formatCurrency } = useAppContext();
 
   const [radarCount, setRadarCount] = useState(0);
 
