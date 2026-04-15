@@ -53,7 +53,7 @@ const BarTooltip = ({ active, payload, label }: any) => {
                 <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: entry.fill || entry.color }} />
                 <span className="text-xs font-semibold text-muted-foreground truncate">{entry.dataKey}</span>
               </div>
-              <span className="text-xs font-black text-foreground shrink-0">RM {Number(entry.value).toFixed(2)}</span>
+              <span className="text-xs font-black text-foreground shrink-0">{entry.payload?.currency || ''} {Number(entry.value).toFixed(2)}</span>
             </div>
           ))}
         </div>
@@ -71,7 +71,7 @@ const VelocityTooltip = ({ active, payload, label }: any) => {
         {payload.map((entry: any, i: number) => (
           <div key={i} className="flex items-center gap-2">
             <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: entry.stroke || entry.color }} />
-            <span className="text-xs font-black text-foreground">RM {Number(entry.value).toFixed(2)}</span>
+            <span className="text-xs font-black text-foreground">{entry.payload?.currency || ''} {Number(entry.value).toFixed(2)}</span>
           </div>
         ))}
       </div>
@@ -84,7 +84,8 @@ export default function AnalyticsPage() {
   const { 
     subscriptions, addSubscription, deleteSubscription, updateSubscription,
     utilities, addUtility, deleteUtility, updateUtility,
-    triggerToast, accentColor, transactions, accounts, confirmAction
+    triggerToast, accentColor, transactions, accounts, confirmAction,
+    currency, formatCurrency
   } = useAppContext();
 
   const [timeFilter, setTimeFilter] = useState("Month");
@@ -190,7 +191,7 @@ export default function AnalyticsPage() {
        map[t.category] = (map[t.category] || 0) + Number(t.amount);
     });
     const colors = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4'];
-    return Object.entries(map).map(([name, value], i) => ({ name, value, color: colors[i % colors.length] })).sort((a,b)=>b.value-a.value);
+    return Object.entries(map).map(([name, value], i) => ({ name, value, color: colors[i % colors.length], currency })).sort((a,b)=>b.value-a.value);
   }, [filteredTxs]);
 
   const totalExpense = useMemo(() => categoryData.reduce((acc, curr) => acc + curr.value, 0), [categoryData]);
@@ -350,7 +351,7 @@ export default function AnalyticsPage() {
           <div className="h-[250px] w-full relative -mt-4">
              <div className="absolute inset-0 flex flex-col items-center justify-center">
                <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Total</span>
-               <span className="font-black text-xl text-foreground">RM {totalExpense.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+               <span className="font-black text-xl text-foreground">{formatCurrency(totalExpense)}</span>
              </div>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart margin={{ top: 20, right: 30, bottom: 20, left: 30 }}>
@@ -386,7 +387,7 @@ export default function AnalyticsPage() {
                 <div className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: entry.color }} />
                 <div>
                    <p className="text-xs font-bold text-foreground leading-none">{entry.name}</p>
-                   <p className="text-[10px] text-muted-foreground font-semibold mt-0.5">RM {entry.value.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                   <p className="text-[10px] text-muted-foreground font-semibold mt-0.5">{currency} {entry.value.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
                 </div>
               </div>
             ))}
@@ -424,10 +425,10 @@ export default function AnalyticsPage() {
           <div>
             <h3 className="font-bold text-foreground">Spending Velocity</h3>
             <p className="text-xs text-muted-foreground font-medium mt-1">
-              At your current pace of <span className="font-bold" style={{ color: accentColor }}>RM {velocityData.dailyAvg.toFixed(2)}/day</span>, you are projected to spend:
+              At your current pace of <span className="font-bold" style={{ color: accentColor }}>{currency} {velocityData.dailyAvg.toFixed(2)}/day</span>, you are projected to spend:
             </p>
             <p className="text-2xl font-black mt-2" style={{ color: accentColor }}>
-              RM {velocityData.projectedTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              {formatCurrency(velocityData.projectedTotal)}
             </p>
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mt-0.5">end-of-month projection</p>
           </div>
@@ -490,7 +491,7 @@ export default function AnalyticsPage() {
            <div className="flex justify-between items-start">
              <div>
                 <h3 className="font-bold">Subscriptions</h3>
-                <p className="text-[10px] uppercase font-black tracking-wider text-muted-foreground mt-1">Total: RM {subscriptions.reduce((sum, s) => sum + s.cost, 0).toFixed(2)} / mo</p>
+                <p className="text-[10px] uppercase font-black tracking-wider text-muted-foreground mt-1">Total: {currency} {subscriptions.reduce((sum, s) => sum + s.cost, 0).toFixed(2)} / mo</p>
              </div>
              <button onClick={() => openAddModal("Sub")} style={{ color: accentColor, backgroundColor: `${accentColor}1A` }} className="p-2 rounded-full hover:scale-105 active:scale-95 transition-all"><Plus className="w-4 h-4"/></button>
            </div>
@@ -504,7 +505,7 @@ export default function AnalyticsPage() {
                       </div>
                       <div className="flex-1">
                         <p className="font-bold text-sm text-foreground">{sub.name}</p>
-                        <p className="font-semibold text-xs text-primary mt-0.5">RM {sub.cost.toFixed(2)} {sub.autoDeduct ? '/mo' : ''}</p>
+                        <p className="font-semibold text-xs text-primary mt-0.5">{currency} {sub.cost.toFixed(2)} {sub.autoDeduct ? '/mo' : ''}</p>
                       </div>
                       <div className="flex gap-1 shrink-0">
                          <button onClick={() => openEditModal("Sub", sub)} className="p-2 text-muted-foreground hover:text-primary transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
@@ -529,7 +530,7 @@ export default function AnalyticsPage() {
            <div className="flex justify-between items-start">
              <div>
                 <h3 className="font-bold">Utilities</h3>
-                <p className="text-[10px] uppercase font-black tracking-wider text-muted-foreground mt-1">Total: RM {utilities.reduce((sum, s) => sum + s.cost, 0).toFixed(2)} / mo</p>
+                <p className="text-[10px] uppercase font-black tracking-wider text-muted-foreground mt-1">Total: {currency} {utilities.reduce((sum, s) => sum + s.cost, 0).toFixed(2)} / mo</p>
              </div>
              <button onClick={() => openAddModal("Util")} style={{ color: accentColor, backgroundColor: `${accentColor}1A` }} className="p-2 rounded-full hover:scale-105 active:scale-95 transition-all"><Plus className="w-4 h-4"/></button>
            </div>
@@ -543,7 +544,7 @@ export default function AnalyticsPage() {
                       </div>
                       <div className="flex-1">
                         <p className="font-bold text-sm text-foreground">{sub.name}</p>
-                        <p className="font-semibold text-xs text-primary mt-0.5">RM {sub.cost.toFixed(2)}</p>
+                        <p className="font-semibold text-xs text-primary mt-0.5">{currency} {sub.cost.toFixed(2)}</p>
                       </div>
                       <div className="flex gap-1 shrink-0">
                          <button onClick={() => openEditModal("Util", sub)} className="p-2 text-muted-foreground hover:text-primary transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
@@ -587,7 +588,7 @@ export default function AnalyticsPage() {
                       autoFocus
                    />
                    <div className="flex items-center gap-2 bg-muted/60 rounded-xl px-4 py-3 border border-border focus-within:border-primary/50 transition-colors">
-                      <span className="font-bold text-muted-foreground text-sm">RM</span>
+                      <span className="font-bold text-muted-foreground text-sm">{currency}</span>
                       <input 
                          value={newItemCost} 
                          onChange={e=>setNewItemCost(e.target.value)} 

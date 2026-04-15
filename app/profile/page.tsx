@@ -372,7 +372,7 @@ export default function ProfilePage() {
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Daily Limit</span>
                       <div className="flex items-center gap-1.5 bg-card rounded-lg border border-border px-3 py-1.5">
-                        <span className="font-bold text-muted-foreground text-xs">RM</span>
+                        <span className="font-bold text-muted-foreground text-xs">{currency}</span>
                         <input
                           type="number"
                           value={foodDailyLimit || ""}
@@ -385,7 +385,7 @@ export default function ProfilePage() {
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Monthly Limit</span>
                       <div className="flex items-center gap-1.5 bg-card rounded-lg border border-border px-3 py-1.5">
-                        <span className="font-bold text-muted-foreground text-xs">RM</span>
+                        <span className="font-bold text-muted-foreground text-xs">{currency}</span>
                         <input
                           type="number"
                           value={foodMonthlyLimit || ""}
@@ -868,7 +868,7 @@ export default function ProfilePage() {
                                <tr key={`g-${g.id}`} className="even:bg-muted/30 hover:bg-muted/50 transition-colors">
                                   <td className="p-4 border-b border-border/30 font-semibold text-emerald-500">Goal</td>
                                   <td className="p-4 border-b border-border/30 font-bold">{g.title}</td>
-                                  <td className="p-4 border-b border-border/30">RM {g.current} / {g.target}</td>
+                                  <td className="p-4 border-b border-border/30">{currency} {g.current} / {g.target}</td>
                                   <td className="p-4 border-b border-border/30 text-xs text-muted-foreground border-l border-border/50">{g.isPinned ? 'Pinned' : 'Not Pinned'}</td>
                                </tr>
                            ))}
@@ -923,12 +923,13 @@ export default function ProfilePage() {
                
                <div className="flex justify-between items-stretch gap-2 mb-6 h-[180px]">
                   <div className="flex-1 overflow-y-auto hide-scrollbar snap-y snap-mandatory border border-border/50 rounded-2xl p-1 bg-muted/10 relative shadow-inner">
-                     <div style={{ backgroundColor: `${accentColor}1A`, borderColor: `${accentColor}33` }} className="absolute top-1/2 left-0 right-0 h-10 -mt-5 pointer-events-none rounded-xl border" />
+                     <div style={{ backgroundColor: `${accentColor}1A`, borderColor: `${accentColor}33` }} className="absolute top-1/2 left-0 right-0 h-10 -mt-5 pointer-events-none rounded-xl border z-10" />
                      <div className="h-[70px]" />
                      {Array.from({length: 12}, (_, i) => String(i+1).padStart(2, '0')).map(h => (
                         <div 
                            key={`h-${h}`} 
-                           onClick={() => { setTempHour(h); if(navigator.vibrate) navigator.vibrate(20); }}
+                           id={`hour-${h}`}
+                           onClick={(e) => { setTempHour(h); if(navigator.vibrate) navigator.vibrate(20); (e.currentTarget as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' }); }}
                            style={tempHour === h ? { color: accentColor } : {}}
                            className={`h-10 flex items-center justify-center snap-center cursor-pointer transition-colors rounded-lg font-bold text-lg ${tempHour === h ? '' : 'text-muted-foreground'}`}
                         >
@@ -939,12 +940,13 @@ export default function ProfilePage() {
                   </div>
                   
                   <div className="flex-1 overflow-y-auto hide-scrollbar snap-y snap-mandatory border border-border/50 rounded-2xl p-1 bg-muted/10 relative shadow-inner">
-                     <div style={{ backgroundColor: `${accentColor}1A`, borderColor: `${accentColor}33` }} className="absolute top-1/2 left-0 right-0 h-10 -mt-5 pointer-events-none rounded-xl border" />
+                     <div style={{ backgroundColor: `${accentColor}1A`, borderColor: `${accentColor}33` }} className="absolute top-1/2 left-0 right-0 h-10 -mt-5 pointer-events-none rounded-xl border z-10" />
                      <div className="h-[70px]" />
                      {["00", "15", "30", "45"].map(m => (
                         <div 
                            key={`m-${m}`} 
-                           onClick={() => { setTempMin(m); if(navigator.vibrate) navigator.vibrate(20); }}
+                           id={`min-${m}`}
+                           onClick={(e) => { setTempMin(m); if(navigator.vibrate) navigator.vibrate(20); (e.currentTarget as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' }); }}
                            style={tempMin === m ? { color: accentColor } : {}}
                            className={`h-10 flex items-center justify-center snap-center cursor-pointer transition-colors rounded-lg font-bold text-lg ${tempMin === m ? '' : 'text-muted-foreground'}`}
                         >

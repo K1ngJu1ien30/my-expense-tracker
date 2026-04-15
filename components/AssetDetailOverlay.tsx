@@ -15,7 +15,7 @@ type Props = {
 };
 
 export default function AssetDetailOverlay({ assetId, onClose }: Props) {
-  const { assets, accentColor, triggerToast, session, updateAsset, deleteAsset, confirmAction } = useAppContext();
+  const { assets, accentColor, triggerToast, session, updateAsset, deleteAsset, confirmAction, currency } = useAppContext();
 
   const asset = useMemo(() => assets.find(a => a.id === assetId), [assets, assetId]);
 
@@ -305,7 +305,7 @@ export default function AssetDetailOverlay({ assetId, onClose }: Props) {
               <input value={logDesc} onChange={e => setLogDesc(e.target.value)} placeholder="Description (e.g. Replaced battery)" className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" autoFocus />
               <input type="date" value={logDate} onChange={e => setLogDate(e.target.value)} className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" />
               <div className="flex items-center gap-2 bg-muted/60 rounded-xl px-4 py-3 border border-border">
-                <span className="font-bold text-muted-foreground text-sm">RM</span>
+                <span className="font-bold text-muted-foreground text-sm">{currency}</span>
                 <input value={logCost} onChange={e => setLogCost(e.target.value)} type="number" placeholder="0.00 (optional)" className="flex-1 bg-transparent text-sm font-bold outline-none text-foreground" />
               </div>
               <button onClick={handleSaveLog} style={{ backgroundColor: accentColor, boxShadow: `0 0 15px ${accentColor}4D` }} className="w-full text-white py-4 rounded-xl font-bold shadow-soft hover:scale-[1.02] active:scale-[0.98] transition-all">
@@ -351,7 +351,7 @@ export default function AssetDetailOverlay({ assetId, onClose }: Props) {
               </div>
               <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" />
               <div className="flex items-center gap-2 bg-muted/60 rounded-xl px-4 py-3 border border-border">
-                <span className="font-bold text-muted-foreground text-sm">RM</span>
+                <span className="font-bold text-muted-foreground text-sm">{currency}</span>
                 <input value={editPrice} onChange={e => setEditPrice(e.target.value)} type="number" placeholder="0.00" className="flex-1 bg-transparent text-sm font-bold outline-none text-foreground" />
               </div>
               <button onClick={handleSaveEdit} style={{ backgroundColor: accentColor, boxShadow: `0 0 15px ${accentColor}4D` }} className="w-full text-white py-4 rounded-xl font-bold shadow-soft hover:scale-[1.02] active:scale-[0.98] transition-all">

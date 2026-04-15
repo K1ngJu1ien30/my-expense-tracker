@@ -126,7 +126,7 @@ export default function HubPage() {
 
           <div className="flex items-baseline gap-3">
             <div className="flex-1">
-              <p className="text-3xl font-black text-foreground tracking-tight">RM {todaySpent.toFixed(2)}</p>
+              <p className="text-3xl font-black text-foreground tracking-tight">{formatCurrency(todaySpent)}</p>
               <p className="text-xs text-muted-foreground font-medium mt-0.5">spent today</p>
             </div>
             {isRadarEnabled && radarCount > 0 && (

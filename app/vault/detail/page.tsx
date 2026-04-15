@@ -11,7 +11,7 @@ import type { AssetLog } from "@/lib/context";
 const EMOJI_OPTIONS = ["📱", "💻", "📸", "👟", "⌚", "🎧", "🎮", "🚗", "🏠", "🛋️", "🧳", "👜", "📦", "🔧", "🎸"];
 
 export default function AssetDetailPage() {
-  const { assets, accentColor, triggerToast, session, updateAsset, deleteAsset, confirmAction, authLoading, activeAssetId, setActiveAssetId } = useAppContext();
+  const { assets, accentColor, triggerToast, session, updateAsset, deleteAsset, confirmAction, authLoading, activeAssetId, setActiveAssetId, currency } = useAppContext();
   const router = useRouter();
 
   const asset = useMemo(() => assets.find(a => a.id === activeAssetId), [assets, activeAssetId]);
@@ -179,7 +179,7 @@ export default function AssetDetailPage() {
         <div className="grid grid-cols-3 gap-3 pt-2">
           <div className="bg-muted/30 p-3 rounded-xl text-center">
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Purchase</p>
-            <p className="text-sm font-black text-foreground mt-0.5">RM {Number(asset.purchase_price).toFixed(2)}</p>
+            <p className="text-sm font-black text-foreground mt-0.5">{currency} {Number(asset.purchase_price).toFixed(2)}</p>
           </div>
           <div className="bg-muted/30 p-3 rounded-xl text-center">
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Active</p>
@@ -187,17 +187,17 @@ export default function AssetDetailPage() {
           </div>
           <div className="bg-muted/30 p-3 rounded-xl text-center">
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Cost / Day</p>
-            <p className="text-sm font-black mt-0.5" style={{ color: accentColor }}>RM {costPerDay.toFixed(2)}</p>
+            <p className="text-sm font-black mt-0.5" style={{ color: accentColor }}>{currency} {costPerDay.toFixed(2)}</p>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-muted/30 p-3 rounded-xl text-center">
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Maint. Cost</p>
-            <p className="text-sm font-black text-foreground mt-0.5">RM {totalMaintenanceCost.toFixed(2)}</p>
+            <p className="text-sm font-black text-foreground mt-0.5">{currency} {totalMaintenanceCost.toFixed(2)}</p>
           </div>
           <div className="bg-muted/30 p-3 rounded-xl text-center">
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">True Total</p>
-            <p className="text-sm font-black text-foreground mt-0.5">RM {trueTotalInvestment.toFixed(2)}</p>
+            <p className="text-sm font-black text-foreground mt-0.5">{currency} {trueTotalInvestment.toFixed(2)}</p>
           </div>
         </div>
       </div>
@@ -233,7 +233,7 @@ export default function AssetDetailPage() {
                       </div>
                     </div>
                     {Number(log.cost) > 0 && (
-                      <span className="text-xs font-black text-rose-500 shrink-0 bg-rose-500/10 px-2 py-1 rounded-lg">RM {Number(log.cost).toFixed(2)}</span>
+                      <span className="text-xs font-black text-rose-500 shrink-0 bg-rose-500/10 px-2 py-1 rounded-lg">{currency} {Number(log.cost).toFixed(2)}</span>
                     )}
                   </div>
                 </div>

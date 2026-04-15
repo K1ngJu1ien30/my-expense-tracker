@@ -306,24 +306,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Capacitor hardware back button
-  useEffect(() => {
-    let cleanup: (() => void) | undefined;
-    try {
-      // @ts-ignore
-      import('@capacitor/app').then(({ App }) => {
-        App.addListener('backButton', ({ canGoBack }: { canGoBack: boolean }) => {
-          if (canGoBack) {
-            window.history.back();
-          } else {
-            App.exitApp();
-          }
-        });
-        cleanup = () => { App.removeAllListeners().catch(() => {}); };
-      }).catch(() => {});
-    } catch {}
-    return () => { if (cleanup) cleanup(); };
-  }, []);
+
 
   // Standalone data refresh — used by initial load and post-sync
   const refreshData = async (currentUser: { id: string; user_metadata?: any }) => {

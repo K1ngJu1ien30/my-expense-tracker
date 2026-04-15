@@ -7,7 +7,7 @@ import { useAppContext } from "@/lib/context";
 export default function SalaryPlanner() {
   const {
     plannerItems, addPlannerItem, deletePlannerItem, confirmAction,
-    categories, accentColor, transactions, accounts, includeSavings
+    categories, accentColor, transactions, accounts, includeSavings, currency
   } = useAppContext();
 
   const [newCategory, setNewCategory] = useState("");
@@ -140,7 +140,7 @@ export default function SalaryPlanner() {
                 <tr key={item.id} className="border-t border-border/30 hover:bg-muted/20 transition-colors">
                   <td className="text-left p-3 font-bold text-foreground min-w-0 truncate">{item.item_name}</td>
                   <td className="text-center p-3 text-muted-foreground font-semibold text-xs">{item.category}</td>
-                  <td className="text-center p-3 font-black text-foreground">RM {Number(item.amount).toFixed(2)}</td>
+                  <td className="text-center p-3 font-black text-foreground">{currency} {Number(item.amount).toFixed(2)}</td>
                   <td className="text-center p-3">
                     <button
                       onClick={() => confirmAction("Delete Item", `Remove "${item.item_name}"?`, () => deletePlannerItem(item.id))}
@@ -175,7 +175,7 @@ export default function SalaryPlanner() {
             style={availableCashFlow >= 0 ? { color: accentColor } : {}}
             className={`text-xl font-black ${availableCashFlow < 0 ? "text-rose-500" : ""}`}
           >
-            RM {availableCashFlow.toFixed(2)}
+            {currency} {availableCashFlow.toFixed(2)}
           </span>
         </div>
         <p className="text-[10px] text-muted-foreground font-medium text-center">

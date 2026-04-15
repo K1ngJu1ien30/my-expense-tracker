@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import BottomNav from "./BottomNav";
 import TransactionModal from "./TransactionModal";
 import AuthScreen from "./AuthScreen";
@@ -13,6 +13,28 @@ import { AnimatePresence, motion } from "framer-motion";
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { toast, session, authLoading, showTransactionModal, setShowTransactionModal } = useAppContext();
   const pathname = usePathname();
+  const router = useRouter();
+
+  // Capacitor hardware back button — uses Next.js router
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    try {
+      // @ts-ignore
+      import('@capacitor/app').then(({ App }) => {
+        App.addListener('backButton', () => {
+          const current = window.location.pathname.replace(/\/+$/, '') || '/';
+          if (current === '' || current === '/' || current === '/hub') {
+            App.exitApp();
+          } else {
+            router.back();
+          }
+        });
+        cleanup = () => { App.removeAllListeners().catch(() => {}); };
+      }).catch(() => {});
+    } catch {}
+    return () => { if (cleanup) cleanup(); };
+  }, [router]);
+
   useEffect(() => {
     setShowTransactionModal(false);
   }, [pathname]);

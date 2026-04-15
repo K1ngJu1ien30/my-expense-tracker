@@ -60,10 +60,10 @@ function PillSelector({ options, value, onChange }: { options: string[], value: 
 }
 
 export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const { categories, triggerToast, accentColor, addTransaction, updateTransaction, transactions, editTransactionId, setEditTransactionId, accounts } = useAppContext();
+  const { categories, triggerToast, accentColor, addTransaction, updateTransaction, transactions, editTransactionId, setEditTransactionId, accounts, currency } = useAppContext();
   
   const [txType, setTxType] = useState<TxType>("Expense");
-  const [modalCurrency, setModalCurrency] = useState("RM");
+  const [modalCurrency, setModalCurrency] = useState(currency);
   const [account, setAccount] = useState("");
   const [toAccount, setToAccount] = useState("");
   const [category, setCategory] = useState(categories[0] || "Food");
@@ -149,7 +149,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
 
               <div className="mb-4 flex flex-col items-center justify-center py-6 bg-muted/50 rounded-3xl">
                 <div className="flex bg-muted p-1 rounded-xl mb-4">
-                   {["RM", "USD", "JPY"].map(c => (
+                   {[currency, "USD", "JPY"].map(c => (
                      <button 
                        key={c}
                        onClick={() => setModalCurrency(c)}
@@ -171,9 +171,9 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                     autoFocus
                   />
                 </div>
-                {modalCurrency !== "RM" && amount && (
+                {modalCurrency !== currency && amount && (
                    <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-3 text-xs font-bold text-muted-foreground bg-background px-3 py-1.5 rounded-lg border border-border/50">
-                      ≈ RM {(Number(amount) * (modalCurrency === "USD" ? 4.5 : 0.03)).toFixed(2)}
+                      ≈ {currency} {(Number(amount) * (modalCurrency === "USD" ? 4.5 : 0.03)).toFixed(2)}
                    </motion.p>
                 )}
               </div>

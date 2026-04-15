@@ -59,7 +59,7 @@ export default function FoodBudgetCard() {
         <div className="flex justify-between items-baseline">
           <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Daily</span>
           <span className={`text-sm font-black ${dailyRemaining < 0 ? "text-rose-500" : "text-foreground"}`}>
-            RM {dailyRemaining.toFixed(2)} <span className="text-muted-foreground font-medium text-xs">remaining</span>
+            {currency} {dailyRemaining.toFixed(2)} <span className="text-muted-foreground font-medium text-xs">remaining</span>
           </span>
         </div>
         <div className="h-3 bg-muted rounded-full overflow-hidden">
@@ -71,8 +71,8 @@ export default function FoodBudgetCard() {
           />
         </div>
         <div className="flex justify-between text-[10px] font-semibold text-muted-foreground">
-          <span>Spent: RM {spentToday.toFixed(2)}</span>
-          <span>Limit: RM {foodDailyLimit.toFixed(2)}</span>
+          <span>Spent: {currency} {spentToday.toFixed(2)}</span>
+          <span>Limit: {currency} {foodDailyLimit.toFixed(2)}</span>
         </div>
       </div>
 
@@ -93,8 +93,8 @@ export default function FoodBudgetCard() {
           />
         </div>
         <div className="flex justify-between text-[10px] font-semibold text-muted-foreground">
-          <span>Spent: RM {spentThisMonth.toFixed(2)}</span>
-          <span>Limit: RM {foodMonthlyLimit.toFixed(2)}</span>
+          <span>Spent: {currency} {spentThisMonth.toFixed(2)}</span>
+          <span>Limit: {currency} {foodMonthlyLimit.toFixed(2)}</span>
         </div>
       </div>
     </div>

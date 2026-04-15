@@ -48,7 +48,8 @@ async function tryBiometric(): Promise<boolean> {
     if (!BiometricAuth) return false;
     await BiometricAuth.authenticate({
       reason: "Unlock Tracker",
-      cancelTitle: "Use PIN",
+      cancelTitle: "Cancel",
+      allowDeviceCredential: false,
     });
     return true;
   } catch {
@@ -80,6 +81,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     }
 
     setChecking(true);
+    setShowPinPad(false);
     const attemptUnlock = async () => {
       if (isBiometricEnabled) {
         const success = await tryBiometric();
@@ -89,6 +91,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
           return;
         }
       }
+      // Only show PIN pad if biometric was not attempted or failed
       setShowPinPad(true);
       setChecking(false);
     };

@@ -14,7 +14,7 @@ const ICONS: Record<string, React.ReactNode> = {
 };
 
 export default function GoalsPage() {
-  const { goals, addGoal, updateGoal, deleteGoal, confirmAction, enableFoodBudget, enableSalaryPlanner } = useAppContext();
+  const { goals, addGoal, updateGoal, deleteGoal, confirmAction, enableFoodBudget, enableSalaryPlanner, currency } = useAppContext();
   
   // Modals state
   const [activeAddFunds, setActiveAddFunds] = useState<string | null>(null);

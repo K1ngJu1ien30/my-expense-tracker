@@ -9,7 +9,7 @@ import AssetDetailOverlay from "@/components/AssetDetailOverlay";
 const EMOJI_OPTIONS = ["📱", "💻", "📸", "👟", "⌚", "🎧", "🎮", "🚗", "🏠", "🛋️", "🧳", "👜", "📦", "🔧", "🎸"];
 
 export default function VaultPage() {
-  const { assets, addAsset, deleteAsset, confirmAction, accentColor, triggerToast } = useAppContext();
+  const { assets, addAsset, deleteAsset, confirmAction, accentColor, triggerToast, currency } = useAppContext();
 
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -80,7 +80,7 @@ export default function VaultPage() {
       <div className="grid grid-cols-3 gap-3">
         <div className="bg-card p-4 rounded-2xl shadow-soft border border-border/40">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Total Value</p>
-          <p className="text-lg font-black text-foreground">RM {totalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+          <p className="text-lg font-black text-foreground">{currency} {totalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
         </div>
         <div className="bg-card p-4 rounded-2xl shadow-soft border border-border/40">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Items</p>
@@ -88,7 +88,7 @@ export default function VaultPage() {
         </div>
         <div className="bg-card p-4 rounded-2xl shadow-soft border border-border/40">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Cost / Day</p>
-          <p className="text-lg font-black" style={{ color: accentColor }}>RM {avgCostPerDay.toFixed(2)}</p>
+          <p className="text-lg font-black" style={{ color: accentColor }}>{currency} {avgCostPerDay.toFixed(2)}</p>
         </div>
       </div>
 
@@ -142,7 +142,7 @@ export default function VaultPage() {
                 <div className="mt-2 pt-2 border-t border-border/30">
                   <p className="text-xs font-black" style={{ color: accentColor }}>Active for {getDaysActive(asset.purchase_date)} days</p>
                   {Number(asset.purchase_price) > 0 && (
-                    <p className="text-[10px] font-semibold text-muted-foreground mt-0.5">RM {Number(asset.purchase_price).toFixed(2)}</p>
+                    <p className="text-[10px] font-semibold text-muted-foreground mt-0.5">{currency} {Number(asset.purchase_price).toFixed(2)}</p>
                   )}
                 </div>
               </motion.div>

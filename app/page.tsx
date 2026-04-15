@@ -16,8 +16,8 @@ const CustomTooltip = ({ active, payload, label }: any) => {
       <div className="bg-card shadow-xl rounded-xl p-3 border border-gray-100 dark:border-white/10 outline-none min-w-[120px]">
         <p className="text-xs font-bold text-muted-foreground mb-2 pb-2 border-b border-border/50">{label} Summary</p>
         <div className="space-y-1 text-sm font-semibold">
-          <p className="text-rose-500">Expenses: RM {data.value}</p>
-          {data.income > 0 && <p className="text-emerald-500">Income: RM {data.income}</p>}
+          <p className="text-rose-500">Expenses: {data.currency} {data.value}</p>
+          {data.income > 0 && <p className="text-emerald-500">Income: {data.currency} {data.income}</p>}
         </div>
       </div>
     );
@@ -26,7 +26,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function Dashboard() {
-  const { userName, goals, transactions, includeSavings, accounts, formatCurrency } = useAppContext();
+  const { userName, goals, transactions, includeSavings, accounts, formatCurrency, currency } = useAppContext();
   const pinnedGoals = goals.filter(g => g.isPinned);
 
   const hour = new Date().getHours();
@@ -105,7 +105,7 @@ export default function Dashboard() {
        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
        const dayLabel = fmt.format(d);
        const dateKey = `${d.getMonth()+1}/${d.getDate()}`;
-       const item = { name: dayLabel, dateKey, income: 0, value: 0, transactions: 0 };
+       const item = { name: dayLabel, dateKey, income: 0, value: 0, transactions: 0, currency };
        map[dateKey] = item;
        data.push(item);
      }
@@ -148,12 +148,12 @@ export default function Dashboard() {
         <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full blur-xl -ml-8 -mb-8 pointer-events-none" />
         
         <p className="text-primary-foreground/70 font-medium mb-1 relative z-10 text-sm">Total Balance</p>
-        <h2 className="text-4xl font-black mb-4 relative z-10 tracking-tight">RM {totalBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</h2>
+        <h2 className="text-4xl font-black mb-4 relative z-10 tracking-tight">{formatCurrency(totalBalance)}</h2>
         
         {pendingIncome > 0 && (
           <div className="flex items-center gap-2 bg-amber-400/20 px-3 py-1.5 rounded-full backdrop-blur-md mb-4 w-fit relative z-10">
             <Clock className="w-3 h-3 text-amber-400" />
-            <span className="text-xs font-bold text-amber-300">RM {pendingIncome.toLocaleString(undefined, {minimumFractionDigits: 2})} Pending</span>
+            <span className="text-xs font-bold text-amber-300">{formatCurrency(pendingIncome)} Pending</span>
           </div>
         )}
         
@@ -179,7 +179,7 @@ export default function Dashboard() {
           {todayTransactions.length === 0 ? (
             <p className="text-sm font-medium text-muted-foreground">No transactions today!</p>
           ) : (
-            <p className="text-lg font-black dark:text-foreground">RM {todayTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+            <p className="text-lg font-black dark:text-foreground">{formatCurrency(todayTotal)}</p>
           )}
         </Link>
         <Link href="/history" className="bg-card w-full text-left p-5 rounded-3xl shadow-soft border border-border/40 hover:scale-[1.02] active:scale-95 transition-transform cursor-pointer block">
@@ -216,7 +216,7 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-xs font-bold text-primary">RM {g.current.toLocaleString()} <span className="text-muted-foreground font-medium">/ {g.target >= 1000 ? `${g.target/1000}k` : g.target}</span></p>
+                  <p className="text-xs font-bold text-primary">{currency} {g.current.toLocaleString()} <span className="text-muted-foreground font-medium">/ {g.target >= 1000 ? `${g.target/1000}k` : g.target}</span></p>
                 </div>
               </div>
               <div className="h-2.5 bg-muted rounded-full overflow-hidden">
