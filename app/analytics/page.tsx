@@ -289,6 +289,19 @@ export default function AnalyticsPage() {
     return { data, projectedTotal, dailyAvg, currentDay, daysInMonth, totalSoFar: cumulative };
   }, [transactions]);
 
+  // Income by Account — grouped bar chart data respecting time filter
+  const incomeByAccount = useMemo(() => {
+    const incomeTxs = filteredTxs.filter(t => t.type === "Income");
+    const map: Record<string, number> = {};
+    incomeTxs.forEach(t => {
+      const acc = t.account || "Unknown";
+      map[acc] = (map[acc] || 0) + Number(t.amount);
+    });
+    return Object.entries(map)
+      .map(([account, amount]) => ({ account, amount }))
+      .sort((a, b) => b.amount - a.amount);
+  }, [filteredTxs]);
+
   return (
     <div className="p-6 animate-in fade-in duration-500 space-y-6 pb-[120px] relative min-h-screen overflow-x-hidden">
       
@@ -418,6 +431,52 @@ export default function AnalyticsPage() {
           </div>
         </div>
       </div>
+
+      {/* Income by Account Chart */}
+      {incomeByAccount.length > 0 && (
+        <div className="bg-card p-6 rounded-[2rem] shadow-soft border border-border/40 space-y-4">
+          <div>
+            <h3 className="font-bold text-foreground">Income by Account</h3>
+            <p className="text-[10px] uppercase font-black tracking-wider text-muted-foreground mt-1">
+              Total: {formatCurrency(incomeByAccount.reduce((s, a) => s + a.amount, 0))} • {dateRangeLabel}
+            </p>
+          </div>
+          <div className="h-[220px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={incomeByAccount} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.4} />
+                <XAxis dataKey="account" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--muted-foreground)', fontWeight: 600 }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--muted-foreground)', fontWeight: 600 }} />
+                <Tooltip
+                  content={({ active, payload, label }: any) => {
+                    if (!active || !payload?.length) return null;
+                    return (
+                      <div className="bg-card/95 backdrop-blur-xl border border-border/50 rounded-2xl shadow-heavy p-3 min-w-[130px]">
+                        <p className="text-xs font-bold text-muted-foreground mb-2 pb-2 border-b border-border/50">{label}</p>
+                        <span className="text-sm font-black text-emerald-500">{formatCurrency(Number(payload[0].value))}</span>
+                      </div>
+                    );
+                  }}
+                  cursor={{ fill: 'var(--muted)', opacity: 0.2 }}
+                />
+                <Bar dataKey="amount" fill="#10b981" radius={[6, 6, 0, 0]} maxBarSize={40} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          {/* Account breakdown legend */}
+          <div className="flex flex-wrap gap-3 pt-1">
+            {incomeByAccount.map((entry, i) => (
+              <div key={entry.account} className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-emerald-500" style={{ opacity: 1 - i * 0.15 }} />
+                <div>
+                  <p className="text-[10px] font-bold text-foreground leading-none">{entry.account}</p>
+                  <p className="text-[10px] text-muted-foreground font-semibold mt-0.5">{formatCurrency(entry.amount)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Velocity Projection Chart */}
       {timeFilter === "Month" && velocityData.totalSoFar > 0 && (

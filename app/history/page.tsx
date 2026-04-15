@@ -7,36 +7,49 @@ import { useAppContext } from "@/lib/context";
 type FilterType = "today" | "week" | "all";
 
 export default function HistoryPage() {
-  const { transactions, deleteTransaction, setEditTransactionId, accentColor, confirmAction, formatCurrency } = useAppContext();
+  const { transactions, deleteTransaction, setEditTransactionId, accentColor, confirmAction, formatCurrency, categories } = useAppContext();
   const [filter, setFilter] = useState<FilterType>("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+
+  // Derive unique categories actually present in transactions (union with user categories)
+  const availableCategories = useMemo(() => {
+    const txCats = new Set(transactions.map(tx => tx.category).filter(Boolean));
+    categories.forEach(c => txCats.add(c));
+    return Array.from(txCats).sort();
+  }, [transactions, categories]);
 
   const filteredTransactions = useMemo(() => {
-    if (filter === "all") return transactions;
+    let result = transactions;
 
-    const now = new Date();
-
-    if (filter === "today") {
-      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-      const startOfTomorrow = startOfToday + 86400000;
-      return transactions.filter(tx => {
-        const t = new Date(tx.date).getTime();
-        return t >= startOfToday && t < startOfTomorrow;
-      });
+    // Time filter
+    if (filter !== "all") {
+      const now = new Date();
+      if (filter === "today") {
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        const startOfTomorrow = startOfToday + 86400000;
+        result = result.filter(tx => {
+          const t = new Date(tx.date).getTime();
+          return t >= startOfToday && t < startOfTomorrow;
+        });
+      } else if (filter === "week") {
+        const dayOfWeek = now.getDay();
+        const distanceToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - distanceToMonday).getTime();
+        const endOfWeek = startOfWeek + 7 * 86400000;
+        result = result.filter(tx => {
+          const t = new Date(tx.date).getTime();
+          return t >= startOfWeek && t < endOfWeek;
+        });
+      }
     }
 
-    if (filter === "week") {
-      const dayOfWeek = now.getDay();
-      const distanceToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-      const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - distanceToMonday).getTime();
-      const endOfWeek = startOfWeek + 7 * 86400000;
-      return transactions.filter(tx => {
-        const t = new Date(tx.date).getTime();
-        return t >= startOfWeek && t < endOfWeek;
-      });
+    // Category filter (AND logic)
+    if (categoryFilter !== "all") {
+      result = result.filter(tx => tx.category === categoryFilter);
     }
 
-    return transactions;
-  }, [transactions, filter]);
+    return result;
+  }, [transactions, filter, categoryFilter]);
 
   const filterLabel = filter === "today" ? "Today" : filter === "week" ? "This Week" : "All Time";
 
@@ -46,13 +59,13 @@ export default function HistoryPage() {
         <div>
           <h1 className="text-2xl font-bold">History</h1>
           <p className="text-xs text-muted-foreground font-medium mt-0.5">
-            {filterLabel} — {filteredTransactions.length} transaction{filteredTransactions.length !== 1 ? "s" : ""}
+            {filterLabel}{categoryFilter !== "all" ? ` • ${categoryFilter}` : ""} — {filteredTransactions.length} transaction{filteredTransactions.length !== 1 ? "s" : ""}
           </p>
         </div>
       </div>
 
-      {/* Filter Pills */}
-      <div className="flex gap-2 mb-5">
+      {/* Time Filter Pills */}
+      <div className="flex gap-2 mb-3">
         {([
           { key: "today" as FilterType, label: "Today" },
           { key: "week" as FilterType, label: "This Week" },
@@ -73,16 +86,46 @@ export default function HistoryPage() {
           );
         })}
       </div>
+
+      {/* Category Filter Pills */}
+      <div className="-mx-6 px-6 overflow-x-auto hide-scrollbar mb-5">
+        <div className="flex gap-2 w-max pb-1">
+          <button
+            onClick={() => setCategoryFilter("all")}
+            style={categoryFilter === "all" ? { backgroundColor: `${accentColor}1A`, color: accentColor, borderColor: `${accentColor}33` } : {}}
+            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-wide transition-all border shrink-0 ${
+              categoryFilter === "all" ? "border" : "border-border/50 text-muted-foreground hover:bg-muted/50"
+            }`}
+          >
+            All Categories
+          </button>
+          {availableCategories.map(cat => {
+            const active = categoryFilter === cat;
+            return (
+              <button
+                key={cat}
+                onClick={() => setCategoryFilter(active ? "all" : cat)}
+                style={active ? { backgroundColor: `${accentColor}1A`, color: accentColor, borderColor: `${accentColor}33` } : {}}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-wide transition-all border shrink-0 ${
+                  active ? "border" : "border-border/50 text-muted-foreground hover:bg-muted/50"
+                }`}
+              >
+                {cat}
+              </button>
+            );
+          })}
+        </div>
+      </div>
       
       {filteredTransactions.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 opacity-50 text-center">
           <Ghost className="w-16 h-16 mb-4 text-muted-foreground stroke-[1.5]" />
           <p className="text-sm font-bold text-muted-foreground w-2/3 mx-auto">
-            {filter === "all" ? "No transactions yet.\nYou're saving money!" : `No transactions ${filter === "today" ? "today" : "this week"}.`}
+            {filter === "all" && categoryFilter === "all" ? "No transactions yet.\nYou're saving money!" : "No transactions match your filters."}
           </p>
-          {filter !== "all" && (
-            <button onClick={() => setFilter("all")} style={{ color: accentColor }} className="text-sm font-bold mt-3">
-              Show All Transactions
+          {(filter !== "all" || categoryFilter !== "all") && (
+            <button onClick={() => { setFilter("all"); setCategoryFilter("all"); }} style={{ color: accentColor }} className="text-sm font-bold mt-3">
+              Clear All Filters
             </button>
           )}
         </div>
