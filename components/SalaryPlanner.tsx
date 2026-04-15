@@ -163,11 +163,11 @@ export default function SalaryPlanner() {
         <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Cash Flow Analysis</p>
         <div className="flex justify-between text-sm">
           <span className="font-semibold text-muted-foreground">Current Balance</span>
-          <span className="font-bold text-foreground">RM {totalBalance.toFixed(2)}</span>
+          <span className="font-bold text-foreground">{currency} {totalBalance.toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-sm">
           <span className="font-semibold text-muted-foreground">Total Planned Reserves</span>
-          <span className="font-bold text-rose-500">- RM {totalPlanned.toFixed(2)}</span>
+          <span className="font-bold text-rose-500">- {currency} {totalPlanned.toFixed(2)}</span>
         </div>
         <div className="border-t border-border/50 pt-3 flex justify-between items-baseline">
           <span className="font-bold text-foreground text-sm">Available Cash Flow</span>

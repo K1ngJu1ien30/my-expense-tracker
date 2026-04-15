@@ -218,7 +218,7 @@ export default function AssetDetailOverlay({ assetId, onClose }: Props) {
           <div className="grid grid-cols-3 gap-3 pt-2">
             <div className="bg-muted/30 p-3 rounded-xl text-center">
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Purchase</p>
-              <p className="text-sm font-black text-foreground mt-0.5">RM {Number(asset.purchase_price).toFixed(2)}</p>
+              <p className="text-sm font-black text-foreground mt-0.5">{currency} {Number(asset.purchase_price).toFixed(2)}</p>
             </div>
             <div className="bg-muted/30 p-3 rounded-xl text-center">
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Active</p>
@@ -226,17 +226,17 @@ export default function AssetDetailOverlay({ assetId, onClose }: Props) {
             </div>
             <div className="bg-muted/30 p-3 rounded-xl text-center">
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Cost / Day</p>
-              <p className="text-sm font-black mt-0.5" style={{ color: accentColor }}>RM {costPerDay.toFixed(2)}</p>
+              <p className="text-sm font-black mt-0.5" style={{ color: accentColor }}>{currency} {costPerDay.toFixed(2)}</p>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-muted/30 p-3 rounded-xl text-center">
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Maint. Cost</p>
-              <p className="text-sm font-black text-foreground mt-0.5">RM {totalMaintenanceCost.toFixed(2)}</p>
+              <p className="text-sm font-black text-foreground mt-0.5">{currency} {totalMaintenanceCost.toFixed(2)}</p>
             </div>
             <div className="bg-muted/30 p-3 rounded-xl text-center">
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">True Total</p>
-              <p className="text-sm font-black text-foreground mt-0.5">RM {trueTotalInvestment.toFixed(2)}</p>
+              <p className="text-sm font-black text-foreground mt-0.5">{currency} {trueTotalInvestment.toFixed(2)}</p>
             </div>
           </div>
         </div>
@@ -273,7 +273,7 @@ export default function AssetDetailOverlay({ assetId, onClose }: Props) {
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         {Number(log.cost) > 0 && (
-                          <span className="text-xs font-black text-rose-500 bg-rose-500/10 px-2 py-1 rounded-lg">+ RM {Number(log.cost).toFixed(2)}</span>
+                          <span className="text-xs font-black text-rose-500 bg-rose-500/10 px-2 py-1 rounded-lg">+ {currency} {Number(log.cost).toFixed(2)}</span>
                         )}
                         <button onClick={() => openEditLog(log)} className="p-1.5 text-muted-foreground hover:text-primary transition-colors">
                           <Edit2 className="w-3 h-3" />

@@ -92,7 +92,7 @@ export default function GoalsPage() {
                 </div>
                 <div className="flex-1">
                   <h3 className="font-bold text-foreground text-lg leading-tight">{g.title}</h3>
-                  <p className="text-primary font-black mt-0.5">RM {g.current.toLocaleString()} <span className="text-muted-foreground font-medium text-xs">/ RM {g.target.toLocaleString()}</span></p>
+                  <p className="text-primary font-black mt-0.5">{currency} {g.current.toLocaleString()} <span className="text-muted-foreground font-medium text-xs">/ {currency} {g.target.toLocaleString()}</span></p>
                 </div>
               </div>
               

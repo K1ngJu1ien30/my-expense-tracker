@@ -33,7 +33,7 @@ const PieTooltip = ({ active, payload }: any) => {
         <p className="text-xs font-bold text-muted-foreground mb-2 pb-2 border-b border-border/50">{name}</p>
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color }} />
-          <span className="text-sm font-black text-foreground">RM {Number(value).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+          <span className="text-sm font-black text-foreground">{payload[0].payload.currency || 'RM'} {Number(value).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
         </div>
       </div>
     );
@@ -324,7 +324,7 @@ export default function AnalyticsPage() {
                 <div>
                   <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider leading-none mb-0.5">{name}</p>
                   <p className={`text-sm font-black leading-none ${balance >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
-                    {balance < 0 ? "-" : ""}RM {Math.abs(balance).toFixed(2)}
+                    {balance < 0 ? "-" : ""}{currency} {Math.abs(balance).toFixed(2)}
                   </p>
                 </div>
               </div>

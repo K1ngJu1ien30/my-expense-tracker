@@ -81,7 +81,7 @@ export default function FoodBudgetCard() {
         <div className="flex justify-between items-baseline">
           <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Monthly</span>
           <span className={`text-sm font-black ${monthlyRemaining < 0 ? "text-rose-500" : "text-foreground"}`}>
-            RM {monthlyRemaining.toFixed(2)} <span className="text-muted-foreground font-medium text-xs">remaining</span>
+            {currency} {monthlyRemaining.toFixed(2)} <span className="text-muted-foreground font-medium text-xs">remaining</span>
           </span>
         </div>
         <div className="h-3 bg-muted rounded-full overflow-hidden">

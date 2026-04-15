@@ -1,7 +1,7 @@
 "use client";
 
 import { Download, Trash2, Tags, Moon, ChevronRight, Edit2, Check, Bell, CircleDollarSign, Calendar, X, Plus, GripVertical, Shield, Palette, Database, LogOut, Lock, Wallet, PiggyBank, UtensilsCrossed, TrendingUp, Fingerprint, Package, Radio, CreditCard } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAppContext } from "@/lib/context";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
 import { supabase } from "@/lib/supabase";
@@ -828,7 +828,7 @@ export default function ProfilePage() {
                                     <td className="p-3 border-b border-border/30 font-semibold">{tx.type}</td>
                                     <td className="p-3 border-b border-border/30 text-muted-foreground max-w-[100px] truncate">{tx.category}</td>
                                     <td className="p-3 border-b border-border/30 text-muted-foreground max-w-[100px] truncate">{tx.sub_category || '-'}</td>
-                                    <td className="p-3 border-b border-border/30">RM {tx.amount}</td>
+                                    <td className="p-3 border-b border-border/30">{currency} {tx.amount}</td>
                                     <td className="p-3 border-b border-border/30 text-muted-foreground max-w-[90px] truncate">{tx.account || '-'}</td>
                                     <td className="p-3 border-b border-border/30 text-muted-foreground max-w-[90px] truncate">{tx.to_account || '-'}</td>
                                     <td className="p-3 border-b border-border/30 text-muted-foreground max-w-[120px] truncate">{tx.note || '-'}</td>
@@ -852,7 +852,7 @@ export default function ProfilePage() {
                                <tr key={`sub-${s.id}`} className="even:bg-muted/30 hover:bg-muted/50 transition-colors">
                                   <td className="p-4 border-b border-border/30 font-semibold text-purple-500">Subscription</td>
                                   <td className="p-4 border-b border-border/30 font-bold">{s.name}</td>
-                                  <td className="p-4 border-b border-border/30">RM {s.cost}</td>
+                                  <td className="p-4 border-b border-border/30">{currency} {s.cost}</td>
                                   <td className="p-4 border-b border-border/30 text-xs text-muted-foreground border-l border-border/50">Day {s.billingDay} | {s.sourceAccount}</td>
                                </tr>
                            ))}
@@ -860,7 +860,7 @@ export default function ProfilePage() {
                                <tr key={`u-${u.id}`} className="even:bg-muted/30 hover:bg-muted/50 transition-colors">
                                   <td className="p-4 border-b border-border/30 font-semibold text-yellow-500">Utility</td>
                                   <td className="p-4 border-b border-border/30 font-bold">{u.name}</td>
-                                  <td className="p-4 border-b border-border/30">RM {u.cost}</td>
+                                  <td className="p-4 border-b border-border/30">{currency} {u.cost}</td>
                                   <td className="p-4 border-b border-border/30 text-xs text-muted-foreground border-l border-border/50">Day {u.billingDay} | {u.sourceAccount}</td>
                                </tr>
                            ))}
@@ -916,55 +916,17 @@ export default function ProfilePage() {
       {/* Time Picker Modal */}
       <AnimatePresence>
         {showTimeModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowTimeModal(false)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-             <motion.div initial={{ y: 20, opacity: 0, scale: 0.95 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 20, opacity: 0, scale: 0.95 }} className="bg-card w-full max-w-[320px] rounded-[2rem] shadow-heavy z-10 overflow-hidden flex flex-col pt-4 pb-6 px-4">
-               <h3 className="font-bold text-center mb-6 text-foreground">Remind me at</h3>
-               
-               <div className="flex justify-between items-stretch gap-2 mb-6 h-[180px]">
-                  <div className="flex-1 overflow-y-auto hide-scrollbar snap-y snap-mandatory border border-border/50 rounded-2xl p-1 bg-muted/10 relative shadow-inner">
-                     <div style={{ backgroundColor: `${accentColor}1A`, borderColor: `${accentColor}33` }} className="absolute top-1/2 left-0 right-0 h-10 -mt-5 pointer-events-none rounded-xl border z-10" />
-                     <div className="h-[70px]" />
-                     {Array.from({length: 12}, (_, i) => String(i+1).padStart(2, '0')).map(h => (
-                        <div 
-                           key={`h-${h}`} 
-                           id={`hour-${h}`}
-                           onClick={(e) => { setTempHour(h); if(navigator.vibrate) navigator.vibrate(20); (e.currentTarget as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' }); }}
-                           style={tempHour === h ? { color: accentColor } : {}}
-                           className={`h-10 flex items-center justify-center snap-center cursor-pointer transition-colors rounded-lg font-bold text-lg ${tempHour === h ? '' : 'text-muted-foreground'}`}
-                        >
-                           {h}
-                        </div>
-                     ))}
-                     <div className="h-[70px]" />
-                  </div>
-                  
-                  <div className="flex-1 overflow-y-auto hide-scrollbar snap-y snap-mandatory border border-border/50 rounded-2xl p-1 bg-muted/10 relative shadow-inner">
-                     <div style={{ backgroundColor: `${accentColor}1A`, borderColor: `${accentColor}33` }} className="absolute top-1/2 left-0 right-0 h-10 -mt-5 pointer-events-none rounded-xl border z-10" />
-                     <div className="h-[70px]" />
-                     {["00", "15", "30", "45"].map(m => (
-                        <div 
-                           key={`m-${m}`} 
-                           id={`min-${m}`}
-                           onClick={(e) => { setTempMin(m); if(navigator.vibrate) navigator.vibrate(20); (e.currentTarget as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' }); }}
-                           style={tempMin === m ? { color: accentColor } : {}}
-                           className={`h-10 flex items-center justify-center snap-center cursor-pointer transition-colors rounded-lg font-bold text-lg ${tempMin === m ? '' : 'text-muted-foreground'}`}
-                        >
-                           {m}
-                        </div>
-                     ))}
-                     <div className="h-[70px]" />
-                  </div>
-                  
-                  <div className="w-[70px] flex flex-col justify-center gap-2">
-                      <button onClick={() => setTempAmPm("AM")} style={tempAmPm === "AM" ? { backgroundColor: accentColor, color: '#fff' } : {}} className={`flex-1 rounded-2xl font-bold transition-all ${tempAmPm === "AM" ? 'shadow-sm scale-105' : 'bg-muted text-muted-foreground hover:bg-border'}`}>AM</button>
-                      <button onClick={() => setTempAmPm("PM")} style={tempAmPm === "PM" ? { backgroundColor: accentColor, color: '#fff' } : {}} className={`flex-1 rounded-2xl font-bold transition-all ${tempAmPm === "PM" ? 'shadow-sm scale-105' : 'bg-muted text-muted-foreground hover:bg-border'}`}>PM</button>
-                  </div>
-               </div>
-
-               <button onClick={saveTime} style={{ backgroundColor: accentColor }} className="w-full text-white py-3.5 rounded-xl font-bold shadow-soft active:scale-[0.98] transition-all">Save Time</button>
-             </motion.div>
-          </div>
+          <TimePickerModal
+            accentColor={accentColor}
+            tempHour={tempHour}
+            setTempHour={setTempHour}
+            tempMin={tempMin}
+            setTempMin={setTempMin}
+            tempAmPm={tempAmPm}
+            setTempAmPm={setTempAmPm}
+            onSave={saveTime}
+            onClose={() => setShowTimeModal(false)}
+          />
         )}
       </AnimatePresence>
 
@@ -1052,4 +1014,104 @@ export default function ProfilePage() {
       </AnimatePresence>
     </div>
   )
+}
+
+function TimePickerModal({ accentColor, tempHour, setTempHour, tempMin, setTempMin, tempAmPm, setTempAmPm, onSave, onClose }: {
+  accentColor: string; tempHour: string; setTempHour: (v: string) => void; tempMin: string; setTempMin: (v: string) => void; tempAmPm: string; setTempAmPm: (v: string) => void; onSave: () => void; onClose: () => void;
+}) {
+  const hourRef = useRef<HTMLDivElement>(null);
+  const minRef = useRef<HTMLDivElement>(null);
+
+  const hours = Array.from({length: 12}, (_, i) => String(i+1).padStart(2, '0'));
+  const minutes = ["00", "15", "30", "45"];
+
+  // Auto-scroll to current selection on mount
+  useEffect(() => {
+    const scrollTo = (container: HTMLDivElement | null, value: string, items: string[]) => {
+      if (!container) return;
+      const idx = items.indexOf(value);
+      if (idx === -1) return;
+      // Each item is 40px (h-10), spacer is 70px
+      const target = 70 + idx * 40 - (container.clientHeight / 2) + 20;
+      container.scrollTo({ top: target, behavior: 'instant' as ScrollBehavior });
+    };
+    const t = setTimeout(() => {
+      scrollTo(hourRef.current, tempHour, hours);
+      scrollTo(minRef.current, tempMin, minutes);
+    }, 50);
+    return () => clearTimeout(t);
+  }, []);
+
+  const handleHourClick = (h: string) => {
+    setTempHour(h);
+    if (navigator.vibrate) navigator.vibrate(20);
+    const idx = hours.indexOf(h);
+    if (hourRef.current && idx !== -1) {
+      const target = 70 + idx * 40 - (hourRef.current.clientHeight / 2) + 20;
+      hourRef.current.scrollTo({ top: target, behavior: 'smooth' });
+    }
+  };
+
+  const handleMinClick = (m: string) => {
+    setTempMin(m);
+    if (navigator.vibrate) navigator.vibrate(20);
+    const idx = minutes.indexOf(m);
+    if (minRef.current && idx !== -1) {
+      const target = 70 + idx * 40 - (minRef.current.clientHeight / 2) + 20;
+      minRef.current.scrollTo({ top: target, behavior: 'smooth' });
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+      <motion.div initial={{ y: 20, opacity: 0, scale: 0.95 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 20, opacity: 0, scale: 0.95 }} className="bg-card w-full max-w-[320px] rounded-[2rem] shadow-heavy z-10 overflow-hidden flex flex-col pt-4 pb-6 px-4">
+        <h3 className="font-bold text-center mb-6 text-foreground">Remind me at</h3>
+
+        <div className="flex justify-between items-stretch gap-2 mb-6 h-[180px]">
+          {/* Hours column */}
+          <div ref={hourRef} className="flex-1 overflow-y-auto hide-scrollbar snap-y snap-mandatory border border-border/50 rounded-2xl p-1 bg-muted/10 relative shadow-inner">
+            <div style={{ backgroundColor: `${accentColor}1A`, borderColor: `${accentColor}33` }} className="absolute top-1/2 left-1 right-1 h-10 -mt-5 pointer-events-none rounded-xl border z-10" />
+            <div className="h-[70px]" />
+            {hours.map(h => (
+              <div
+                key={`h-${h}`}
+                onClick={() => handleHourClick(h)}
+                style={tempHour === h ? { color: accentColor, fontWeight: 900 } : {}}
+                className={`h-10 flex items-center justify-center snap-center cursor-pointer transition-all rounded-lg text-lg ${tempHour === h ? 'scale-110' : 'text-muted-foreground font-bold'}`}
+              >
+                {h}
+              </div>
+            ))}
+            <div className="h-[70px]" />
+          </div>
+
+          {/* Minutes column */}
+          <div ref={minRef} className="flex-1 overflow-y-auto hide-scrollbar snap-y snap-mandatory border border-border/50 rounded-2xl p-1 bg-muted/10 relative shadow-inner">
+            <div style={{ backgroundColor: `${accentColor}1A`, borderColor: `${accentColor}33` }} className="absolute top-1/2 left-1 right-1 h-10 -mt-5 pointer-events-none rounded-xl border z-10" />
+            <div className="h-[70px]" />
+            {minutes.map(m => (
+              <div
+                key={`m-${m}`}
+                onClick={() => handleMinClick(m)}
+                style={tempMin === m ? { color: accentColor, fontWeight: 900 } : {}}
+                className={`h-10 flex items-center justify-center snap-center cursor-pointer transition-all rounded-lg text-lg ${tempMin === m ? 'scale-110' : 'text-muted-foreground font-bold'}`}
+              >
+                {m}
+              </div>
+            ))}
+            <div className="h-[70px]" />
+          </div>
+
+          {/* AM/PM */}
+          <div className="w-[70px] flex flex-col justify-center gap-2">
+            <button onClick={() => setTempAmPm("AM")} style={tempAmPm === "AM" ? { backgroundColor: accentColor, color: '#fff' } : {}} className={`flex-1 rounded-2xl font-bold transition-all ${tempAmPm === "AM" ? 'shadow-sm scale-105' : 'bg-muted text-muted-foreground hover:bg-border'}`}>AM</button>
+            <button onClick={() => setTempAmPm("PM")} style={tempAmPm === "PM" ? { backgroundColor: accentColor, color: '#fff' } : {}} className={`flex-1 rounded-2xl font-bold transition-all ${tempAmPm === "PM" ? 'shadow-sm scale-105' : 'bg-muted text-muted-foreground hover:bg-border'}`}>PM</button>
+          </div>
+        </div>
+
+        <button onClick={onSave} style={{ backgroundColor: accentColor }} className="w-full text-white py-3.5 rounded-xl font-bold shadow-soft active:scale-[0.98] transition-all">Save Time</button>
+      </motion.div>
+    </div>
+  );
 }
