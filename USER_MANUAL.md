@@ -1,6 +1,6 @@
-# User Manual — Tracker App
+# User Manual — Tracker V4
 
-Welcome to **Tracker** — your personal expense tracker, claims manager, asset vault, and content radar, built as a native Android app with full offline support.
+Welcome to **Tracker** — your all-in-one expense tracker, asset vault, trading profit tracker, claims manager, and content radar. This guide covers everything you need to know.
 
 ---
 
@@ -8,114 +8,148 @@ Welcome to **Tracker** — your personal expense tracker, claims manager, asset 
 
 ### Installation
 
-1. Install the APK on your Android device (one-time only).
-2. Open the app and create an account with your email and password.
-3. You're ready to go.
+1. Receive the APK file from the developer
+2. Install it on your Android device (enable "Install from Unknown Sources" if prompted)
+3. Open the app and create an account with your email and password
 
-> **Updates are automatic.** After this one-time install, the app updates itself silently in the background. You will never need to visit the Play Store or reinstall the APK. Just use the app — new features and fixes appear on their own.
+**That's it.** You never need to reinstall. Updates happen automatically in the background — no Play Store, no download prompts.
 
 ---
 
 ## The Offline Promise
 
-This app was built for people on the move. Train tunnels, basement food courts, underground parking, airplane mode — **none of it matters**. Here's what happens:
+This app works with **zero internet connectivity**. Here's what happens:
 
-### When You Have No Signal
+**When you have no signal:**
+- The app opens normally — your data loads instantly from the device cache
+- A brief "Loading Tracker..." screen appears while data hydrates (this is intentional — it prevents any zero-balance flashes)
+- You can log expenses, and they save to your device immediately
+- Your dashboard, balances, and history all include offline entries
 
-- The app opens normally using cached data from your last session.
-- A brief "Loading Tracker..." screen appears while your data loads from the device — this is intentional and prevents any zero-balance flashes.
-- You can log expenses, and they save instantly to your device.
-- You'll see: *"No connection. Expense saved offline."*
-- Your dashboard, balances, and history all include these offline entries.
+**When your signal returns:**
+- The app detects reconnection automatically
+- All queued expenses upload to the cloud invisibly
+- You see: *"3 offline expenses synced to cloud!"*
+- The UI refreshes with server-confirmed data
 
-### When Your Signal Returns
-
-- The app detects the reconnection automatically.
-- All queued expenses upload to the cloud in the background.
-- You'll see: *"3 offline expenses synced to cloud!"*
-- The UI refreshes with confirmed data from the server.
-
-**You never need to press a sync button.** It's completely invisible.
+**Bottom line:** Use the app identically whether you have signal or not. Log your coffee in the train tunnel, your lunch in the basement food court. Everything syncs when you surface.
 
 ---
 
-## Core Features
+## Dashboard
 
-### Dashboard
+Your home screen shows at a glance:
 
-Your home screen shows:
-- **Total Balance** — across all your accounts
-- **Today's Spending** — what you've spent since midnight
-- **This Week** — Monday through Sunday totals
-- **Spending Trend** — a visual chart of your recent activity
+- **Total Balance** — sum across all accounts (configurable to include/exclude savings)
+- **Pending Income** — invoices sent but not yet received
+- **Today's Spending** — total expenses since midnight
+- **Weekly Spending** — Monday through Sunday
+- **Spending Trend** — 7-day line chart
+- **Pinned Goals** — savings goals you've pinned for quick visibility
 
-### Logging an Expense
+---
 
-1. Tap the **+** button in the center of the bottom navigation (works from any screen).
-2. Enter the amount.
-3. Pick a category (Food, Transport, Entertainment, etc.).
-4. Choose the account (Bank, Cash, eWallet).
-5. Tap **Save**.
+## Logging Transactions
 
-That's it — three seconds. The dashboard updates instantly.
+### Expense
 
-### Transfers Between Accounts
-
-1. Tap **+** → select **Transfer** as the type.
-2. Enter the amount, source account, and destination account.
-3. Save. The source balance drops and the destination rises by the same amount.
+1. Tap the center **+** button (works from any screen)
+2. Enter the amount
+3. Pick a category (Food, Transport, Entertainment, etc.)
+4. Choose the account (Bank, Cash, eWallet)
+5. Optionally toggle "Claimable / Split Bill" for reimbursable expenses
+6. Save
 
 ### Income
 
-1. Tap **+** → select **Income**.
-2. Enter the amount and which account received it.
-3. Optionally mark as **Pending** for invoices you've sent but haven't been paid yet.
+1. Tap **+** → select **Income**
+2. Enter the amount and receiving account
+3. Optionally mark as **Pending** for unpaid invoices — it won't count toward your balance until cleared
+
+### Transfer
+
+1. Tap **+** → select **Transfer**
+2. Enter amount, source account, and destination account
+3. The source drops and the destination rises by the same amount
+
+### Multi-Currency
+
+The transaction modal lets you switch between your base currency (RM/MYR/$), USD, and JPY. When logging in a foreign currency, a conversion estimate appears automatically.
 
 ---
 
-## Stats & History
+## History — Dual-Layer Filters
 
-### Spending Velocity (Stats Page)
+The History tab has **two filter rows** that stack with AND logic:
 
-When viewing the **Month** filter on the Stats page, you'll see a **Spending Velocity** chart:
+### Row 1: Time Filters
+- **Today** — transactions from today only
+- **This Week** — Monday through Sunday
+- **Show All** — complete history
 
-- **Solid line** = your actual cumulative spending this month.
-- **Dashed line** = where you're headed at your current pace.
+### Row 2: Category Filters
+A horizontally scrollable row of category pills:
+- **All Categories** (default)
+- Food, Transport, Entertainment, Shopping, Bills, etc.
 
-Above the chart: *"At your current pace of RM 42.50/day, you are projected to spend RM 1,275.00 this month."*
+**Example:** Selecting "This Week" + "Food" shows only food transactions from this week. The subtitle updates to: *"This Week • Food — 3 transactions"*.
 
-This recalculates every time you add an expense.
+Tap **"Clear All Filters"** to reset both layers.
 
-### History Filters
-
-The History page has three filter buttons:
-- **Today** — transactions from today only.
-- **This Week** — Monday through Sunday.
-- **Show All** — your complete history.
-
-> All time filters use your device's local timezone.
+> All time filters use your device's local timezone — midnight means *your* midnight.
 
 ---
 
-## Claims & Split Bills
+## Analytics (Stats)
 
-For company lunches, split bills, or any expense you expect to be reimbursed.
+### Spending Category Breakdown
+A donut chart showing expense distribution by category with an interactive legend.
 
-### Setup
+### Cash Flow
+A stacked bar chart grouping expenses by category over time, respecting the Month/Year/All filter.
 
-Profile → Modules → turn on **Claims & Splits**. It appears in the Hub.
+### Income by Account
+A green bar chart showing total income grouped by account (Bank, eWallet, etc.) for the selected time period. Useful for tracking dividend income streams like TnG Go+.
 
-### Marking an Expense as Claimable
+### Spending Velocity
+Available in the Month view. Shows:
+- Your actual cumulative spending (solid line)
+- Your projected end-of-month spend (dashed line)
+- Daily pace: *"At your current pace of RM 42.50/day, you are projected to spend RM 1,275.00 this month."*
 
-When adding an expense, toggle **"Claimable / Split Bill"** on before saving. The expense records normally (balance drops), but it's flagged as pending reimbursement.
+### Subscriptions & Utilities
+Track recurring payments with billing day, source account, and auto-deduct configuration.
 
-### Getting Reimbursed
+---
 
-1. Hub → Claims & Splits → find the claim under **Pending**.
-2. Tap **"Mark as Cleared"**.
-3. The app automatically creates a matching income entry, restoring your balance by exactly the right amount.
+## Savings Goals
 
-You never need to manually add a reimbursement income entry — the accounting is automatic.
+1. Tap **+** on the Goals page to create a new goal with a title and target amount
+2. Tap **+ Add Funds** to increment progress
+3. **Pin** goals to show them on the Dashboard
+4. Delete goals when completed
+
+---
+
+## Food Budget Tracker
+
+**Setup:** Profile → Modules → Food Budget Tracker → set daily and monthly limits.
+
+The Food Budget card appears on your Goals page showing:
+- **Daily**: Remaining budget, progress bar, spent vs limit
+- **Monthly**: Same breakdown for the calendar month
+
+Any transaction categorized as "Food" automatically counts against these limits.
+
+---
+
+## Salary Planner
+
+**Setup:** Profile → Modules → Salary Planner.
+
+Pre-allocate your income to budget categories:
+1. Add line items (Rent, Groceries, Savings, etc.) with amounts
+2. The planner shows: Current Balance → Total Planned Reserves → **Available Cashflow**
 
 ---
 
@@ -123,109 +157,129 @@ You never need to manually add a reimbursement income entry — the accounting i
 
 Track the things you own and understand their true cost over time.
 
-### Setup
-
-Profile → Modules → turn on **Asset Vault**. It appears in the Hub.
+**Setup:** Profile → Modules → Asset Vault.
 
 ### Adding an Asset
+1. Hub → Asset Vault → tap **+**
+2. Pick an emoji icon, enter name, category, purchase date, and price
+3. Tap **Add to Vault**
 
-1. Hub → Asset Vault → tap **+**.
-2. Pick an emoji (📱 💻 🎧 👟).
-3. Enter name, category, purchase date, and price.
-4. Save.
+### Understanding Cost Per Day
+**Cost / Day** = (Purchase Price + All Maintenance Costs) ÷ Days Since Purchase
 
-### Cost Per Day
-
-The vault calculates: **Cost / Day = Total Investment ÷ Days Since Purchase**
-
-A RM 350 pair of headphones owned for 100 days = RM 3.50/day. The longer you keep it, the lower the number — proof that quality purchases pay for themselves.
+A RM 350 pair of headphones owned for 100 days = RM 3.50/day. As time passes, the number drops.
 
 ### Maintenance Logs
+Track cases, repairs, accessories:
+1. Tap an asset to open its detail view
+2. Tap **+** in the Maintenance Log section
+3. Enter description, cost, and date
+4. **True Total** and **Cost / Day** update instantly
 
-Real ownership costs more than the sticker price. Track cases, screen protectors, repairs:
+---
 
-1. Tap an asset to open its detail view.
-2. In Maintenance Log, tap **+**.
-3. Enter description, cost, and date.
-4. The **True Total** and **Cost / Day** update instantly:
+## Trading / Flipping Tracker
 
-> **True Total** = Purchase Price + All Maintenance Costs
+For tracking buy-sell inventory — TCG cards, collectibles, electronics, anything you flip for profit.
+
+**Setup:** Profile → Modules → Trading / Flipping.
+
+### Adding Inventory
+1. Hub → Trading → tap **+**
+2. Enter item name (e.g. "Charizard VMAX"), buy price, and acquisition date
+3. The item appears in **Active Inventory**
+
+### Dashboard Metrics
+- **Capital Invested**: Total buy price of all held items
+- **Realized Profit**: Sum of (sell price − buy price) for all sold items — green if positive, red if negative
+- **Active Inventory**: Count of items you currently hold
+
+### Selling an Item
+1. Tap **Mark Sold** next to any active item
+2. A modal shows the item name and your buy price
+3. Enter the sell price — a **live profit/loss preview** appears
+4. Tap **Confirm Sale**
+5. The item moves to the **Sold Items** section with the net profit displayed
+
+### Sold Items History
+Each sold item shows: buy price → sell price, date sold, and a bold profit/loss amount (green for profit, red for loss).
 
 ---
 
 ## Radar Tracker
 
-A personal content feed — news, cinema, and streaming alerts in one place.
+A personal content feed — news, cinema, and streaming alerts.
 
-### Setup
-
-Profile → Modules → turn on **Radar Tracker**. It appears in the Hub.
+**Setup:** Profile → Modules → Radar Tracker.
 
 ### Adding Sources
-
 Open Radar → tap the ⚙️ gear icon → tap **+**:
 
-- **RSS Feed** — paste any blog's RSS URL (e.g., `https://www.theverge.com/rss/index.xml`). Optionally add keywords to filter.
-- **In Cinemas (MY)** — pulls current Malaysian cinema listings automatically.
-- **Streaming Drops** — pick Netflix, Disney+, Amazon Prime, Apple TV+, HBO Go, or all platforms.
+- **RSS Feed**: Paste any blog's RSS URL. Optionally add keywords to filter
+- **In Cinemas (MY)**: Pulls current Malaysian cinema listings
+- **Streaming Drops**: Pick Netflix, Disney+, Amazon Prime, Apple TV+, HBO Go, or all platforms
 
-Use the filter pills on the feed to switch between sources.
-
----
-
-## Food Budget
-
-Track daily and monthly food spending against limits you set.
-
-### Setup
-
-Profile → Modules → turn on **Food Budget**. Set your daily and monthly limits.
-
-The Food Budget card appears on your Goals page, showing real-time progress against your limits.
+Use filter pills on the feed to switch between sources.
 
 ---
 
-## Salary Planner
+## Claims & Splits
 
-Pre-allocate your income to budget categories before you spend it.
+For company lunches, split bills, or any expense you expect to be reimbursed.
 
-### Setup
+**Setup:** Profile → Modules → Claims & Splits.
 
-Profile → Modules → turn on **Salary Planner**. It appears on your Goals page.
+### Workflow
+1. When adding an expense, toggle **"Claimable / Split Bill"** on
+2. The expense records normally (balance drops) but is flagged as pending reimbursement
+3. Hub → Claims & Splits → find the claim under **Pending**
+4. When reimbursed, tap **"Mark as Cleared"**
+5. The app auto-generates a matching income entry — balance restores automatically
 
-Add line items (Rent, Groceries, Savings, etc.) with amounts. The planner shows how much of your income is allocated vs. remaining.
+---
+
+## Billing Cycle
+
+Your billing cycle resets on a configurable day each month:
+1. Profile → Billing Cycle → pick day 1–31
+2. The Analytics page respects this setting for monthly views and velocity projections
 
 ---
 
 ## Settings & Security
 
-All accessible from the **Profile** page (bottom-right tab):
+All accessible from the **Profile** page:
 
-- **Dark Mode** — toggle on/off.
-- **Accent Color** — Blue, Emerald, Yellow, Purple, or Rose.
-- **PIN Lock** — set a 6-digit PIN that's required every time you open the app.
-- **Biometric Lock** — use your fingerprint instead of (or in addition to) PIN.
-- **Export to CSV** — download all transactions as a spreadsheet.
-- **Account Management** — add, rename, reorder, or delete accounts (Bank, Cash, eWallet, etc.).
-- **Categories** — add or remove expense categories.
+- **Currency Format**: RM / MYR / $ — changes everywhere in the app
+- **Dark Mode**: Toggle on/off
+- **Accent Color**: Blue, Emerald, Yellow, Purple, or Rose
+- **PIN Lock**: Set a 6-digit PIN required on every cold boot
+- **Biometric Lock**: Use fingerprint/face instead of PIN (requires PIN enabled first)
+- **Manage Categories**: Add, delete, or reorder expense categories (drag to reorder)
+- **Manage Accounts**: Add, rename, reorder, or delete accounts
+- **Daily Reminders**: Set a reminder time (custom time picker)
+- **Include Savings**: Toggle whether savings accounts count toward total balance
+- **Export to CSV**: Download all transactions as a spreadsheet
+- **View Raw Data**: Inspect transactions, subscriptions, and goals in a database view
+- **Clear All Data**: Password-protected nuclear option
 
 ---
 
 ## Troubleshooting
 
 **App shows "Loading Tracker..." for too long:**
-This means the app is trying to reach the server and falling back to cache. If you have no cached data yet (first-ever launch with no network), wait for connectivity and reopen.
+The app is trying to reach the server and falling back to cache. If this is your first-ever launch with no cached data, wait for connectivity and reopen.
 
 **Offline expenses not syncing:**
-They sync automatically when the network reconnects. If they haven't synced after reconnecting, fully close and reopen the app.
+They sync automatically on reconnection. If they haven't synced, fully close and reopen the app.
 
-**Balance seems wrong after syncing:**
-After sync, the app does a full data refresh from the server. If the numbers still look off, pull down to refresh or close and reopen.
+**Biometric prompt doesn't appear:**
+Ensure biometrics are enrolled in your device's system settings, and that both PIN and Biometric are enabled in Profile → Security.
 
 ---
 
 ## The Key Thing to Remember
 
-**Use this app exactly the same way whether you have internet or not.** Log your expenses in a tunnel, review your stats on a plane, check your claims in a basement. Everything works. Everything syncs. No data is ever lost.
+**Use this app exactly the same way whether you have internet or not.** Log expenses in a tunnel, check your stats on a plane, review your trades in a basement. Everything works. Everything syncs. No data is ever lost.
 
 Happy tracking.
