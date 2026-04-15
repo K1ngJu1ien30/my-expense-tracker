@@ -128,3 +128,21 @@ ALTER TABLE radar_sources ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Strict isolation mapping for Radar Sources" ON radar_sources
     FOR ALL USING (auth.uid() = user_id);
+
+-- 8. Trade Items (Flipping/Trading Module)
+CREATE TABLE trade_items (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    item_name VARCHAR(255) NOT NULL,
+    buy_price DECIMAL(12,2) NOT NULL,
+    sell_price DECIMAL(12,2),
+    status TEXT NOT NULL DEFAULT 'held' CHECK (status IN ('held', 'sold')),
+    date_acquired TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    date_sold TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE trade_items ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Strict isolation mapping for Trade Items" ON trade_items
+    FOR ALL USING (auth.uid() = user_id);

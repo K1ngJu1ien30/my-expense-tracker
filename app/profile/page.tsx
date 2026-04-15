@@ -33,6 +33,7 @@ export default function ProfilePage() {
     isRadarEnabled, toggleRadar,
     isPinEnabled, togglePin, isBiometricEnabled, toggleBiometric,
     isClaimsEnabled, toggleClaims,
+    isTradingEnabled, toggleTrading,
     session
   } = useAppContext();
 
@@ -450,6 +451,19 @@ export default function ProfilePage() {
             </div>
             <button className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${isClaimsEnabled ? 'border-transparent' : 'bg-muted border border-border'}`} style={isClaimsEnabled ? { backgroundColor: accentColor } : {}}>
               <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${isClaimsEnabled ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
+            </button>
+          </div>
+
+          <div className="w-full flex items-center justify-between p-4 active:bg-muted/50 transition-colors cursor-pointer" onClick={() => toggleTrading(!isTradingEnabled)}>
+            <div className="flex items-center gap-3">
+              <div className="bg-rose-500/10 p-2 rounded-xl text-rose-500"><TrendingUp className="w-5 h-5" /></div>
+              <div>
+                <span className="font-semibold text-foreground text-sm block">Trading / Flipping</span>
+                <p className="text-[10px] text-muted-foreground leading-none mt-0.5">Buy low, sell high — track profits</p>
+              </div>
+            </div>
+            <button className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${isTradingEnabled ? 'border-transparent' : 'bg-muted border border-border'}`} style={isTradingEnabled ? { backgroundColor: accentColor } : {}}>
+              <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${isTradingEnabled ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
             </button>
           </div>
         </div>

@@ -78,6 +78,17 @@ export type AssetLog = {
   cost: number;
 };
 
+export type TradeItem = {
+  id: string;
+  item_name: string;
+  buy_price: number;
+  sell_price: number | null;
+  status: 'held' | 'sold';
+  date_acquired: string;
+  date_sold: string | null;
+  user_id?: string;
+};
+
 type ConfirmState = {
   isOpen: boolean;
   title: string;
@@ -164,6 +175,12 @@ type AppContextType = {
   isOffline: boolean;
   isClaimsEnabled: boolean;
   toggleClaims: (val: boolean) => void;
+  isTradingEnabled: boolean;
+  toggleTrading: (val: boolean) => void;
+  tradeItems: TradeItem[];
+  addTradeItem: (item: Partial<TradeItem>) => Promise<void>;
+  updateTradeItem: (id: string, patch: Partial<TradeItem>) => Promise<void>;
+  deleteTradeItem: (id: string) => Promise<void>;
 };
 
 export const AppContext = createContext<AppContextType | null>(null);
@@ -192,6 +209,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [isVaultEnabled, setIsVaultEnabledRaw] = useState(false);
   const [isRadarEnabled, setIsRadarEnabledRaw] = useState(false);
   const [isClaimsEnabled, setIsClaimsEnabledRaw] = useState(false);
+  const [isTradingEnabled, setIsTradingEnabledRaw] = useState(false);
+  const [tradeItems, setTradeItems] = useState<TradeItem[]>([]);
   const [isOffline, setIsOffline] = useState(false);
 
   // Capgo OTA Safe Boot Trigger
@@ -314,22 +333,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     try {
       console.log("[refreshData] Fetching live data...");
-      const [txs, gls, subs, plannerRes, assetsRes] = await Promise.all([
+      const [txs, gls, subs, plannerRes, assetsRes, tradesRes] = await Promise.all([
         supabase.from("transactions").select("*").eq('user_id', currentUser.id).order("date", { ascending: false }),
         supabase.from("goals").select("*").eq('user_id', currentUser.id).order("created_at", { ascending: false }),
         supabase.from("subscriptions").select("*").eq('user_id', currentUser.id).order("created_at", { ascending: false }),
         supabase.from("salary_planner").select("*").eq('user_id', currentUser.id).order("created_at", { ascending: false }),
-        supabase.from("asset_vault").select("*").eq('user_id', currentUser.id).order("created_at", { ascending: false })
+        supabase.from("asset_vault").select("*").eq('user_id', currentUser.id).order("created_at", { ascending: false }),
+        supabase.from("trade_items").select("*").eq('user_id', currentUser.id).order("created_at", { ascending: false })
       ]);
 
       // Supabase select() does not throw on network failure — force it
-      if (txs.error || gls.error || subs.error || plannerRes.error || assetsRes.error) {
-        console.log("[refreshData] Supabase returned error objects:", { txs: txs.error, gls: gls.error, subs: subs.error, planner: plannerRes.error, assets: assetsRes.error });
+      if (txs.error || gls.error || subs.error || plannerRes.error || assetsRes.error || tradesRes.error) {
+        console.log("[refreshData] Supabase returned error objects:", { txs: txs.error, gls: gls.error, subs: subs.error, planner: plannerRes.error, assets: assetsRes.error, trades: tradesRes.error });
         throw new Error("Supabase fetch returned errors");
       }
 
       // Strict null check — if Supabase returned no data arrays, treat as failure
-      if (!txs.data || !gls.data || !subs.data || !plannerRes.data || !assetsRes.data) {
+      if (!txs.data || !gls.data || !subs.data || !plannerRes.data || !assetsRes.data || !tradesRes.data) {
         console.log("[refreshData] Supabase returned null data arrays — treating as offline");
         throw new Error("Supabase returned null data");
       }
@@ -355,8 +375,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       })) as Subscription[];
       const parsedPlanner = plannerRes.data as PlannerItem[];
       const parsedAssets = assetsRes.data as Asset[];
+      const parsedTrades = tradesRes.data as TradeItem[];
 
-      console.log("[refreshData] Live data fetch successful. Saving to cache...", { tx: parsedTransactions.length, goals: parsedGoals.length, subs: parsedSubscriptions.length, utils: parsedUtilities.length, planner: parsedPlanner.length, assets: parsedAssets.length });
+      console.log("[refreshData] Live data fetch successful. Saving to cache...", { tx: parsedTransactions.length, goals: parsedGoals.length, subs: parsedSubscriptions.length, utils: parsedUtilities.length, planner: parsedPlanner.length, assets: parsedAssets.length, trades: parsedTrades.length });
 
       setTransactions(parsedTransactions);
       setGoals(parsedGoals);
@@ -364,6 +385,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setUtilities(parsedUtilities);
       setPlannerItems(parsedPlanner);
       setAssets(parsedAssets);
+      setTradeItems(parsedTrades);
       setAccounts(savedAccounts);
 
       // Only cache when we confirmed valid non-null data above
@@ -374,6 +396,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         utilities: parsedUtilities,
         plannerItems: parsedPlanner,
         assets: parsedAssets,
+        tradeItems: parsedTrades,
         accounts: savedAccounts,
       };
       try {
@@ -398,6 +421,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           setUtilities((data.utilities ?? []) as Subscription[]);
           setPlannerItems((data.plannerItems ?? []) as PlannerItem[]);
           setAssets((data.assets ?? []) as Asset[]);
+          setTradeItems((data.tradeItems ?? []) as TradeItem[]);
           if (data.accounts) setAccounts(data.accounts);
 
           // Prepend any pending offline transactions so balance stays accurate
@@ -492,6 +516,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setIsVaultEnabledRaw(session.user.user_metadata?.vault_enabled === true);
       setIsRadarEnabledRaw(session.user.user_metadata?.radar_enabled === true);
       setIsClaimsEnabledRaw(session.user.user_metadata?.claims_enabled === true);
+      setIsTradingEnabledRaw(session.user.user_metadata?.trading_enabled === true);
 
       refreshData(session.user).finally(() => setIsHydrating(false));
     } else {
@@ -501,6 +526,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
        setUtilities([]);
        setPlannerItems([]);
        setAssets([]);
+       setTradeItems([]);
        setIsHydrating(false);
     }
   }, [session]);
@@ -645,6 +671,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setIsClaimsEnabledRaw(val);
     if (session?.user) await supabase.auth.updateUser({ data: { claims_enabled: val } });
   };
+  const toggleTrading = async (val: boolean) => {
+    setIsTradingEnabledRaw(val);
+    if (session?.user) await supabase.auth.updateUser({ data: { trading_enabled: val } });
+  };
+
+  const addTradeItem = async (item: Partial<TradeItem>) => {
+    delete (item as any).id;
+    const payload = { ...item, user_id: session?.user?.id };
+    const { data, error } = await supabase.from('trade_items').insert(payload).select().single();
+    if (!error && data) setTradeItems(prev => [data as TradeItem, ...prev]);
+  };
+  const updateTradeItem = async (id: string, patch: Partial<TradeItem>) => {
+    const { data, error } = await supabase.from('trade_items').update(patch).eq('id', id).select().single();
+    if (!error && data) setTradeItems(prev => prev.map(t => t.id === id ? { ...t, ...data } as TradeItem : t));
+  };
+  const deleteTradeItem = async (id: string) => {
+    const { error } = await supabase.from('trade_items').delete().eq('id', id);
+    if (!error) setTradeItems(prev => prev.filter(t => t.id !== id));
+  };
 
   if (isHydrating || authLoading) {
     return (
@@ -688,6 +733,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       isVaultEnabled, toggleVault,
       isRadarEnabled, toggleRadar,
       isClaimsEnabled, toggleClaims,
+      isTradingEnabled, toggleTrading,
+      tradeItems, addTradeItem, updateTradeItem, deleteTradeItem,
       activeAssetId, setActiveAssetId,
       showTransactionModal, setShowTransactionModal,
       isOffline
