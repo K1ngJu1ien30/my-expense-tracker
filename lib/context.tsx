@@ -342,6 +342,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("trade_items").select("*").eq('user_id', currentUser.id).order("created_at", { ascending: false })
       ]);
 
+      console.log("SUPABASE TRADES RESPONSE:", tradesRes);
+
       // Supabase select() does not throw on network failure — force it
       if (txs.error || gls.error || subs.error || plannerRes.error || assetsRes.error || tradesRes.error) {
         console.log("[refreshData] Supabase returned error objects:", { txs: txs.error, gls: gls.error, subs: subs.error, planner: plannerRes.error, assets: assetsRes.error, trades: tradesRes.error });
