@@ -49,105 +49,88 @@ function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, "");
 }
 
-// Safe text extractor — tries multiple tag names in order
-function xmlText(node: Element, ...tags: string[]): string {
-  for (const tag of tags) {
-    // Try namespace-aware lookup first (for content:encoded etc.)
-    const byNS = node.getElementsByTagNameNS("*", tag)[0];
-    if (byNS?.textContent) return byNS.textContent;
-    // Try CSS escaped selector
-    const byCSS = node.querySelector(tag.replace(":", "\\:"));
-    if (byCSS?.textContent) return byCSS.textContent;
-    // Try plain tag name
-    const byPlain = node.querySelector(tag);
-    if (byPlain?.textContent) return byPlain.textContent;
-  }
-  return "";
-}
-
-// Safe attribute extractor — tries href or url attribute from multiple tag names
-function xmlAttr(node: Element, tags: string[], attr: string): string {
-  for (const tag of tags) {
-    const el = node.getElementsByTagNameNS("*", tag)[0] || node.querySelector(tag.replace(":", "\\:")) || node.querySelector(tag);
-    if (el?.getAttribute(attr)) return el.getAttribute(attr)!;
-  }
-  return "";
-}
-
 async function fetchRssSource(source: RadarSource): Promise<RadarItem[]> {
-  const res = await fetch(source.url || "", {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-      "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
-    },
-  });
-  if (!res.ok) return [];
-  const xmlText_ = await res.text();
+  try {
+    const res = await fetch(source.url || "", {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
+      },
+    });
+    if (!res.ok) return [];
+    const rawXml = await res.text();
 
-  const parser = new DOMParser();
-  const xmlDoc = parser.parseFromString(xmlText_, "text/xml");
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(rawXml, "text/xml");
 
-  if (xmlDoc.querySelector("parsererror")) return [];
+    if (xmlDoc.querySelector("parsererror")) return [];
 
-  // RSS 2.0 uses <item>, Atom uses <entry>
-  const nodes = Array.from(xmlDoc.querySelectorAll("item, entry"));
-  if (nodes.length === 0) return [];
+    const nodes = Array.from(xmlDoc.querySelectorAll("item, entry"));
+    if (nodes.length === 0) return [];
 
-  const keywords = source.keywords
-    ? source.keywords.split(",").map((k) => k.trim().toLowerCase()).filter(Boolean)
-    : [];
+    const keywords = source.keywords
+      ? source.keywords.split(",").map((k) => k.trim().toLowerCase()).filter(Boolean)
+      : [];
+    const badgeText = source.keywords ? source.keywords.split(",")[0].trim() : source.name;
 
-  const badgeText = source.keywords ? source.keywords.split(",")[0].trim() : source.name;
+    const parsed: RadarItem[] = [];
+    nodes.forEach(node => {
+      try {
+        // 1. Safe Title
+        const titleNode = node.querySelector("title");
+        const title = titleNode ? titleNode.textContent?.trim() || "Unknown Title" : "Unknown Title";
 
-  const parsed: RadarItem[] = [];
-  nodes.forEach((node) => {
-    try {
-      // Title: universal
-      const title = xmlText(node, "title") || "No Title";
+        // 2. Safe Link (text content for RSS, href attribute for Atom)
+        const linkNode = node.querySelector("link");
+        let link = "";
+        if (linkNode) {
+          link = linkNode.textContent?.trim() || linkNode.getAttribute("href") || "";
+        }
 
-      // Link: RSS = <link> text, Atom = <link href="...">
-      const link =
-        node.querySelector("link")?.getAttribute("href") ||
-        node.querySelector("link")?.textContent?.trim() ||
-        xmlAttr(node, ["link"], "href") ||
-        "";
+        // 3. Safe Date (tries multiple format tags)
+        const dateNode = node.querySelector("pubDate, published, updated, dc\\:date");
+        const pubDate = dateNode ? dateNode.textContent?.trim() || "" : "";
 
-      // Date: RSS = <pubDate>, Atom = <published> or <updated>
-      const date = xmlText(node, "pubDate", "published", "updated");
+        // 4. Safe Content (tries RSS then Atom tags)
+        const contentNode = node.querySelector("content\\:encoded, content, description, summary");
+        const description = contentNode ? contentNode.textContent?.trim() || "" : "";
 
-      // Content: RSS = <content:encoded> or <description>, Atom = <content> or <summary>
-      const description = xmlText(node, "content:encoded", "encoded", "content", "description", "summary");
+        // 5. Safe Image
+        let image = "";
+        try {
+          const thumb = node.querySelector("media\\:thumbnail, thumbnail");
+          const media = node.querySelector("media\\:content");
+          const enc = node.querySelector("enclosure");
+          image = thumb?.getAttribute("url") || media?.getAttribute("url") || enc?.getAttribute("url") || "";
+        } catch { /* image extraction failed — non-critical */ }
 
-      // Image: media:thumbnail, media:content, enclosure (RSS), or link[rel=enclosure] (Atom)
-      const image =
-        xmlAttr(node, ["media:thumbnail", "thumbnail"], "url") ||
-        xmlAttr(node, ["media:content"], "url") ||
-        xmlAttr(node, ["enclosure"], "url") ||
-        "";
+        // Keyword filtering
+        if (keywords.length > 0) {
+          const text = (title + " " + description).toLowerCase();
+          if (!keywords.some((kw) => text.includes(kw))) return;
+        }
 
-      // Keyword filtering
-      if (keywords.length > 0) {
-        const text = (title + " " + description).toLowerCase();
-        if (!keywords.some((kw) => text.includes(kw))) return;
+        parsed.push({
+          id: `rss-${link}-${pubDate}`,
+          title,
+          date: pubDate,
+          snippet: stripHtml(description).slice(0, 200),
+          image,
+          category: source.name,
+          badge: badgeText,
+          sourceType: "rss" as const,
+          link,
+        });
+      } catch (err) {
+        console.warn("Skipped a malformed feed item", err);
       }
+    });
 
-      parsed.push({
-        id: `rss-${link}-${date}`,
-        title,
-        date,
-        snippet: stripHtml(description).slice(0, 200),
-        image,
-        category: source.name,
-        badge: badgeText,
-        sourceType: "rss" as const,
-        link,
-      });
-    } catch {
-      // Skip malformed entries without crashing
-    }
-  });
-
-  return parsed;
+    return parsed;
+  } catch (err) {
+    console.warn(`RSS fetch failed for "${source.name}":`, err);
+    return [];
+  }
 }
 
 async function fetchTmdbCinema(source: RadarSource): Promise<RadarItem[]> {
