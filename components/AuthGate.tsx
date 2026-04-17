@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Fingerprint, Delete, ShieldCheck } from "lucide-react";
 import { useAppContext } from "@/lib/context";
+import { NativeHaptics } from "@/lib/haptics";
 
 async function isNative(): Promise<boolean> {
   try {
@@ -119,10 +120,11 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     const stored = await getStoredPin();
     if (stored && pin === stored) {
       unlock();
+      NativeHaptics.successMedium();
     } else {
       setError("Incorrect PIN");
       setPinInput("");
-      if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(200);
+      NativeHaptics.errorShake();
     }
   };
 

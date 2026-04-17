@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
+import { NativeHaptics } from "./haptics";
 import { motion, AnimatePresence } from "framer-motion";
 import { Capacitor } from '@capacitor/core';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
@@ -181,6 +182,9 @@ type AppContextType = {
   addTradeItem: (item: Partial<TradeItem>) => Promise<void>;
   updateTradeItem: (id: string, patch: Partial<TradeItem>) => Promise<void>;
   deleteTradeItem: (id: string) => Promise<void>;
+  isGodMode: boolean;
+  whaleAlert: boolean;
+  sharkUndo: boolean;
 };
 
 export const AppContext = createContext<AppContextType | null>(null);
@@ -212,6 +216,81 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [isTradingEnabled, setIsTradingEnabledRaw] = useState(false);
   const [tradeItems, setTradeItems] = useState<TradeItem[]>([]);
   const [isOffline, setIsOffline] = useState(false);
+
+  // Easter Egg States
+  const [isGodMode] = useState(() => typeof window !== "undefined" && localStorage.getItem("god_mode") === "true");
+  const [whaleAlert, setWhaleAlert] = useState(false);
+  const [sharkUndo, setSharkUndo] = useState(false);
+  const deletedItemCacheRef = React.useRef<{ type: string; item: any; timeout: NodeJS.Timeout } | null>(null);
+
+  const triggerWhaleAlert = () => {
+    setWhaleAlert(true);
+    NativeHaptics.heavyDoubleThud();
+    setTimeout(() => setWhaleAlert(false), 2000);
+  };
+
+  const triggerSharkUndo = async () => {
+    const cached = deletedItemCacheRef.current;
+    if (!cached) return;
+    clearTimeout(cached.timeout);
+    deletedItemCacheRef.current = null;
+
+    NativeHaptics.successMedium();
+    setSharkUndo(true);
+    setTimeout(() => setSharkUndo(false), 1500);
+
+    try {
+      const { type, item } = cached;
+      if (type === "transaction") {
+        const { id, ...rest } = item;
+        const { data } = await supabase.from("transactions").insert(rest).select().single();
+        if (data) setTransactions(prev => [data as Transaction, ...prev]);
+      } else if (type === "goal") {
+        const { id, subtitle, color, bg, iconName, ...rest } = item;
+        const payload = { title: rest.title, current_amount: rest.current || 0, target_amount: rest.target, is_pinned: rest.isPinned || false, user_id: rest.user_id };
+        const { data } = await supabase.from("goals").insert(payload).select().single();
+        if (data) setGoals(prev => [{ ...item, id: data.id } as Goal, ...prev]);
+      } else if (type === "trade") {
+        const { id, ...rest } = item;
+        const { data } = await supabase.from("trade_items").insert(rest).select().single();
+        if (data) setTradeItems(prev => [data as TradeItem, ...prev]);
+      } else if (type === "asset") {
+        const { id, ...rest } = item;
+        const { data } = await supabase.from("asset_vault").insert(rest).select().single();
+        if (data) setAssets(prev => [data as Asset, ...prev]);
+      }
+      triggerToast("🦈 Undo successful!");
+    } catch {
+      triggerToast("Undo failed.");
+    }
+  };
+
+  const cacheDeletedItem = (type: string, item: any) => {
+    if (deletedItemCacheRef.current) clearTimeout(deletedItemCacheRef.current.timeout);
+    const timeout = setTimeout(() => { deletedItemCacheRef.current = null; }, 5000);
+    deletedItemCacheRef.current = { type, item, timeout };
+  };
+
+  // Shake-to-Undo: Listen for device acceleration
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    try {
+      // @ts-ignore
+      import('@capacitor/motion').then(({ Motion }) => {
+        let lastShake = 0;
+        const listener = Motion.addListener('accel', (event: any) => {
+          const { x, y, z } = event.acceleration || event;
+          const magnitude = Math.sqrt(x * x + y * y + z * z);
+          if (magnitude > 25 && Date.now() - lastShake > 2000) {
+            lastShake = Date.now();
+            if (deletedItemCacheRef.current) triggerSharkUndo();
+          }
+        });
+        cleanup = () => { listener.then((l: any) => l.remove?.()).catch(() => {}); };
+      }).catch(() => {});
+    } catch {}
+    return () => { if (cleanup) cleanup(); };
+  }, []);
 
   // Capgo OTA Safe Boot Trigger
   useEffect(() => {
@@ -553,18 +632,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem("offline_tx_queue", JSON.stringify(existing));
       } catch {}
       triggerToast("No connection. Expense saved offline.");
+      NativeHaptics.successMedium();
       return;
     }
     const { data, error } = await supabase.from('transactions').insert({ ...tx, user_id: session?.user?.id }).select().single();
-    if (!error && data) setTransactions(prev => [data as Transaction, ...prev]);
+    if (!error && data) {
+      setTransactions(prev => [data as Transaction, ...prev]);
+      NativeHaptics.successMedium();
+      if (Number(tx.amount) >= 5000) triggerWhaleAlert();
+    }
   };
   const updateTransaction = async (id: string, patch: Partial<Transaction>) => {
     const { data, error } = await supabase.from('transactions').update(patch).eq('id', id).select().single();
-    if (!error && data) setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...data } : t));
+    if (!error && data) { setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...data } : t)); NativeHaptics.lightTick(); }
   };
   const deleteTransaction = async (id: string) => {
+    const item = transactions.find(t => t.id === id);
     const { error } = await supabase.from('transactions').delete().eq('id', id);
-    if (!error) setTransactions(prev => prev.filter(t => t.id !== id));
+    if (!error) {
+      setTransactions(prev => prev.filter(t => t.id !== id));
+      NativeHaptics.heavyDoubleThud();
+      if (item) cacheDeletedItem("transaction", item);
+    }
   };
 
   const addSubscription = async (sub: Partial<Subscription>) => {
@@ -572,7 +661,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { icon, bg, color, cost, billingDay, sourceAccount, autoDeduct, ...rest } = sub;
     const payload = { ...rest, amount: cost, billing_day: billingDay, source_account: sourceAccount, auto_deduct: autoDeduct, type: "subscription", user_id: session?.user?.id };
     const { data, error } = await supabase.from('subscriptions').insert(payload).select().single();
-    if (!error && data) setSubscriptions(prev => [{...sub, id: data.id} as Subscription, ...prev]);
+    if (!error && data) { setSubscriptions(prev => [{...sub, id: data.id} as Subscription, ...prev]); NativeHaptics.successMedium(); }
   };
   const updateSubscription = async (id: string, patch: Partial<Subscription>) => {
     const { icon, bg, color, cost, billingDay, sourceAccount, autoDeduct, ...rest } = patch;
@@ -583,11 +672,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (autoDeduct !== undefined) payload.auto_deduct = autoDeduct;
 
     const { data, error } = await supabase.from('subscriptions').update(payload).eq('id', id).select().single();
-    if (!error && data) setSubscriptions(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
+    if (!error && data) { setSubscriptions(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s)); NativeHaptics.lightTick(); }
   };
   const deleteSubscription = async (id: string) => {
     const { error } = await supabase.from('subscriptions').delete().eq('id', id);
-    if (!error) setSubscriptions(prev => prev.filter(s => s.id !== id));
+    if (!error) { setSubscriptions(prev => prev.filter(s => s.id !== id)); NativeHaptics.heavyDoubleThud(); }
   };
 
   const addUtility = async (sub: Partial<Subscription>) => {
@@ -595,7 +684,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { icon, bg, color, cost, billingDay, sourceAccount, autoDeduct, ...rest } = sub;
     const payload = { ...rest, amount: cost, billing_day: billingDay, source_account: sourceAccount, auto_deduct: autoDeduct, type: "utility", user_id: session?.user?.id };
     const { data, error } = await supabase.from('subscriptions').insert(payload).select().single();
-    if (!error && data) setUtilities(prev => [{...sub, id: data.id} as Subscription, ...prev]);
+    if (!error && data) { setUtilities(prev => [{...sub, id: data.id} as Subscription, ...prev]); NativeHaptics.successMedium(); }
   };
   const updateUtility = async (id: string, patch: Partial<Subscription>) => {
     const { icon, bg, color, cost, billingDay, sourceAccount, autoDeduct, ...rest } = patch;
@@ -606,11 +695,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (autoDeduct !== undefined) payload.auto_deduct = autoDeduct;
 
     const { data, error } = await supabase.from('subscriptions').update(payload).eq('id', id).select().single();
-    if (!error && data) setUtilities(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
+    if (!error && data) { setUtilities(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s)); NativeHaptics.lightTick(); }
   };
   const deleteUtility = async (id: string) => {
     const { error } = await supabase.from('subscriptions').delete().eq('id', id);
-    if (!error) setUtilities(prev => prev.filter(s => s.id !== id));
+    if (!error) { setUtilities(prev => prev.filter(s => s.id !== id)); NativeHaptics.heavyDoubleThud(); }
   };
 
   const addGoal = async (goal: Partial<Goal>) => {
@@ -618,7 +707,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { title, current, target, isPinned } = goal;
     const payload = { title, current_amount: current || 0, target_amount: target, is_pinned: isPinned || false, user_id: session?.user?.id };
     const { data, error } = await supabase.from('goals').insert(payload).select().single();
-    if (!error && data) setGoals(prev => [{...goal, id: data.id} as Goal, ...prev]);
+    if (!error && data) { setGoals(prev => [{...goal, id: data.id} as Goal, ...prev]); NativeHaptics.successMedium(); }
   };
   const updateGoal = async (id: string, patch: Partial<Goal>) => {
     const { title, current, target, isPinned } = patch;
@@ -629,37 +718,47 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (isPinned !== undefined) payload.is_pinned = isPinned;
 
     const { data, error } = await supabase.from('goals').update(payload).eq('id', id).select().single();
-    if (!error && data) setGoals(prev => prev.map(g => g.id === id ? { ...g, ...patch } : g));
+    if (!error && data) { setGoals(prev => prev.map(g => g.id === id ? { ...g, ...patch } : g)); NativeHaptics.lightTick(); }
   };
   const deleteGoal = async (id: string) => {
+    const item = goals.find(g => g.id === id);
     const { error } = await supabase.from('goals').delete().eq('id', id);
-    if (!error) setGoals(prev => prev.filter(g => g.id !== id));
+    if (!error) {
+      setGoals(prev => prev.filter(g => g.id !== id));
+      NativeHaptics.heavyDoubleThud();
+      if (item) cacheDeletedItem("goal", item);
+    }
   };
 
   const addPlannerItem = async (item: Partial<PlannerItem>) => {
     delete item.id;
     const payload = { ...item, user_id: session?.user?.id };
     const { data, error } = await supabase.from('salary_planner').insert(payload).select().single();
-    if (!error && data) setPlannerItems(prev => [data as PlannerItem, ...prev]);
+    if (!error && data) { setPlannerItems(prev => [data as PlannerItem, ...prev]); NativeHaptics.successMedium(); }
   };
   const deletePlannerItem = async (id: string) => {
     const { error } = await supabase.from('salary_planner').delete().eq('id', id);
-    if (!error) setPlannerItems(prev => prev.filter(p => p.id !== id));
+    if (!error) { setPlannerItems(prev => prev.filter(p => p.id !== id)); NativeHaptics.heavyDoubleThud(); }
   };
 
   const addAsset = async (asset: Partial<Asset>) => {
     delete asset.id;
     const payload = { ...asset, user_id: session?.user?.id };
     const { data, error } = await supabase.from('asset_vault').insert(payload).select().single();
-    if (!error && data) setAssets(prev => [data as Asset, ...prev]);
+    if (!error && data) { setAssets(prev => [data as Asset, ...prev]); NativeHaptics.successMedium(); }
   };
   const deleteAsset = async (id: string) => {
+    const item = assets.find(a => a.id === id);
     const { error } = await supabase.from('asset_vault').delete().eq('id', id);
-    if (!error) setAssets(prev => prev.filter(a => a.id !== id));
+    if (!error) {
+      setAssets(prev => prev.filter(a => a.id !== id));
+      NativeHaptics.heavyDoubleThud();
+      if (item) cacheDeletedItem("asset", item);
+    }
   };
   const updateAsset = async (id: string, patch: Partial<Asset>) => {
     const { data, error } = await supabase.from('asset_vault').update(patch).eq('id', id).select().single();
-    if (!error && data) setAssets(prev => prev.map(a => a.id === id ? { ...a, ...data } as Asset : a));
+    if (!error && data) { setAssets(prev => prev.map(a => a.id === id ? { ...a, ...data } as Asset : a)); NativeHaptics.lightTick(); }
   };
   const toggleVault = async (val: boolean) => {
     setIsVaultEnabledRaw(val);
@@ -682,15 +781,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     delete (item as any).id;
     const payload = { ...item, user_id: session?.user?.id };
     const { data, error } = await supabase.from('trade_items').insert(payload).select().single();
-    if (!error && data) setTradeItems(prev => [data as TradeItem, ...prev]);
+    if (!error && data) {
+      setTradeItems(prev => [data as TradeItem, ...prev]);
+      NativeHaptics.successMedium();
+      if (Number(item.buy_price) >= 5000) triggerWhaleAlert();
+    }
   };
   const updateTradeItem = async (id: string, patch: Partial<TradeItem>) => {
     const { data, error } = await supabase.from('trade_items').update(patch).eq('id', id).select().single();
-    if (!error && data) setTradeItems(prev => prev.map(t => t.id === id ? { ...t, ...data } as TradeItem : t));
+    if (!error && data) { setTradeItems(prev => prev.map(t => t.id === id ? { ...t, ...data } as TradeItem : t)); NativeHaptics.successMedium(); }
   };
   const deleteTradeItem = async (id: string) => {
+    const item = tradeItems.find(t => t.id === id);
     const { error } = await supabase.from('trade_items').delete().eq('id', id);
-    if (!error) setTradeItems(prev => prev.filter(t => t.id !== id));
+    if (!error) {
+      setTradeItems(prev => prev.filter(t => t.id !== id));
+      NativeHaptics.heavyDoubleThud();
+      if (item) cacheDeletedItem("trade", item);
+    }
   };
 
   if (isHydrating || authLoading) {
@@ -739,9 +847,48 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       tradeItems, addTradeItem, updateTradeItem, deleteTradeItem,
       activeAssetId, setActiveAssetId,
       showTransactionModal, setShowTransactionModal,
-      isOffline
+      isOffline,
+      isGodMode, whaleAlert, sharkUndo
     }}>
       {children}
+
+      {/* Whale Alert Overlay */}
+      <AnimatePresence>
+        {whaleAlert && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[500] flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-none"
+          >
+            <motion.div
+              initial={{ scale: 0.3, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 1.5, opacity: 0 }}
+              transition={{ type: "spring", damping: 12 }}
+              className="text-center"
+            >
+              <span className="text-[120px] block">🐋</span>
+              <p className="text-white font-black text-xl mt-2 tracking-wide">WHALE ALERT</p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Shark Undo Animation */}
+      <AnimatePresence>
+        {sharkUndo && (
+          <motion.div
+            initial={{ x: "-100%", opacity: 0 }}
+            animate={{ x: "120%", opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1.2, ease: "easeInOut" }}
+            className="fixed top-1/2 -mt-16 left-0 z-[500] pointer-events-none"
+          >
+            <span className="text-[100px] block">🦈</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Global Security Confirmation Modal */}
       <AnimatePresence>

@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { TrendingUp, TrendingDown, Wallet, Target, Plus, Check, X, Trash2, Clock } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer, Tooltip } from "recharts";
 import Link from "next/link";
 import { useAppContext } from "@/lib/context";
+import { NativeHaptics } from "@/lib/haptics";
 
 
 
@@ -26,8 +27,33 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function Dashboard() {
-  const { userName, goals, transactions, includeSavings, accounts, formatCurrency, currency } = useAppContext();
-  const pinnedGoals = goals.filter(g => g.isPinned);
+  const { userName, goals, transactions, includeSavings, accounts, formatCurrency, currency, isGodMode } = useAppContext();
+  const pinnedGoals = isGodMode ? goals.map(g => ({ ...g, current: g.target })) : goals.filter(g => g.isPinned);
+
+  // God Mode: 7 taps on avatar within 3 seconds
+  const godTapCount = useRef(0);
+  const godTapTimer = useRef<NodeJS.Timeout | null>(null);
+  const [matrixFlash, setMatrixFlash] = useState(false);
+
+  const handleAvatarTap = useCallback(() => {
+    godTapCount.current++;
+    if (godTapCount.current === 1) {
+      godTapTimer.current = setTimeout(() => { godTapCount.current = 0; }, 3000);
+    }
+    if (godTapCount.current >= 7) {
+      godTapCount.current = 0;
+      if (godTapTimer.current) clearTimeout(godTapTimer.current);
+      // Toggle god mode via context — we need to access the raw setter
+      // Flash matrix green
+      NativeHaptics.heavyDoubleThud().then(() => NativeHaptics.lightTick());
+      setMatrixFlash(true);
+      setTimeout(() => setMatrixFlash(false), 500);
+      // Toggle via localStorage flag and reload
+      const current = localStorage.getItem("god_mode") === "true";
+      localStorage.setItem("god_mode", current ? "false" : "true");
+      window.location.reload();
+    }
+  }, []);
 
   const hour = new Date().getHours();
   const greeting = hour >= 5 && hour < 12 ? "Good morning," 
@@ -127,15 +153,18 @@ export default function Dashboard() {
 
   return (
     <div className="p-6 space-y-8 animate-in fade-in duration-500">
+      {/* Matrix Flash */}
+      {matrixFlash && <div className="fixed inset-0 z-[9999] bg-[#00ff41] pointer-events-none animate-pulse" />}
+
       {/* Header */}
       <div className="flex justify-between items-center mt-2">
         <div>
           <p className="text-muted-foreground font-medium text-sm">{greeting}</p>
           <h1 className="text-2xl font-bold">{userName}</h1>
         </div>
-        <div className="w-10 h-10 rounded-full bg-primary/10 overflow-hidden flex items-center justify-center border-2 border-primary/20 shadow-sm">
+        <button onClick={handleAvatarTap} className="w-10 h-10 rounded-full bg-primary/10 overflow-hidden flex items-center justify-center border-2 border-primary/20 shadow-sm active:scale-95 transition-transform">
           <span className="font-bold text-primary">{userName.charAt(0).toUpperCase()}</span>
-        </div>
+        </button>
       </div>
 
       {/* Main Expense Card (Dark) */}
@@ -148,7 +177,7 @@ export default function Dashboard() {
         <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full blur-xl -ml-8 -mb-8 pointer-events-none" />
         
         <p className="text-primary-foreground/70 font-medium mb-1 relative z-10 text-sm">Total Balance</p>
-        <h2 className="text-4xl font-black mb-4 relative z-10 tracking-tight">{formatCurrency(totalBalance)}</h2>
+        <h2 className="text-4xl font-black mb-4 relative z-10 tracking-tight">{isGodMode ? `${currency} 99,999,999.00` : formatCurrency(totalBalance)}</h2>
         
         {pendingIncome > 0 && (
           <div className="flex items-center gap-2 bg-amber-400/20 px-3 py-1.5 rounded-full backdrop-blur-md mb-4 w-fit relative z-10">

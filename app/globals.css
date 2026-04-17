@@ -52,17 +52,34 @@
   --border: #334155;
 }
 
+* {
+  -webkit-tap-highlight-color: transparent !important;
+  outline: none !important;
+  -webkit-user-drag: none !important;
+}
+
+*:focus {
+  outline: none !important;
+}
+
+a {
+  -webkit-touch-callout: none !important;
+}
+
 body {
   background-color: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  @apply select-none; /* Enforce native app feel globally */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 input, textarea {
-  @apply select-text; /* Native exemption for inputs */
+  -webkit-user-select: auto;
+  user-select: auto;
 }
 
 /* Hide scrollbar for horizontal lists */

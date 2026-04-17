@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAppContext } from "@/lib/context";
+import { NativeHaptics } from "@/lib/haptics";
 
 export default function BottomNav({ onOpenAdd }: { onOpenAdd: () => void }) {
   const pathname = usePathname();
@@ -30,7 +31,7 @@ export default function BottomNav({ onOpenAdd }: { onOpenAdd: () => void }) {
 
       <div className="relative -top-6">
         <button 
-          onClick={onOpenAdd}
+          onClick={() => { onOpenAdd(); NativeHaptics.lightTick(); }}
           style={{ backgroundColor: activeColor, boxShadow: `0 0 20px ${activeColor}60` }}
           className="text-white p-4 rounded-full hover:scale-105 active:scale-95 transition-transform"
         >

@@ -1,8 +1,9 @@
 "use client";
 
-import { Download, Trash2, Tags, Moon, ChevronRight, Edit2, Check, Bell, CircleDollarSign, Calendar, X, Plus, GripVertical, Shield, Palette, Database, LogOut, Lock, Wallet, PiggyBank, UtensilsCrossed, TrendingUp, Fingerprint, Package, Radio, CreditCard } from "lucide-react";
+import { Download, Trash2, Tags, Moon, ChevronRight, Edit2, Check, Bell, CircleDollarSign, Calendar, X, Plus, GripVertical, Shield, Palette, Database, LogOut, Lock, Wallet, PiggyBank, UtensilsCrossed, TrendingUp, Fingerprint, Package, Radio, CreditCard, FileSpreadsheet, Loader2 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useAppContext } from "@/lib/context";
+import { exportDataToCSV } from "@/lib/exportUtils";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
 import { supabase } from "@/lib/supabase";
 
@@ -107,33 +108,24 @@ export default function ProfilePage() {
     triggerToast("Signed out successfully.");
   };
 
-  const handleExportCSV = () => {
-    if (transactions.length === 0) {
-      triggerToast("No transactions to export.");
-      return;
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
+
+  const handleExport = async (filter: "month" | "all") => {
+    setExportLoading(true);
+    try {
+      const now = new Date();
+      const monthString = filter === "month"
+        ? now.toLocaleString("en-US", { month: "long", year: "numeric" })
+        : null;
+      await exportDataToCSV(transactions, monthString, currency);
+      triggerToast(`✅ Exported ${filter === "month" ? "this month's" : "all"} transactions!`);
+    } catch (err: any) {
+      triggerToast(err.message || "Export failed.");
+    } finally {
+      setExportLoading(false);
+      setShowExportModal(false);
     }
-    const headers = ["Date", "Type", "Category", "Amount", "Account", "Note"];
-    const rows = transactions.map(tx => [
-      new Date(tx.date).toLocaleDateString(),
-      tx.type,
-      tx.category || "",
-      tx.amount,
-      tx.account || "",
-      tx.note || ""
-    ]);
-    const csvContent = [headers, ...rows]
-      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
-      .join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "transactions_export.csv";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    triggerToast(`✅ Exported ${transactions.length} transactions to CSV!`);
   };
 
   const handleClearData = async () => {
@@ -557,11 +549,11 @@ export default function ProfilePage() {
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
           </button>
 
-          <button onClick={handleExportCSV} className="w-full flex items-center justify-between p-4 border-b border-border/40 active:bg-muted/50 transition-colors text-left cursor-pointer">
+          <button onClick={() => setShowExportModal(true)} className="w-full flex items-center justify-between p-4 border-b border-border/40 active:bg-muted/50 transition-colors text-left cursor-pointer">
             <div className="flex items-center gap-3">
-              <div className="bg-emerald-500/10 p-2 rounded-xl text-emerald-500"><Download className="w-5 h-5" /></div>
+              <div className="bg-emerald-500/10 p-2 rounded-xl text-emerald-500"><FileSpreadsheet className="w-5 h-5" /></div>
               <div>
-                <span className="font-semibold text-foreground text-sm block">Export Data to CSV</span>
+                <span className="font-semibold text-foreground text-sm block">Accountant Export</span>
                 <span className="text-xs text-muted-foreground font-medium">{transactions.length} transaction{transactions.length !== 1 ? "s" : ""} ready</span>
               </div>
             </div>
@@ -632,6 +624,63 @@ export default function ProfilePage() {
                   {clearLoading ? "Verifying..." : "Wipe Data"}
                 </button>
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Accountant Export Modal */}
+      <AnimatePresence>
+        {showExportModal && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => !exportLoading && setShowExportModal(false)} className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+            <motion.div initial={{ y: 20, opacity: 0, scale: 0.95 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 20, opacity: 0, scale: 0.95 }} className="bg-card w-full max-w-sm rounded-[2rem] shadow-heavy z-10 overflow-hidden p-6 space-y-5">
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="bg-emerald-500/10 p-3 rounded-2xl w-fit mb-3">
+                    <FileSpreadsheet className="w-6 h-6 text-emerald-500" />
+                  </div>
+                  <h3 className="font-bold text-lg text-foreground">Accountant Export</h3>
+                  <p className="text-sm text-muted-foreground font-medium mt-1">Generate a CSV report for your records.</p>
+                </div>
+                <button onClick={() => !exportLoading && setShowExportModal(false)} className="p-1.5 hover:bg-muted rounded-full transition-colors shrink-0"><X className="w-5 h-5 text-muted-foreground"/></button>
+              </div>
+
+              {exportLoading ? (
+                <div className="flex flex-col items-center justify-center py-8 gap-3">
+                  <Loader2 className="w-8 h-8 animate-spin" style={{ color: accentColor }} />
+                  <p className="text-sm font-medium text-muted-foreground">Generating report...</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <button
+                    onClick={() => handleExport("month")}
+                    style={{ borderColor: `${accentColor}33` }}
+                    className="w-full flex items-center gap-4 p-4 bg-muted/30 rounded-2xl border hover:bg-muted/60 active:scale-[0.98] transition-all text-left"
+                  >
+                    <div style={{ backgroundColor: `${accentColor}1A` }} className="p-3 rounded-xl">
+                      <Calendar style={{ color: accentColor }} className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-foreground text-sm">Current Month</p>
+                      <p className="text-xs text-muted-foreground font-medium mt-0.5">{new Date().toLocaleString("en-US", { month: "long", year: "numeric" })}</p>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => handleExport("all")}
+                    style={{ borderColor: `${accentColor}33` }}
+                    className="w-full flex items-center gap-4 p-4 bg-muted/30 rounded-2xl border hover:bg-muted/60 active:scale-[0.98] transition-all text-left"
+                  >
+                    <div style={{ backgroundColor: `${accentColor}1A` }} className="p-3 rounded-xl">
+                      <Download style={{ color: accentColor }} className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-foreground text-sm">All Time</p>
+                      <p className="text-xs text-muted-foreground font-medium mt-0.5">{transactions.length} transaction{transactions.length !== 1 ? "s" : ""}</p>
+                    </div>
+                  </button>
+                </div>
+              )}
             </motion.div>
           </div>
         )}
