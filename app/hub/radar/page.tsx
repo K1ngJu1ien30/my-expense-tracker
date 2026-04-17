@@ -57,7 +57,10 @@ async function fetchRssSource(source: RadarSource): Promise<RadarItem[]> {
         "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
       },
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.warn(`Skipping "${source.name}" (${source.url}) — status ${res.status}`);
+      return [];
+    }
     const rawXml = await res.text();
 
     const parser = new DOMParser();
@@ -134,44 +137,55 @@ async function fetchRssSource(source: RadarSource): Promise<RadarItem[]> {
 }
 
 async function fetchTmdbCinema(source: RadarSource): Promise<RadarItem[]> {
-  const res = await fetch(
-    `https://api.themoviedb.org/3/movie/now_playing?api_key=${TMDB_KEY}&region=MY&page=1`
-  );
-  const data = await res.json();
-  if (!data.results) return [];
-  return data.results.map((m: any) => ({
-    id: `tmdb-cinema-${m.id}`,
-    title: m.title || m.original_title || "",
-    date: m.release_date || "",
-    snippet: (m.overview || "").slice(0, 200),
-    image: m.poster_path ? `${TMDB_IMG}${m.poster_path}` : "",
-    category: source.name,
-    badge: source.name,
-    sourceType: "tmdb_cinema" as const,
-    link: `https://www.themoviedb.org/movie/${m.id}`,
-  }));
+  try {
+    const res = await fetch(
+      `https://api.themoviedb.org/3/movie/now_playing?api_key=${TMDB_KEY}&region=MY&page=1`
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!data.results) return [];
+    return data.results.map((m: any) => ({
+      id: `tmdb-cinema-${m.id}`,
+      title: m.title || m.original_title || "",
+      date: m.release_date || "",
+      snippet: (m.overview || "").slice(0, 200),
+      image: m.poster_path ? `${TMDB_IMG}${m.poster_path}` : "",
+      category: source.name,
+      badge: source.name,
+      sourceType: "tmdb_cinema" as const,
+      link: `https://www.themoviedb.org/movie/${m.id}`,
+    }));
+  } catch (err) {
+    console.warn(`TMDB Cinema fetch failed for "${source.name}":`, err);
+    return [];
+  }
 }
 
 async function fetchTmdbStreaming(source: RadarSource): Promise<RadarItem[]> {
-  const providers = source.url || "8";
-
-  const res = await fetch(
-    `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&watch_region=MY&with_watch_providers=${providers}&sort_by=release_date.desc&page=1`
-  );
-  const data = await res.json();
-  if (!data.results) return [];
-  return data.results.map((m: any) => ({
-    id: `tmdb-stream-${m.id}`,
-    title: m.title || m.original_title || "",
-    date: m.release_date || "",
-    snippet: (m.overview || "").slice(0, 200),
-    image: m.poster_path ? `${TMDB_IMG}${m.poster_path}` : "",
-    category: source.name,
-    badge: PROVIDER_NAMES[providers] || "Streaming",
-    sourceType: "tmdb_streaming" as const,
-    link: `https://www.themoviedb.org/movie/${m.id}`,
-    platform: PROVIDER_NAMES[providers] || "Streaming",
-  }));
+  try {
+    const providers = source.url || "8";
+    const res = await fetch(
+      `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&watch_region=MY&with_watch_providers=${providers}&sort_by=release_date.desc&page=1`
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!data.results) return [];
+    return data.results.map((m: any) => ({
+      id: `tmdb-stream-${m.id}`,
+      title: m.title || m.original_title || "",
+      date: m.release_date || "",
+      snippet: (m.overview || "").slice(0, 200),
+      image: m.poster_path ? `${TMDB_IMG}${m.poster_path}` : "",
+      category: source.name,
+      badge: PROVIDER_NAMES[providers] || "Streaming",
+      sourceType: "tmdb_streaming" as const,
+      link: `https://www.themoviedb.org/movie/${m.id}`,
+      platform: PROVIDER_NAMES[providers] || "Streaming",
+    }));
+  } catch (err) {
+    console.warn(`TMDB Streaming fetch failed for "${source.name}":`, err);
+    return [];
+  }
 }
 
 export default function RadarPage() {
