@@ -50,90 +50,36 @@ function stripHtml(html: string): string {
 }
 
 async function fetchRssSource(source: RadarSource): Promise<RadarItem[]> {
-  try {
-    const res = await fetch(source.url || "", {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
-      },
+  const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(source.url || "")}`;
+  const res = await fetch(apiUrl);
+  const data = await res.json();
+  if (data.status !== "ok" || !data.items) return [];
+
+  const keywords = source.keywords
+    ? source.keywords.split(",").map((k) => k.trim().toLowerCase()).filter(Boolean)
+    : [];
+
+  let items: any[] = data.items;
+  if (keywords.length > 0) {
+    items = items.filter((item: any) => {
+      const text = ((item.title || "") + " " + (item.description || "")).toLowerCase();
+      return keywords.some((kw) => text.includes(kw));
     });
-    if (!res.ok) {
-      console.warn(`Skipping "${source.name}" (${source.url}) — status ${res.status}`);
-      return [];
-    }
-    const rawXml = await res.text();
-
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(rawXml, "text/xml");
-
-    if (xmlDoc.querySelector("parsererror")) return [];
-
-    const nodes = Array.from(xmlDoc.querySelectorAll("item, entry"));
-    if (nodes.length === 0) return [];
-
-    const keywords = source.keywords
-      ? source.keywords.split(",").map((k) => k.trim().toLowerCase()).filter(Boolean)
-      : [];
-    const badgeText = source.keywords ? source.keywords.split(",")[0].trim() : source.name;
-
-    const parsed: RadarItem[] = [];
-    nodes.forEach(node => {
-      try {
-        // 1. Safe Title
-        const titleNode = node.querySelector("title");
-        const title = titleNode ? titleNode.textContent?.trim() || "Unknown Title" : "Unknown Title";
-
-        // 2. Safe Link (text content for RSS, href attribute for Atom)
-        const linkNode = node.querySelector("link");
-        let link = "";
-        if (linkNode) {
-          link = linkNode.textContent?.trim() || linkNode.getAttribute("href") || "";
-        }
-
-        // 3. Safe Date (tries multiple format tags)
-        const dateNode = node.querySelector("pubDate, published, updated, dc\\:date");
-        const pubDate = dateNode ? dateNode.textContent?.trim() || "" : "";
-
-        // 4. Safe Content (tries RSS then Atom tags)
-        const contentNode = node.querySelector("content\\:encoded, content, description, summary");
-        const description = contentNode ? contentNode.textContent?.trim() || "" : "";
-
-        // 5. Safe Image
-        let image = "";
-        try {
-          const thumb = node.querySelector("media\\:thumbnail, thumbnail");
-          const media = node.querySelector("media\\:content");
-          const enc = node.querySelector("enclosure");
-          image = thumb?.getAttribute("url") || media?.getAttribute("url") || enc?.getAttribute("url") || "";
-        } catch { /* image extraction failed — non-critical */ }
-
-        // Keyword filtering
-        if (keywords.length > 0) {
-          const text = (title + " " + description).toLowerCase();
-          if (!keywords.some((kw) => text.includes(kw))) return;
-        }
-
-        parsed.push({
-          id: `rss-${link}-${pubDate}`,
-          title,
-          date: pubDate,
-          snippet: stripHtml(description).slice(0, 200),
-          image,
-          category: source.name,
-          badge: badgeText,
-          sourceType: "rss" as const,
-          link,
-        });
-      } catch (err) {
-        console.warn("Skipped a malformed feed item", err);
-      }
-    });
-
-    return parsed;
-  } catch (err) {
-    console.warn(`RSS fetch failed for "${source.name}":`, err);
-    return [];
   }
+
+  const badgeText = source.keywords ? source.keywords.split(",")[0].trim() : source.name;
+
+  return items.map((item: any) => ({
+    id: `rss-${item.link}-${item.pubDate}`,
+    title: item.title || "",
+    date: item.pubDate || "",
+    snippet: stripHtml(item.description || "").slice(0, 200),
+    image: item.thumbnail || item.enclosure?.link || "",
+    category: source.name,
+    badge: badgeText,
+    sourceType: "rss" as const,
+    link: item.link || "",
+  }));
 }
 
 async function fetchTmdbCinema(source: RadarSource): Promise<RadarItem[]> {
