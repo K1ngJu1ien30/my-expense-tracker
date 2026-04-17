@@ -42,11 +42,24 @@ export default function HubPage() {
 
         const fetches = rssSources.slice(0, 5).map(async (src) => {
           try {
-            const res = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(src.url!)}`);
-            const data = await res.json();
-            if (data.status === "ok" && data.items) {
-              return data.items.filter((item: any) => (item.pubDate || "").startsWith(today)).length;
-            }
+            const res = await fetch(src.url!, {
+              headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                "Accept": "application/rss+xml, application/xml, text/xml, */*",
+              },
+            });
+            if (!res.ok) return 0;
+            const xmlText = await res.text();
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+            if (xmlDoc.querySelector("parsererror")) return 0;
+            const items = xmlDoc.querySelectorAll("item");
+            let todayCount = 0;
+            items.forEach(node => {
+              const pubDate = node.querySelector("pubDate")?.textContent || "";
+              if (pubDate && new Date(pubDate).toISOString().startsWith(today)) todayCount++;
+            });
+            return todayCount;
           } catch { /* skip failed feeds */ }
           return 0;
         });

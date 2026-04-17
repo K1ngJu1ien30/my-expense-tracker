@@ -50,36 +50,67 @@ function stripHtml(html: string): string {
 }
 
 async function fetchRssSource(source: RadarSource): Promise<RadarItem[]> {
-  const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(source.url || "")}`;
-  const res = await fetch(apiUrl);
-  const data = await res.json();
-  if (data.status !== "ok" || !data.items) return [];
+  const res = await fetch(source.url || "", {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "Accept": "application/rss+xml, application/xml, text/xml, */*",
+    },
+  });
+  if (!res.ok) return [];
+  const xmlText = await res.text();
+
+  const parser = new DOMParser();
+  const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+
+  // Check for parse errors
+  if (xmlDoc.querySelector("parsererror")) return [];
+
+  const itemNodes = xmlDoc.querySelectorAll("item");
+  if (itemNodes.length === 0) return [];
 
   const keywords = source.keywords
     ? source.keywords.split(",").map((k) => k.trim().toLowerCase()).filter(Boolean)
     : [];
 
-  let items: any[] = data.items;
-  if (keywords.length > 0) {
-    items = items.filter((item: any) => {
-      const text = ((item.title || "") + " " + (item.description || "")).toLowerCase();
-      return keywords.some((kw) => text.includes(kw));
-    });
-  }
-
   const badgeText = source.keywords ? source.keywords.split(",")[0].trim() : source.name;
 
-  return items.map((item: any) => ({
-    id: `rss-${item.link}-${item.pubDate}`,
-    title: item.title || "",
-    date: item.pubDate || "",
-    snippet: stripHtml(item.description || "").slice(0, 200),
-    image: item.thumbnail || item.enclosure?.link || "",
-    category: source.name,
-    badge: badgeText,
-    sourceType: "rss" as const,
-    link: item.link || "",
-  }));
+  const parsed: RadarItem[] = [];
+  itemNodes.forEach((node) => {
+    const title = node.querySelector("title")?.textContent || "";
+    const link = node.querySelector("link")?.textContent || "";
+    const pubDate = node.querySelector("pubDate")?.textContent || "";
+    const description =
+      node.querySelector("content\\:encoded")?.textContent ||
+      node.getElementsByTagNameNS("*", "encoded")[0]?.textContent ||
+      node.querySelector("description")?.textContent ||
+      "";
+
+    // Extract thumbnail from media:content, media:thumbnail, or enclosure
+    const mediaContent = node.querySelector("media\\:content, content")?.getAttribute("url") || "";
+    const mediaThumbnail = node.querySelector("media\\:thumbnail, thumbnail")?.getAttribute("url") || "";
+    const enclosure = node.querySelector("enclosure")?.getAttribute("url") || "";
+    const image = mediaThumbnail || mediaContent || enclosure || "";
+
+    // Keyword filtering
+    if (keywords.length > 0) {
+      const text = (title + " " + description).toLowerCase();
+      if (!keywords.some((kw) => text.includes(kw))) return;
+    }
+
+    parsed.push({
+      id: `rss-${link}-${pubDate}`,
+      title,
+      date: pubDate,
+      snippet: stripHtml(description).slice(0, 200),
+      image,
+      category: source.name,
+      badge: badgeText,
+      sourceType: "rss" as const,
+      link,
+    });
+  });
+
+  return parsed;
 }
 
 async function fetchTmdbCinema(source: RadarSource): Promise<RadarItem[]> {
