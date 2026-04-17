@@ -49,24 +49,49 @@ function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, "");
 }
 
+// Safe text extractor — tries multiple tag names in order
+function xmlText(node: Element, ...tags: string[]): string {
+  for (const tag of tags) {
+    // Try namespace-aware lookup first (for content:encoded etc.)
+    const byNS = node.getElementsByTagNameNS("*", tag)[0];
+    if (byNS?.textContent) return byNS.textContent;
+    // Try CSS escaped selector
+    const byCSS = node.querySelector(tag.replace(":", "\\:"));
+    if (byCSS?.textContent) return byCSS.textContent;
+    // Try plain tag name
+    const byPlain = node.querySelector(tag);
+    if (byPlain?.textContent) return byPlain.textContent;
+  }
+  return "";
+}
+
+// Safe attribute extractor — tries href or url attribute from multiple tag names
+function xmlAttr(node: Element, tags: string[], attr: string): string {
+  for (const tag of tags) {
+    const el = node.getElementsByTagNameNS("*", tag)[0] || node.querySelector(tag.replace(":", "\\:")) || node.querySelector(tag);
+    if (el?.getAttribute(attr)) return el.getAttribute(attr)!;
+  }
+  return "";
+}
+
 async function fetchRssSource(source: RadarSource): Promise<RadarItem[]> {
   const res = await fetch(source.url || "", {
     headers: {
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-      "Accept": "application/rss+xml, application/xml, text/xml, */*",
+      "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
     },
   });
   if (!res.ok) return [];
-  const xmlText = await res.text();
+  const xmlText_ = await res.text();
 
   const parser = new DOMParser();
-  const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+  const xmlDoc = parser.parseFromString(xmlText_, "text/xml");
 
-  // Check for parse errors
   if (xmlDoc.querySelector("parsererror")) return [];
 
-  const itemNodes = xmlDoc.querySelectorAll("item");
-  if (itemNodes.length === 0) return [];
+  // RSS 2.0 uses <item>, Atom uses <entry>
+  const nodes = Array.from(xmlDoc.querySelectorAll("item, entry"));
+  if (nodes.length === 0) return [];
 
   const keywords = source.keywords
     ? source.keywords.split(",").map((k) => k.trim().toLowerCase()).filter(Boolean)
@@ -75,39 +100,51 @@ async function fetchRssSource(source: RadarSource): Promise<RadarItem[]> {
   const badgeText = source.keywords ? source.keywords.split(",")[0].trim() : source.name;
 
   const parsed: RadarItem[] = [];
-  itemNodes.forEach((node) => {
-    const title = node.querySelector("title")?.textContent || "";
-    const link = node.querySelector("link")?.textContent || "";
-    const pubDate = node.querySelector("pubDate")?.textContent || "";
-    const description =
-      node.querySelector("content\\:encoded")?.textContent ||
-      node.getElementsByTagNameNS("*", "encoded")[0]?.textContent ||
-      node.querySelector("description")?.textContent ||
-      "";
+  nodes.forEach((node) => {
+    try {
+      // Title: universal
+      const title = xmlText(node, "title") || "No Title";
 
-    // Extract thumbnail from media:content, media:thumbnail, or enclosure
-    const mediaContent = node.querySelector("media\\:content, content")?.getAttribute("url") || "";
-    const mediaThumbnail = node.querySelector("media\\:thumbnail, thumbnail")?.getAttribute("url") || "";
-    const enclosure = node.querySelector("enclosure")?.getAttribute("url") || "";
-    const image = mediaThumbnail || mediaContent || enclosure || "";
+      // Link: RSS = <link> text, Atom = <link href="...">
+      const link =
+        node.querySelector("link")?.getAttribute("href") ||
+        node.querySelector("link")?.textContent?.trim() ||
+        xmlAttr(node, ["link"], "href") ||
+        "";
 
-    // Keyword filtering
-    if (keywords.length > 0) {
-      const text = (title + " " + description).toLowerCase();
-      if (!keywords.some((kw) => text.includes(kw))) return;
+      // Date: RSS = <pubDate>, Atom = <published> or <updated>
+      const date = xmlText(node, "pubDate", "published", "updated");
+
+      // Content: RSS = <content:encoded> or <description>, Atom = <content> or <summary>
+      const description = xmlText(node, "content:encoded", "encoded", "content", "description", "summary");
+
+      // Image: media:thumbnail, media:content, enclosure (RSS), or link[rel=enclosure] (Atom)
+      const image =
+        xmlAttr(node, ["media:thumbnail", "thumbnail"], "url") ||
+        xmlAttr(node, ["media:content"], "url") ||
+        xmlAttr(node, ["enclosure"], "url") ||
+        "";
+
+      // Keyword filtering
+      if (keywords.length > 0) {
+        const text = (title + " " + description).toLowerCase();
+        if (!keywords.some((kw) => text.includes(kw))) return;
+      }
+
+      parsed.push({
+        id: `rss-${link}-${date}`,
+        title,
+        date,
+        snippet: stripHtml(description).slice(0, 200),
+        image,
+        category: source.name,
+        badge: badgeText,
+        sourceType: "rss" as const,
+        link,
+      });
+    } catch {
+      // Skip malformed entries without crashing
     }
-
-    parsed.push({
-      id: `rss-${link}-${pubDate}`,
-      title,
-      date: pubDate,
-      snippet: stripHtml(description).slice(0, 200),
-      image,
-      category: source.name,
-      badge: badgeText,
-      sourceType: "rss" as const,
-      link,
-    });
   });
 
   return parsed;
