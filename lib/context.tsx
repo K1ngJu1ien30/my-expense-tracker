@@ -90,6 +90,11 @@ export type TradeItem = {
   user_id?: string;
 };
 
+export type Account = {
+  name: string;
+  isArchived: boolean;
+};
+
 type ConfirmState = {
   isOpen: boolean;
   title: string;
@@ -103,6 +108,7 @@ type AppContextType = {
   currency: string;
   setCurrency: (val: string) => void;
   formatCurrency: (amount: number) => string;
+  exchangeRates: Record<string, number>;
   billingCycle: string;
   setBillingCycle: (val: string) => void;
   dailyReminder: boolean;
@@ -134,11 +140,13 @@ type AppContextType = {
   updateGoal: (id: string, goal: Partial<Goal>) => Promise<void>;
   deleteGoal: (id: string) => Promise<void>;
   accounts: string[];
+  accountObjects: Account[];
   setAccounts: (val: string[]) => void;
   reorderAccounts: (val: string[]) => Promise<void>;
   addAccount: (acc: string) => void;
   renameAccount: (old: string, next: string) => void;
   deleteAccount: (acc: string) => void;
+  toggleArchiveAccount: (name: string) => void;
   accentColor: string;
   setAccentColor: (val: string) => void;
   authLoading: boolean;
@@ -185,6 +193,8 @@ type AppContextType = {
   isGodMode: boolean;
   whaleAlert: boolean;
   sharkUndo: boolean;
+  derryActive: boolean;
+  triggerDerry: () => void;
 };
 
 export const AppContext = createContext<AppContextType | null>(null);
@@ -196,10 +206,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const [userName, setUserNameRaw] = useState("User");
   const [currency, setCurrency] = useState("RM");
+  const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({});
   const [billingCycle, setBillingCycle] = useState("1");
   const [dailyReminder, setDailyReminder] = useState(false);
   const [reminderTime, setReminderTime] = useState("20:00");
-  const [categories, setCategories] = useState<string[]>(["Food", "Transport", "Entertainment", "Shopping", "Bills", "Family", "Subs"]);
+  const [categories, setCategoriesRaw] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem('tracker_data_cache');
+        if (cached) {
+          const data = JSON.parse(cached);
+          if (Array.isArray(data.categories) && data.categories.length > 0) {
+            return data.categories;
+          }
+        }
+      } catch {}
+    }
+    return ["Food", "Transport", "Entertainment", "Shopping", "Bills", "Family", "Subs"];
+  });
   const [includeSavings, setIncludeSavingsRaw] = useState(true);
 
   const [enableFoodBudget, setEnableFoodBudgetRaw] = useState(false);
@@ -221,12 +245,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [isGodMode] = useState(() => typeof window !== "undefined" && localStorage.getItem("god_mode") === "true");
   const [whaleAlert, setWhaleAlert] = useState(false);
   const [sharkUndo, setSharkUndo] = useState(false);
+  const [derryActive, setDerryActive] = useState(false);
   const deletedItemCacheRef = React.useRef<{ type: string; item: any; timeout: NodeJS.Timeout } | null>(null);
 
   const triggerWhaleAlert = () => {
     setWhaleAlert(true);
     NativeHaptics.heavyDoubleThud();
     setTimeout(() => setWhaleAlert(false), 2000);
+  };
+
+  const triggerDerry = () => {
+    setDerryActive(true);
+    document.body.classList.add('derry-active');
+    NativeHaptics.creepyHeartbeat();
+    setTimeout(() => {
+      document.body.classList.remove('derry-active');
+      setDerryActive(false);
+    }, 8000);
   };
 
   const triggerSharkUndo = async () => {
@@ -349,7 +384,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   
-  const [accounts, setAccounts] = useState<string[]>(["Bank", "Cash", "eWallet"]);
+  const [accountObjects, setAccountObjects] = useState<Account[]>([
+    { name: "Bank", isArchived: false },
+    { name: "Cash", isArchived: false },
+    { name: "eWallet", isArchived: false }
+  ]);
   const [editTransactionId, setEditTransactionId] = useState<string | null>(null);
   const [activeAssetId, setActiveAssetId] = useState<string | null>(null);
   const [showTransactionModal, setShowTransactionModal] = useState(false);
@@ -360,17 +399,61 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setConfirmState({ isOpen: true, title, message, onConfirm });
   };
 
-  const handleUpdateAccounts = async (newAccountsArray: string[]) => {
-    setAccounts(newAccountsArray);
+  // Safe Migration: convert old string[] accounts to Account objects
+  const migrateAccounts = (raw: any[]): Account[] => {
+    if (!Array.isArray(raw) || raw.length === 0) return [
+      { name: "Bank", isArchived: false },
+      { name: "Cash", isArchived: false },
+      { name: "eWallet", isArchived: false }
+    ];
+    return raw.map(acc => {
+      if (typeof acc === 'string') return { name: acc, isArchived: false };
+      return acc as Account;
+    });
+  };
+
+  // Derived: non-archived account names for consumers
+  const accounts = accountObjects.filter(a => !a.isArchived).map(a => a.name);
+
+  // Compat setter for consumers that pass string[]
+  const setAccounts = (val: string[]) => {
+    setAccountObjects(migrateAccounts(val));
+  };
+
+  const handleUpdateAccounts = async (newAccountsArray: Account[]) => {
+    setAccountObjects(newAccountsArray);
     if (session?.user) {
       await supabase.auth.updateUser({ data: { custom_accounts: newAccountsArray } });
     }
   };
-  const reorderAccounts = handleUpdateAccounts;
+  const reorderAccounts = async (names: string[]) => {
+    // Rebuild full objects in new order, preserving isArchived, then append archived ones
+    const archivedAccounts = accountObjects.filter(a => a.isArchived);
+    const reordered = names.map(name => accountObjects.find(a => a.name === name) || { name, isArchived: false });
+    await handleUpdateAccounts([...reordered, ...archivedAccounts]);
+  };
 
-  const addAccount = (acc: string) => handleUpdateAccounts([...accounts, acc]);
-  const renameAccount = (old: string, next: string) => handleUpdateAccounts(accounts.map(a => a === old ? next : a));
-  const deleteAccount = (acc: string) => handleUpdateAccounts(accounts.filter(a => a !== acc));
+  const addAccount = (acc: string) => handleUpdateAccounts([...accountObjects, { name: acc, isArchived: false }]);
+  const renameAccount = (old: string, next: string) => handleUpdateAccounts(accountObjects.map(a => a.name === old ? { ...a, name: next } : a));
+  const deleteAccount = (acc: string) => handleUpdateAccounts(accountObjects.filter(a => a.name !== acc));
+  const toggleArchiveAccount = (name: string) => handleUpdateAccounts(accountObjects.map(a => a.name === name ? { ...a, isArchived: !a.isArchived } : a));
+
+  const persistCategories = (newCats: string[]) => {
+    try {
+      const raw = localStorage.getItem('tracker_data_cache');
+      const data = raw ? JSON.parse(raw) : {};
+      data.categories = newCats;
+      localStorage.setItem('tracker_data_cache', JSON.stringify(data));
+    } catch {}
+  };
+
+  const setCategories = (cats: string[] | ((prev: string[]) => string[])) => {
+    setCategoriesRaw(prev => {
+      const next = typeof cats === 'function' ? cats(prev) : cats;
+      persistCategories(next);
+      return next;
+    });
+  };
 
   const addCategory = (cat: string) => setCategories(prev => [...prev, cat]);
   const deleteCategory = (cat: string) => setCategories(prev => prev.filter(c => c !== cat));
@@ -381,6 +464,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Currency formatter
   const formatCurrency = (amount: number) => `${currency} ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+  // Exchange rate fetch — non-blocking, cached for offline
+  const fetchExchangeRates = async () => {
+    try {
+      const res = await fetch("https://open.er-api.com/v6/latest/MYR");
+      if (!res.ok) throw new Error("Rate fetch failed");
+      const data = await res.json();
+      if (data.rates) {
+        setExchangeRates(data.rates);
+        try { localStorage.setItem("exchange_rates_cache", JSON.stringify(data.rates)); } catch {}
+      }
+    } catch {
+      // Offline fallback — load cached rates
+      try {
+        const cached = localStorage.getItem("exchange_rates_cache");
+        if (cached) setExchangeRates(JSON.parse(cached));
+      } catch {}
+    }
+  };
+
+  // Fetch rates on mount
+  useEffect(() => { fetchExchangeRates(); }, []);
   useEffect(() => {
     const initSession = async () => {
       try {
@@ -408,7 +512,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Standalone data refresh — used by initial load and post-sync
   const refreshData = async (currentUser: { id: string; user_metadata?: any }) => {
-    const savedAccounts = currentUser.user_metadata?.custom_accounts || ['Bank', 'Cash', 'eWallet'];
+    const savedAccounts = migrateAccounts(currentUser.user_metadata?.custom_accounts || ['Bank', 'Cash', 'eWallet']);
 
     try {
       console.log("[refreshData] Fetching live data...");
@@ -467,7 +571,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setPlannerItems(parsedPlanner);
       setAssets(parsedAssets);
       setTradeItems(parsedTrades);
-      setAccounts(savedAccounts);
+      setAccountObjects(savedAccounts);
 
       // Only cache when we confirmed valid non-null data above
       const cachePayload = {
@@ -479,6 +583,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         assets: parsedAssets,
         tradeItems: parsedTrades,
         accounts: savedAccounts,
+        categories,
       };
       try {
         localStorage.setItem('tracker_data_cache', JSON.stringify(cachePayload));
@@ -488,7 +593,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (err) {
       console.log("[refreshData] Network error caught. Attempting to read cache...", err);
-      setAccounts(savedAccounts);
+      setAccountObjects(savedAccounts);
 
       // Hydrate from localStorage cache on offline cold-boot
       try {
@@ -503,7 +608,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           setPlannerItems((data.plannerItems ?? []) as PlannerItem[]);
           setAssets((data.assets ?? []) as Asset[]);
           setTradeItems((data.tradeItems ?? []) as TradeItem[]);
-          if (data.accounts) setAccounts(data.accounts);
+          if (data.accounts) setAccountObjects(migrateAccounts(data.accounts));
+          if (data.categories?.length) setCategories(data.categories);
 
           // Prepend any pending offline transactions so balance stays accurate
           const offlineRaw = localStorage.getItem('offline_tx_queue');
@@ -812,7 +918,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppContext.Provider value={{
       userName, setUserName,
-      currency, setCurrency, formatCurrency,
+      currency, setCurrency, formatCurrency, exchangeRates,
       billingCycle, setBillingCycle,
       dailyReminder, setDailyReminder,
       reminderTime, setReminderTime,
@@ -828,7 +934,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       editTransactionId, setEditTransactionId,
       goals: goals.filter(g => !g.user_id || g.user_id === session?.user?.id),
       addGoal, updateGoal, deleteGoal,
-      accounts, setAccounts, reorderAccounts, addAccount, renameAccount, deleteAccount,
+      accounts, accountObjects, setAccounts, reorderAccounts, addAccount, renameAccount, deleteAccount, toggleArchiveAccount,
       accentColor, setAccentColor,
       session, authLoading,
       confirmAction,
@@ -848,7 +954,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       activeAssetId, setActiveAssetId,
       showTransactionModal, setShowTransactionModal,
       isOffline,
-      isGodMode, whaleAlert, sharkUndo
+      isGodMode, whaleAlert, sharkUndo, derryActive, triggerDerry
     }}>
       {children}
 

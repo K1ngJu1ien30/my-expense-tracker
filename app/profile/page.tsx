@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Trash2, Tags, Moon, ChevronRight, Edit2, Check, Bell, CircleDollarSign, Calendar, X, Plus, GripVertical, Shield, Palette, Database, LogOut, Lock, Wallet, PiggyBank, UtensilsCrossed, TrendingUp, Fingerprint, Package, Radio, CreditCard, FileSpreadsheet, Loader2 } from "lucide-react";
+import { Download, Trash2, Tags, Moon, ChevronRight, Edit2, Check, Bell, CircleDollarSign, Calendar, X, Plus, GripVertical, Shield, Palette, Database, LogOut, Lock, Wallet, PiggyBank, UtensilsCrossed, TrendingUp, Fingerprint, Package, Radio, CreditCard, FileSpreadsheet, Loader2, Archive } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useAppContext } from "@/lib/context";
 import { exportDataToCSV } from "@/lib/exportUtils";
@@ -23,7 +23,7 @@ export default function ProfilePage() {
     dailyReminder, setDailyReminder,
     reminderTime, setReminderTime,
     categories, setCategories, addCategory, deleteCategory,
-    accounts, setAccounts, reorderAccounts, addAccount, renameAccount, deleteAccount,
+    accounts, accountObjects, setAccounts, reorderAccounts, addAccount, renameAccount, deleteAccount, toggleArchiveAccount,
     accentColor, setAccentColor, confirmAction,
     triggerToast,
     transactions, subscriptions, goals, utilities,
@@ -38,11 +38,13 @@ export default function ProfilePage() {
     session
   } = useAppContext();
 
-  const hasSavingsAccount = accounts.some(acc => acc.toLowerCase().includes('saving'));
+  const hasSavingsAccount = accountObjects.some(acc => acc.name.toLowerCase().includes('saving'));
 
   const [darkMode, setDarkMode] = useState(false);
+  const [amoledMode, setAmoledMode] = useState(false);
   useEffect(() => {
      setDarkMode(document.documentElement.classList.contains('dark') || localStorage.getItem('theme') === 'dark');
+     setAmoledMode(localStorage.getItem('amoled') === 'true');
   }, []);
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState("");
@@ -196,15 +198,15 @@ export default function ProfilePage() {
           <div className="w-full flex w-full items-center justify-between p-4 active:bg-muted/50 transition-colors text-left relative">
             <div className="flex items-center gap-3">
               <div className="bg-green-500/10 p-2 rounded-xl text-green-500"><CircleDollarSign className="w-5 h-5" /></div>
-              <span className="font-semibold text-foreground text-sm">Currency Format</span>
+              <span className="font-semibold text-foreground text-sm">Base Currency</span>
             </div>
             <div className="flex bg-muted/60 p-1 rounded-xl">
-               {["RM", "MYR", "$"].map(cur => (
+               {["RM", "SGD", "USD", "JPY"].map(cur => (
                  <button 
                    key={cur}
                    onClick={() => {
                      setCurrency(cur);
-                     triggerToast("Currency format: " + cur);
+                     triggerToast("Currency: " + cur);
                      if(typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(20);
                    }}
                    style={currency === cur ? { backgroundColor: accentColor, color: '#fff' } : {}}
@@ -287,6 +289,10 @@ export default function ProfilePage() {
             } else {
               document.documentElement.classList.remove('dark');
               localStorage.setItem('theme', 'light');
+              // Force AMOLED off when dark mode is disabled
+              setAmoledMode(false);
+              localStorage.setItem('amoled', 'false');
+              document.documentElement.classList.remove('amoled');
             }
           }}>
             <div className="flex items-center gap-3">
@@ -295,6 +301,29 @@ export default function ProfilePage() {
             </div>
             <button className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${darkMode ? 'border-transparent' : 'bg-muted border border-border'}`} style={darkMode ? { backgroundColor: accentColor } : {}}>
               <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${darkMode ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
+            </button>
+          </div>
+
+          <div className={`w-full flex items-center justify-between p-4 border-b border-border/40 active:bg-muted/50 transition-colors cursor-pointer ${!darkMode ? 'opacity-40 pointer-events-none' : ''}`} onClick={() => {
+            if (!darkMode) return;
+            const newVal = !amoledMode;
+            setAmoledMode(newVal);
+            localStorage.setItem('amoled', newVal ? 'true' : 'false');
+            if (newVal) {
+              document.documentElement.classList.add('amoled');
+            } else {
+              document.documentElement.classList.remove('amoled');
+            }
+          }}>
+            <div className="flex items-center gap-3">
+              <div className="bg-zinc-800 p-2 rounded-xl text-zinc-400"><Moon className="w-5 h-5" /></div>
+              <div>
+                <span className="font-semibold text-foreground text-sm block">AMOLED Black</span>
+                <p className="text-[10px] text-muted-foreground leading-none mt-0.5">{!darkMode ? "Requires Dark Mode" : "Pure black for OLED screens"}</p>
+              </div>
+            </div>
+            <button className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${amoledMode && darkMode ? 'border-transparent' : 'bg-muted border border-border'}`} style={amoledMode && darkMode ? { backgroundColor: accentColor } : {}}>
+              <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${amoledMode && darkMode ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
             </button>
           </div>
 
@@ -745,11 +774,13 @@ export default function ProfilePage() {
 
                 <div className="flex-1 overflow-y-auto p-4 hide-scrollbar">
                    <Reorder.Group axis="y" values={accounts} onReorder={reorderAccounts} className="space-y-2">
-                     {accounts.map((acc) => (
-                       <Reorder.Item key={acc} value={acc} className="flex justify-between items-center bg-card shadow-sm p-3 rounded-xl border border-border/80 cursor-grab active:cursor-grabbing">
+                     {accounts.map((accName) => {
+                       const accObj = accountObjects.find(a => a.name === accName);
+                       return (
+                       <Reorder.Item key={accName} value={accName} className="flex justify-between items-center bg-card shadow-sm p-3 rounded-xl border border-border/80 cursor-grab active:cursor-grabbing">
                           <div className="flex items-center gap-3 flex-1">
                              <GripVertical className="w-4 h-4 text-muted-foreground/50 shrink-0" />
-                             {editingAccount === acc ? (
+                             {editingAccount === accName ? (
                                <div className="flex items-center gap-2 flex-1">
                                  <input
                                    autoFocus
@@ -757,7 +788,7 @@ export default function ProfilePage() {
                                    onChange={e => setEditingAccountVal(e.target.value)}
                                    onKeyDown={e => {
                                      if (e.key === "Enter" && editingAccountVal.trim()) {
-                                       renameAccount(acc, editingAccountVal.trim());
+                                       renameAccount(accName, editingAccountVal.trim());
                                        setEditingAccount(null);
                                      }
                                    }}
@@ -766,7 +797,7 @@ export default function ProfilePage() {
                                  <button
                                    onClick={() => {
                                      if (editingAccountVal.trim()) {
-                                       renameAccount(acc, editingAccountVal.trim());
+                                       renameAccount(accName, editingAccountVal.trim());
                                        setEditingAccount(null);
                                        triggerToast("Account renamed!");
                                      }
@@ -778,22 +809,29 @@ export default function ProfilePage() {
                                  </button>
                                </div>
                              ) : (
-                               <span className="font-medium text-sm text-foreground flex-1">{acc}</span>
+                               <span className="font-medium text-sm text-foreground flex-1">{accName}</span>
                              )}
                           </div>
-                          {editingAccount !== acc && (
+                          {editingAccount !== accName && (
                             <div className="flex items-center gap-1 shrink-0">
                               <button
-                                onClick={() => { setEditingAccount(acc); setEditingAccountVal(acc); }}
+                                onClick={() => { setEditingAccount(accName); setEditingAccountVal(accName); }}
                                 className="text-muted-foreground hover:text-primary transition-colors p-1.5"
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
                               <button
+                                onClick={() => { toggleArchiveAccount(accName); triggerToast(`"${accName}" archived`); }}
+                                className="text-muted-foreground hover:text-amber-500 transition-colors p-1.5"
+                                title="Archive"
+                              >
+                                <Archive className="w-3.5 h-3.5" />
+                              </button>
+                              <button
                                 onClick={() => {
-                                   confirmAction("Delete Account", `Are you sure you want to remove "${acc}"?`, () => {
-                                      deleteAccount(acc); 
-                                      triggerToast(`"${acc}" removed.`);
+                                   confirmAction("Delete Account", `Are you sure you want to remove "${accName}"?`, () => {
+                                      deleteAccount(accName); 
+                                      triggerToast(`"${accName}" removed.`);
                                    });
                                 }}
                                 className="text-muted-foreground hover:text-red-500 transition-colors p-1.5"
@@ -803,9 +841,30 @@ export default function ProfilePage() {
                             </div>
                           )}
                        </Reorder.Item>
-                     ))}
+                       );
+                     })}
                    </Reorder.Group>
-                   {accounts.length === 0 && <p className="text-center text-sm font-medium text-muted-foreground py-4">No accounts defined!</p>}
+
+                   {/* Archived Accounts */}
+                   {accountObjects.filter(a => a.isArchived).length > 0 && (
+                     <div className="mt-4 pt-4 border-t border-border/40">
+                       <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2 px-1">Archived</p>
+                       <div className="space-y-2">
+                         {accountObjects.filter(a => a.isArchived).map(acc => (
+                           <div key={acc.name} className="flex justify-between items-center bg-muted/30 p-3 rounded-xl border border-border/50 opacity-60">
+                             <span className="font-medium text-sm text-muted-foreground">{acc.name}</span>
+                             <button
+                               onClick={() => { toggleArchiveAccount(acc.name); triggerToast(`"${acc.name}" restored`); }}
+                               className="text-xs font-bold px-3 py-1 rounded-lg bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                             >
+                               Restore
+                             </button>
+                           </div>
+                         ))}
+                       </div>
+                     </div>
+                   )}
+                   {accountObjects.length === 0 && <p className="text-center text-sm font-medium text-muted-foreground py-4">No accounts defined!</p>}
                 </div>
 
                 <div className="p-4 border-t border-border/40 bg-muted/20 flex gap-2">

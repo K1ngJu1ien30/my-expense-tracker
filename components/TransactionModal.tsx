@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { useEffect } from "react";
 
 import { useAppContext } from "@/lib/context";
+import { NativeHaptics } from "@/lib/haptics";
 
 type TxType = "Expense" | "Income" | "Transfer";
 
@@ -60,7 +61,7 @@ function PillSelector({ options, value, onChange }: { options: string[], value: 
 }
 
 export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const { categories, triggerToast, accentColor, addTransaction, updateTransaction, transactions, editTransactionId, setEditTransactionId, accounts, currency } = useAppContext();
+  const { categories, triggerToast, accentColor, addTransaction, updateTransaction, transactions, editTransactionId, setEditTransactionId, accounts, currency, exchangeRates, triggerDerry } = useAppContext();
   
   const [txType, setTxType] = useState<TxType>("Expense");
   const [modalCurrency, setModalCurrency] = useState(currency);
@@ -149,7 +150,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
 
               <div className="mb-4 flex flex-col items-center justify-center py-6 bg-muted/50 rounded-3xl">
                 <div className="flex bg-muted p-1 rounded-xl mb-4">
-                   {[currency, "USD", "JPY"].map(c => (
+                   {["RM", "SGD", "USD", "JPY"].map(c => (
                      <button 
                        key={c}
                        onClick={() => setModalCurrency(c)}
@@ -171,11 +172,19 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                     autoFocus
                   />
                 </div>
-                {modalCurrency !== currency && amount && (
-                   <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-3 text-xs font-bold text-muted-foreground bg-background px-3 py-1.5 rounded-lg border border-border/50">
-                      ≈ {currency} {(Number(amount) * (modalCurrency === "USD" ? 4.5 : 0.03)).toFixed(2)}
-                   </motion.p>
-                )}
+                {modalCurrency !== currency && amount && (() => {
+                  // Convert: amount is in modalCurrency, show equivalent in base (MYR)
+                  // exchangeRates is based on MYR, so rates[X] = how many X per 1 MYR
+                  const rateMap: Record<string, string> = { "RM": "MYR", "MYR": "MYR", "USD": "USD", "SGD": "SGD", "JPY": "JPY" };
+                  const foreignCode = rateMap[modalCurrency] || modalCurrency;
+                  const foreignRate = exchangeRates[foreignCode];
+                  const converted = foreignRate ? (Number(amount) / foreignRate) : null;
+                  return converted !== null ? (
+                    <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-3 text-xs font-bold text-muted-foreground bg-background px-3 py-1.5 rounded-lg border border-border/50">
+                      ≈ {currency} {converted.toFixed(2)}
+                    </motion.p>
+                  ) : null;
+                })()}
               </div>
 
               <div className="space-y-6">
@@ -275,6 +284,13 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                   className="w-full text-white py-4 rounded-xl font-bold active:scale-[0.98] transition-all mt-4"
                   onClick={() => {
                     if (!amount || isNaN(Number(amount))) return;
+
+                    // 🎈 The Derry Easter Egg
+                    const isDerry = Number(amount) === 6.66 || note.toLowerCase().includes('pennywise');
+                    if (isDerry) {
+                      triggerDerry();
+                    }
+
                     const payload = {
                        type: txType,
                        amount: Number(amount),

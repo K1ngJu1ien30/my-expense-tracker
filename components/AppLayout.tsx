@@ -21,12 +21,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     try {
       // @ts-ignore
       import('@capacitor/app').then(({ App }) => {
-        App.addListener('backButton', () => {
-          const current = window.location.pathname.replace(/\/+$/, '') || '/';
-          if (current === '' || current === '/' || current === '/hub') {
-            App.exitApp();
-          } else {
+        App.addListener('backButton', ({ canGoBack }: { canGoBack: boolean }) => {
+          if (canGoBack) {
             router.back();
+          } else {
+            App.exitApp();
           }
         });
         cleanup = () => { App.removeAllListeners().catch(() => {}); };
@@ -46,6 +45,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     } else if (savedTheme === 'light') {
       document.documentElement.classList.remove('dark');
     }
+    // Restore AMOLED mode
+    if (localStorage.getItem('amoled') === 'true') {
+      document.documentElement.classList.add('amoled');
+    }
   }, []);
 
   // Block Android WebView long-press context menu
@@ -53,6 +56,22 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     const prevent = (e: MouseEvent) => e.preventDefault();
     window.addEventListener('contextmenu', prevent);
     return () => window.removeEventListener('contextmenu', prevent);
+  }, []);
+
+  // App-Switcher Privacy Blur
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    try {
+      // @ts-ignore
+      import('@capacitor/app').then(({ App }) => {
+        App.addListener('appStateChange', ({ isActive }: { isActive: boolean }) => {
+          const el = document.getElementById('app-privacy-blur');
+          if (el) el.style.display = isActive ? 'none' : 'block';
+        });
+        cleanup = () => {};
+      }).catch(() => {});
+    } catch {}
+    return () => { if (cleanup) cleanup(); };
   }, []);
 
   if (authLoading) return <div className="h-[100dvh] flex items-center justify-center bg-background max-w-md mx-auto"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"/></div>;
@@ -93,6 +112,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <InstallPrompt />
       <TransactionModal isOpen={showTransactionModal} onClose={() => setShowTransactionModal(false)} />
       <BottomNav onOpenAdd={() => setShowTransactionModal(true)} />
+      <div id="app-privacy-blur" style={{ display: 'none' }} className="fixed inset-0 z-[10000] bg-background/80 backdrop-blur-2xl pointer-events-none" />
     </div>
     </AuthGate>
   );

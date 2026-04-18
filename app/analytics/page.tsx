@@ -16,14 +16,6 @@ const ICONS: Record<string, React.ReactNode> = {
   Droplet: <Droplet className="w-4 h-4" />
 };
 
-const ACCOUNT_ICONS: Record<string, string> = {
-  "Bank (MBB)": "🏦",
-  "Bank (HSBC)": "🏦",
-  "TNG eWallet": "📱",
-  "TNG Card": "💳",
-  "Cash": "💵",
-};
-
 const PieTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
     const { name, value } = payload[0];
@@ -89,24 +81,6 @@ export default function AnalyticsPage() {
   } = useAppContext();
 
   const [timeFilter, setTimeFilter] = useState("Month");
-
-  // Compute live balance per account from transactions
-  const accountBalances = useMemo(() => {
-    return accounts.map(accountName => {
-      const balance = transactions.reduce((acc, tx) => {
-        let newAcc = acc;
-        if (tx.account?.toLowerCase().trim() === accountName.toLowerCase().trim()) {
-           if (tx.type === "Income" && tx.status !== "pending") newAcc += Number(tx.amount);
-           if (tx.type === "Expense" || tx.type === "Transfer") newAcc -= Number(tx.amount);
-        }
-        if (tx.type === "Transfer" && tx.to_account?.toLowerCase().trim() === accountName.toLowerCase().trim()) {
-           newAcc += Number(tx.amount);
-        }
-        return newAcc;
-      }, 0);
-      return { name: accountName, balance };
-    });
-  }, [accounts, transactions]);
   
   // Modals
   const [showAddModal, setShowAddModal] = useState<"Sub" | "Util" | null>(null);
@@ -323,28 +297,6 @@ export default function AnalyticsPage() {
       </div>
 
       <p className="text-sm font-semibold text-muted-foreground">Viewing: {dateRangeLabel}</p>
-
-      {/* Account Balance Pills */}
-      {accountBalances.length > 0 && (
-        <div className="-mx-6 px-6 overflow-x-auto hide-scrollbar">
-          <div className="flex gap-3 pb-1 w-max">
-            {accountBalances.map(({ name, balance }) => (
-              <div
-                key={name}
-                className="flex items-center gap-2 bg-card border border-border/50 shadow-soft rounded-2xl px-4 py-3 shrink-0"
-              >
-                <span className="text-lg leading-none">{ACCOUNT_ICONS[name] || "💰"}</span>
-                <div>
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider leading-none mb-0.5">{name}</p>
-                  <p className={`text-sm font-black leading-none ${balance >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
-                    {balance < 0 ? "-" : ""}{currency} {Math.abs(balance).toFixed(2)}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Smart Insights Array */}
       <div style={{ backgroundColor: `${accentColor}1A`, borderColor: `${accentColor}30` }} className="border p-4 rounded-2xl flex items-start gap-4">

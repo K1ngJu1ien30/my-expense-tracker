@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useMemo, useRef, useCallback } from "react";
-import { motion } from "framer-motion";
-import { TrendingUp, TrendingDown, Wallet, Target, Plus, Check, X, Trash2, Clock } from "lucide-react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { TrendingUp, Wallet, Target, Clock } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer, Tooltip } from "recharts";
 import Link from "next/link";
 import { useAppContext } from "@/lib/context";
@@ -17,8 +17,8 @@ const CustomTooltip = ({ active, payload, label }: any) => {
       <div className="bg-card shadow-xl rounded-xl p-3 border border-gray-100 dark:border-white/10 outline-none min-w-[120px]">
         <p className="text-xs font-bold text-muted-foreground mb-2 pb-2 border-b border-border/50">{label} Summary</p>
         <div className="space-y-1 text-sm font-semibold">
-          <p className="text-rose-500">Expenses: {data.currency} {data.value}</p>
-          {data.income > 0 && <p className="text-emerald-500">Income: {data.currency} {data.income}</p>}
+          <p className="text-rose-500">Expenses: {data.currency} {Number(data.value).toFixed(2)}</p>
+          {data.income > 0 && <p className="text-emerald-500">Income: {data.currency} {Number(data.income).toFixed(2)}</p>}
         </div>
       </div>
     );
@@ -27,13 +27,22 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function Dashboard() {
-  const { userName, goals, transactions, includeSavings, accounts, formatCurrency, currency, isGodMode } = useAppContext();
+  const { userName, goals, transactions, includeSavings, accounts, formatCurrency, currency, isGodMode, derryActive } = useAppContext();
   const pinnedGoals = isGodMode ? goals.map(g => ({ ...g, current: g.target })) : goals.filter(g => g.isPinned);
 
   // God Mode: 7 taps on avatar within 3 seconds
   const godTapCount = useRef(0);
   const godTapTimer = useRef<NodeJS.Timeout | null>(null);
   const [matrixFlash, setMatrixFlash] = useState(false);
+  const [balanceRevealed, setBalanceRevealed] = useState(false);
+  const revealTimer = useRef<NodeJS.Timeout | null>(null);
+
+  const handleRevealBalance = () => {
+    setBalanceRevealed(true);
+    NativeHaptics.lightTick();
+    if (revealTimer.current) clearTimeout(revealTimer.current);
+    revealTimer.current = setTimeout(() => setBalanceRevealed(false), 5000);
+  };
 
   const handleAvatarTap = useCallback(() => {
     godTapCount.current++;
@@ -47,11 +56,12 @@ export default function Dashboard() {
       // Flash matrix green
       NativeHaptics.heavyDoubleThud().then(() => NativeHaptics.lightTick());
       setMatrixFlash(true);
-      setTimeout(() => setMatrixFlash(false), 500);
-      // Toggle via localStorage flag and reload
-      const current = localStorage.getItem("god_mode") === "true";
-      localStorage.setItem("god_mode", current ? "false" : "true");
-      window.location.reload();
+      setTimeout(() => {
+        setMatrixFlash(false);
+        const current = localStorage.getItem("god_mode") === "true";
+        localStorage.setItem("god_mode", current ? "false" : "true");
+        window.location.reload();
+      }, 2000);
     }
   }, []);
 
@@ -80,6 +90,74 @@ export default function Dashboard() {
        return total + balance;
      }, 0);
   }, [transactions, includeSavings, accounts]);
+
+  // Per-account balances — case-insensitive, ghost-account safe, returns Record
+  const accountBalances = useMemo(() => {
+    const balances: Record<string, number> = {};
+
+    // 1. Initialize all active accounts
+    const activeAccounts = includeSavings
+      ? accounts
+      : accounts.filter(acc => acc && !acc.toLowerCase().includes('saving'));
+    activeAccounts.forEach(a => { balances[a] = 0; });
+
+    // 2. Tally transactions, resolving case mismatches to the official name
+    transactions.forEach(t => {
+      if (!t.account) return;
+
+      // Find official name (case-insensitive match against user's accounts)
+      const official = activeAccounts.find(a => a.toLowerCase() === t.account.toLowerCase());
+      const accName = official || t.account;
+
+      if (balances[accName] === undefined) balances[accName] = 0;
+      if (t.type === "Income" && t.status !== "pending") balances[accName] += Number(t.amount);
+      if (t.type === "Expense") balances[accName] -= Number(t.amount);
+      if (t.type === "Transfer") balances[accName] -= Number(t.amount);
+
+      // Credit destination account for transfers
+      if (t.type === "Transfer" && t.to_account) {
+        const officialTo = activeAccounts.find(a => a.toLowerCase() === t.to_account!.toLowerCase());
+        const toName = officialTo || t.to_account;
+        if (balances[toName] === undefined) balances[toName] = 0;
+        balances[toName] += Number(t.amount);
+      }
+    });
+
+    return balances;
+  }, [transactions, includeSavings, accounts]);
+
+  // Ordered account list: official order first, ghost accounts appended
+  const orderedAccountCards = useMemo(() => {
+    const activeAccounts = includeSavings
+      ? accounts
+      : accounts.filter(acc => acc && !acc.toLowerCase().includes('saving'));
+
+    const officialCards = activeAccounts.map(name => ({
+      name,
+      balance: accountBalances[name] || 0
+    }));
+
+    // Ghost accounts: in balances but not in official list
+    const officialSet = new Set(activeAccounts.map(a => a.toLowerCase()));
+    const ghostCards = Object.entries(accountBalances)
+      .filter(([name]) => !officialSet.has(name.toLowerCase()))
+      .map(([name, balance]) => ({ name, balance }));
+
+    return [...officialCards, ...ghostCards];
+  }, [accountBalances, accounts, includeSavings]);
+
+  const getCurrencyPrefix = (accountName: string) => {
+    const lower = accountName.toLowerCase();
+    if (lower.includes('sgd')) return 'SGD';
+    if (lower.includes('usd')) return 'USD';
+    if (lower.includes('jpy')) return 'JPY';
+    return currency;
+  };
+
+  const formatAccountBalance = (accountName: string, balance: number) => {
+    const prefix = getCurrencyPrefix(accountName);
+    return `${prefix} ${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
 
   const pendingIncome = useMemo(() => {
      return transactions
@@ -151,10 +229,103 @@ export default function Dashboard() {
      return data;
   }, [transactions]);
 
+  // 🎈 Derry Horror Sequence — phased state
+  const [derryPhase, setDerryPhase] = useState(0);
+
+  useEffect(() => {
+    if (!derryActive) { setDerryPhase(0); return; }
+
+    // Phase 1: Blackout + heartbeat (0s)
+    setDerryPhase(1);
+    NativeHaptics.creepyHeartbeat();
+
+    // Phase 2: Blood drip (2s)
+    const t2 = setTimeout(() => setDerryPhase(2), 2000);
+
+    // Phase 3: Jump scare (4.5s) — maximum vibration
+    const t3 = setTimeout(() => {
+      setDerryPhase(3);
+      import("@capacitor/haptics").then(({ Haptics }) => {
+        Haptics.vibrate({ duration: 800 });
+      }).catch(() => {
+        if (navigator.vibrate) navigator.vibrate(800);
+      });
+    }, 4500);
+
+    // Phase 4: Fade out (5s)
+    const t4 = setTimeout(() => setDerryPhase(4), 5000);
+
+    return () => { clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); };
+  }, [derryActive]);
+
   return (
     <div className="p-6 space-y-8 animate-in fade-in duration-500">
-      {/* Matrix Flash */}
-      {matrixFlash && <div className="fixed inset-0 z-[9999] bg-[#00ff41] pointer-events-none animate-pulse" />}
+      {/* 🎈 Derry Horror Overlay */}
+      <AnimatePresence>
+        {derryActive && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: derryPhase === 4 ? 0 : 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: derryPhase === 4 ? 3 : 0.3 }}
+            className="fixed inset-0 z-[9999] overflow-hidden pointer-events-none"
+          >
+            {/* Phase 1: Blackout with blood vignette */}
+            <div className="absolute inset-0 horror-blackout" />
+
+            {/* Phase 1 text: "We all float down here..." */}
+            {derryPhase >= 1 && derryPhase < 3 && (
+              <motion.p
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: [0, 0.8, 0.8, 0.4], y: 0 }}
+                transition={{ duration: 2, times: [0, 0.3, 0.7, 1] }}
+                className="absolute inset-0 flex items-center justify-center text-xl font-bold tracking-wider"
+                style={{ color: '#6b0000', textShadow: '0 0 30px #4a0000, 0 0 60px #2a0000' }}
+              >
+                We all float down here...
+              </motion.p>
+            )}
+
+            {/* Phase 2: Blood drip */}
+            {derryPhase >= 2 && (
+              <div className="absolute top-0 left-0 right-0 blood-drip" />
+            )}
+
+            {/* Phase 3: Jump scare — massive emoji flash */}
+            {derryPhase === 3 && (
+              <div
+                className="absolute inset-0 flex items-center justify-center"
+                style={{ animation: 'jumpScare 0.5s forwards' }}
+              >
+                <span className="text-[200px] leading-none" style={{ filter: 'contrast(1.5) saturate(2)' }}>🤡</span>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* Matrix Konami Effect */}
+      <AnimatePresence>
+        {matrixFlash && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5 }}
+            className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-none"
+            style={{ background: 'linear-gradient(to bottom, #000000, #003300)' }}
+          >
+            <motion.p
+              initial={{ scale: 0.5, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.3, type: "spring", damping: 12 }}
+              className="text-3xl font-black tracking-widest"
+              style={{ color: '#00ff00', textShadow: '0 0 10px #00ff00, 0 0 30px #00ff00, 0 0 60px #003300' }}
+            >
+              GOD MODE
+            </motion.p>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Header */}
       <div className="flex justify-between items-center mt-2">
@@ -167,35 +338,59 @@ export default function Dashboard() {
         </button>
       </div>
 
-      {/* Main Expense Card (Dark) */}
+      {/* Main Wallet Card */}
       <motion.div 
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="bg-primary text-primary-foreground p-6 rounded-[2rem] shadow-heavy shadow-primary/20 relative overflow-hidden dark:bg-zinc-900 dark:text-zinc-100 border border-transparent dark:border-white/5"
+        onClick={handleRevealBalance}
+        className="bg-primary text-primary-foreground py-3 px-4 rounded-[2rem] shadow-heavy shadow-primary/20 relative overflow-hidden dark:bg-zinc-900 dark:text-zinc-100 border border-transparent dark:border-white/5 cursor-pointer"
       >
         <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none" />
         <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full blur-xl -ml-8 -mb-8 pointer-events-none" />
         
-        <p className="text-primary-foreground/70 font-medium mb-1 relative z-10 text-sm">Total Balance</p>
-        <h2 className="text-4xl font-black mb-4 relative z-10 tracking-tight">{isGodMode ? `${currency} 99,999,999.00` : formatCurrency(totalBalance)}</h2>
-        
-        {pendingIncome > 0 && (
-          <div className="flex items-center gap-2 bg-amber-400/20 px-3 py-1.5 rounded-full backdrop-blur-md mb-4 w-fit relative z-10">
-            <Clock className="w-3 h-3 text-amber-400" />
-            <span className="text-xs font-bold text-amber-300">{formatCurrency(pendingIncome)} Pending</span>
-          </div>
+        {derryActive ? (
+          <>
+            <p className="text-primary-foreground/70 font-medium mb-1 relative z-10 text-sm">🎈</p>
+            <h2 className="text-4xl font-black mb-4 relative z-10 tracking-tight text-red-600">YOU'LL FLOAT TOO.</h2>
+          </>
+        ) : (
+          <>
+            {/* Per-account balances — compact horizontal carousel */}
+            <div className="relative z-10 -mx-1 px-1 flex overflow-x-auto snap-x hide-scrollbar gap-3 pb-1 mb-2">
+              {orderedAccountCards.map(({ name, balance }) => (
+                <div key={name} className="flex-shrink-0 w-fit min-w-[130px] p-3 pr-8 bg-gray-800/60 rounded-xl snap-start border border-gray-700/50">
+                  <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider block">{name}</span>
+                  <span className={`text-lg font-bold tracking-tight block mt-0.5 ${balance < 0 ? 'text-rose-400' : 'text-white'}`}>
+                    {isGodMode
+                      ? `${getCurrencyPrefix(name)} 99,999.00`
+                      : balanceRevealed
+                        ? formatAccountBalance(name, balance)
+                        : `${getCurrencyPrefix(name)} •••••`
+                    }
+                  </span>
+                </div>
+              ))}
+              {orderedAccountCards.length === 0 && (
+                <p className="text-gray-500 text-sm font-medium min-w-full text-center py-2">No active accounts</p>
+              )}
+            </div>
+
+            {/* Net Total — subtle */}
+            <div className="relative z-10 pt-2 border-t border-white/[0.06] flex items-center justify-between">
+              <span className="text-gray-500 text-[10px] font-bold uppercase tracking-wider">Net Total</span>
+              <span className="text-sm font-bold text-gray-300 tracking-tight">
+                {isGodMode ? `${currency} 99,999,999.00` : balanceRevealed ? formatCurrency(totalBalance) : `${currency} •••••`}
+              </span>
+            </div>
+          </>
         )}
         
-        <div className="flex gap-4 relative z-10">
-          <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-full backdrop-blur-md">
-            <div className="bg-emerald-400/20 p-1 rounded-full"><TrendingDown className="w-3 h-3 text-emerald-400" /></div>
-            <span className="text-xs font-semibold">Income</span>
+        {pendingIncome > 0 && !derryActive && (
+          <div className="flex items-center gap-2 bg-amber-400/20 px-3 py-1 rounded-full backdrop-blur-md mt-2 w-fit relative z-10">
+            <Clock className="w-3 h-3 text-amber-400" />
+            <span className="text-[10px] font-bold text-amber-300">{formatCurrency(pendingIncome)} Pending</span>
           </div>
-          <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-full backdrop-blur-md">
-            <div className="bg-rose-400/20 p-1 rounded-full"><TrendingUp className="w-3 h-3 text-rose-400" /></div>
-            <span className="text-xs font-semibold">Expense</span>
-          </div>
-        </div>
+        )}
       </motion.div>
 
       {/* Insights Row */}
