@@ -1,6 +1,6 @@
-# User Manual — Tracker V4
+# User Manual — Tracker V5
 
-Welcome to **Tracker** — your all-in-one expense tracker, asset vault, trading profit tracker, claims manager, and content radar. This guide covers everything you need to know.
+Welcome to **Tracker** — your all-in-one expense tracker, multi-currency wallet, asset vault, trading profit tracker, claims manager, and content radar. This guide covers everything you need to know as a user.
 
 ---
 
@@ -11,70 +11,101 @@ Welcome to **Tracker** — your all-in-one expense tracker, asset vault, trading
 1. Receive the APK file from the developer
 2. Install it on your Android device (enable "Install from Unknown Sources" if prompted)
 3. Open the app and create an account with your email and password
+4. Set up a PIN and optionally enable fingerprint/face unlock
 
-**That's it.** You never need to reinstall. Updates happen automatically in the background — no Play Store, no download prompts.
+**That's it.** You never need to reinstall. Updates happen automatically in the background — no Play Store, no download prompts. The next time you open the app after an update, it just works.
 
----
+### Navigating the Hub
 
-## The Offline Promise
+The app has five main tabs at the bottom:
 
-This app works with **zero internet connectivity**. Here's what happens:
+| Tab | What It Does |
+|---|---|
+| **Dashboard** | Your financial overview — wallet balances, today's spending, weekly trends |
+| **History** | Full transaction history with powerful filters |
+| **+ (Center)** | Quick-log a new expense, income, or transfer |
+| **Analytics** | Charts, breakdowns, spending velocity, subscriptions |
+| **Profile** | Settings, modules, security, data management |
 
-**When you have no signal:**
-- The app opens normally — your data loads instantly from the device cache
-- A brief "Loading Tracker..." screen appears while data hydrates (this is intentional — it prevents any zero-balance flashes)
-- You can log expenses, and they save to your device immediately
-- Your dashboard, balances, and history all include offline entries
-
-**When your signal returns:**
-- The app detects reconnection automatically
-- All queued expenses upload to the cloud invisibly
-- You see: *"3 offline expenses synced to cloud!"*
-- The UI refreshes with server-confirmed data
-
-**Bottom line:** Use the app identically whether you have signal or not. Log your coffee in the train tunnel, your lunch in the basement food court. Everything syncs when you surface.
+Additional modules (Vault, Trading, Radar, Claims) are accessible from the **Hub** page.
 
 ---
 
-## Dashboard
+## Managing Wallets (Multi-Currency)
 
-Your home screen shows at a glance:
+### Your Wallet Dashboard
 
-- **Total Balance** — sum across all accounts (configurable to include/exclude savings)
-- **Pending Income** — invoices sent but not yet received
-- **Today's Spending** — total expenses since midnight
-- **Weekly Spending** — Monday through Sunday
-- **Spending Trend** — 7-day line chart
-- **Pinned Goals** — savings goals you've pinned for quick visibility
+The Dashboard shows a **horizontal carousel** of all your active accounts. Each card displays the account name and its current balance. Swipe left/right to see all accounts. Below the carousel, a subtle **Net Total** shows your combined balance across all accounts.
+
+**Tap anywhere on the wallet card** to reveal your actual balances. They auto-hide after 5 seconds for privacy (Zen Mode).
+
+### Adding Accounts
+
+1. Go to **Profile** → **Manage Accounts**
+2. Type a name in the text field (e.g., "SGD Savings", "TnG eWallet", "Cash USD")
+3. Tap the **+** button
+
+**Currency Detection**: If your account name contains "SGD", "USD", or "JPY", the dashboard automatically displays balances with the correct currency prefix. All other accounts use your base currency (e.g., RM).
+
+### Reordering Accounts
+
+In the Manage Accounts modal, **drag accounts** up and down to set your preferred order. The Dashboard carousel respects this exact order.
+
+### Archiving Accounts
+
+For travel wallets or temporary accounts you no longer use daily:
+
+1. Go to **Profile** → **Manage Accounts**
+2. Tap the **Archive** icon (📦) next to any account
+3. The account disappears from all dropdowns and the Dashboard carousel
+4. Its transaction history is fully preserved
+5. To restore it, scroll to the **"Archived"** section at the bottom and tap **Restore**
+
+This is perfect for accounts like "Holiday SGD" that you only need occasionally.
+
+### Setting Your Base Currency
+
+Go to **Profile** → **Base Currency** and choose from: **RM**, **SGD**, **USD**, or **JPY**.
 
 ---
 
 ## Logging Transactions
 
+### Quick-Log (3 seconds)
+
+1. Tap the center **+** button from any screen
+2. Enter the amount
+3. Pick a category and account
+4. Tap **Save**
+
 ### Expense
 
-1. Tap the center **+** button (works from any screen)
-2. Enter the amount
-3. Pick a category (Food, Transport, Entertainment, etc.)
-4. Choose the account (Bank, Cash, eWallet)
-5. Optionally toggle "Claimable / Split Bill" for reimbursable expenses
-6. Save
+Select **Expense** → enter amount → choose category (Food, Transport, etc.) → choose account → optionally toggle **"Claimable / Split Bill"** for reimbursable expenses → Save.
 
 ### Income
 
-1. Tap **+** → select **Income**
-2. Enter the amount and receiving account
-3. Optionally mark as **Pending** for unpaid invoices — it won't count toward your balance until cleared
+Select **Income** → enter amount → choose receiving account → optionally mark as **Pending** (won't count toward balance until cleared) → Save.
 
 ### Transfer
 
-1. Tap **+** → select **Transfer**
-2. Enter amount, source account, and destination account
-3. The source drops and the destination rises by the same amount
+Select **Transfer** → enter amount → choose source and destination accounts. The source drops and destination rises by the same amount.
 
-### Multi-Currency
+### Multi-Currency Logging
 
-The transaction modal lets you switch between your base currency (RM/MYR/$), USD, and JPY. When logging in a foreign currency, a conversion estimate appears automatically.
+The transaction modal shows currency toggle buttons: **RM, SGD, USD, JPY**. When logging in a foreign currency, a live conversion estimate appears automatically using cached exchange rates.
+
+---
+
+## Exporting Data — Accountant Export
+
+Generate professional CSV reports to share with your accountant, spouse, or for your own records.
+
+1. Go to **Profile** → **Accountant Export**
+2. Choose **Current Month** or **All Time**
+3. The app generates a CSV file and opens your device's **share sheet**
+4. Send via **WhatsApp**, **Email**, **Google Drive**, or save to device
+
+The CSV includes: Date, Type, Category, Sub-Category, Amount, Account, To Account, Note, Status.
 
 ---
 
@@ -88,161 +119,50 @@ The History tab has **two filter rows** that stack with AND logic:
 - **Show All** — complete history
 
 ### Row 2: Category Filters
-A horizontally scrollable row of category pills:
-- **All Categories** (default)
-- Food, Transport, Entertainment, Shopping, Bills, etc.
+Horizontally scrollable pills: All Categories, Food, Transport, Entertainment, Shopping, Bills, etc.
 
-**Example:** Selecting "This Week" + "Food" shows only food transactions from this week. The subtitle updates to: *"This Week • Food — 3 transactions"*.
+**Example:** Selecting "This Week" + "Food" shows only food transactions from this week. The subtitle updates: *"This Week • Food — 3 transactions"*.
 
 Tap **"Clear All Filters"** to reset both layers.
 
-> All time filters use your device's local timezone — midnight means *your* midnight.
+---
+
+## Offline Mode — The Promise
+
+**Use this app identically whether you have internet or not.**
+
+- Open the app in Airplane Mode — your data loads instantly from device cache
+- Log expenses normally — they save to your device immediately
+- When signal returns, everything syncs automatically
+- Toast confirms: *"3 offline expenses synced to cloud!"*
+
+Log your coffee in the train tunnel. Check your stats on a plane. No data is ever lost. No sync button to press.
 
 ---
 
-## Analytics (Stats)
+## Hidden Features
 
-### Spending Category Breakdown
-A donut chart showing expense distribution by category with an interactive legend.
+### Zen Mode (Tap-to-Reveal Balance)
 
-### Cash Flow
-A stacked bar chart grouping expenses by category over time, respecting the Month/Year/All filter.
+By default, your wallet balances are hidden behind `•••••` dots for privacy. **Tap the wallet card** to reveal all balances for 5 seconds, then they auto-hide again. Perfect for checking your balance in public without leaving it on screen.
 
-### Income by Account
-A green bar chart showing total income grouped by account (Bank, eWallet, etc.) for the selected time period. Useful for tracking dividend income streams like TnG Go+.
+### AMOLED Pitch Black Theme
 
-### Spending Velocity
-Available in the Month view. Shows:
-- Your actual cumulative spending (solid line)
-- Your projected end-of-month spend (dashed line)
-- Daily pace: *"At your current pace of RM 42.50/day, you are projected to spend RM 1,275.00 this month."*
+For OLED screens that physically turn off black pixels to save battery:
 
-### Subscriptions & Utilities
-Track recurring payments with billing day, source account, and auto-deduct configuration.
+1. **Profile** → Enable **Dark Mode** first
+2. Then toggle **AMOLED Black**
+3. Every background becomes pure `#000000` — pixels literally turn off
 
----
+> Disabling Dark Mode automatically disables AMOLED mode too.
 
-## Savings Goals
+### God Mode
 
-1. Tap **+** on the Goals page to create a new goal with a title and target amount
-2. Tap **+ Add Funds** to increment progress
-3. **Pin** goals to show them on the Dashboard
-4. Delete goals when completed
+Tap your avatar in the top-right corner of the Dashboard **7 times within 3 seconds**. A matrix-green flash confirms activation. All savings goals show as complete, and balances display as `99,999,999.00`. Tap 7 times again to deactivate. Persists across sessions.
 
----
+### The Derry Easter Egg 🎈
 
-## Food Budget Tracker
-
-**Setup:** Profile → Modules → Food Budget Tracker → set daily and monthly limits.
-
-The Food Budget card appears on your Goals page showing:
-- **Daily**: Remaining budget, progress bar, spent vs limit
-- **Monthly**: Same breakdown for the calendar month
-
-Any transaction categorized as "Food" automatically counts against these limits.
-
----
-
-## Salary Planner
-
-**Setup:** Profile → Modules → Salary Planner.
-
-Pre-allocate your income to budget categories:
-1. Add line items (Rent, Groceries, Savings, etc.) with amounts
-2. The planner shows: Current Balance → Total Planned Reserves → **Available Cashflow**
-
----
-
-## Asset Vault
-
-Track the things you own and understand their true cost over time.
-
-**Setup:** Profile → Modules → Asset Vault.
-
-### Adding an Asset
-1. Hub → Asset Vault → tap **+**
-2. Pick an emoji icon, enter name, category, purchase date, and price
-3. Tap **Add to Vault**
-
-### Understanding Cost Per Day
-**Cost / Day** = (Purchase Price + All Maintenance Costs) ÷ Days Since Purchase
-
-A RM 350 pair of headphones owned for 100 days = RM 3.50/day. As time passes, the number drops.
-
-### Maintenance Logs
-Track cases, repairs, accessories:
-1. Tap an asset to open its detail view
-2. Tap **+** in the Maintenance Log section
-3. Enter description, cost, and date
-4. **True Total** and **Cost / Day** update instantly
-
----
-
-## Trading / Flipping Tracker
-
-For tracking buy-sell inventory — TCG cards, collectibles, electronics, anything you flip for profit.
-
-**Setup:** Profile → Modules → Trading / Flipping.
-
-### Adding Inventory
-1. Hub → Trading → tap **+**
-2. Enter item name (e.g. "Charizard VMAX"), buy price, and acquisition date
-3. The item appears in **Active Inventory**
-
-### Dashboard Metrics
-- **Capital Invested**: Total buy price of all held items
-- **Realized Profit**: Sum of (sell price − buy price) for all sold items — green if positive, red if negative
-- **Active Inventory**: Count of items you currently hold
-
-### Selling an Item
-1. Tap **Mark Sold** next to any active item
-2. A modal shows the item name and your buy price
-3. Enter the sell price — a **live profit/loss preview** appears
-4. Tap **Confirm Sale**
-5. The item moves to the **Sold Items** section with the net profit displayed
-
-### Sold Items History
-Each sold item shows: buy price → sell price, date sold, and a bold profit/loss amount (green for profit, red for loss).
-
----
-
-## Radar Tracker
-
-A personal content feed — news, cinema, and streaming alerts.
-
-**Setup:** Profile → Modules → Radar Tracker.
-
-### Adding Sources
-Open Radar → tap the ⚙️ gear icon → tap **+**:
-
-- **RSS Feed**: Paste any blog's RSS URL. Optionally add keywords to filter
-- **In Cinemas (MY)**: Pulls current Malaysian cinema listings
-- **Streaming Drops**: Pick Netflix, Disney+, Amazon Prime, Apple TV+, HBO Go, or all platforms
-
-Use filter pills on the feed to switch between sources.
-
----
-
-## Claims & Splits
-
-For company lunches, split bills, or any expense you expect to be reimbursed.
-
-**Setup:** Profile → Modules → Claims & Splits.
-
-### Workflow
-1. When adding an expense, toggle **"Claimable / Split Bill"** on
-2. The expense records normally (balance drops) but is flagged as pending reimbursement
-3. Hub → Claims & Splits → find the claim under **Pending**
-4. When reimbursed, tap **"Mark as Cleared"**
-5. The app auto-generates a matching income entry — balance restores automatically
-
----
-
-## Billing Cycle
-
-Your billing cycle resets on a configurable day each month:
-1. Profile → Billing Cycle → pick day 1–31
-2. The Analytics page respects this setting for monthly views and velocity projections
+Log a transaction with an amount of exactly **6.66** or include the word **"pennywise"** in the note field. We won't spoil what happens — but you might want to make sure your volume is off and your screen is facing you.
 
 ---
 
@@ -250,18 +170,31 @@ Your billing cycle resets on a configurable day each month:
 
 All accessible from the **Profile** page:
 
-- **Currency Format**: RM / MYR / $ — changes everywhere in the app
-- **Dark Mode**: Toggle on/off
-- **Accent Color**: Blue, Emerald, Yellow, Purple, or Rose
-- **PIN Lock**: Set a 6-digit PIN required on every cold boot
-- **Biometric Lock**: Use fingerprint/face instead of PIN (requires PIN enabled first)
-- **Manage Categories**: Add, delete, or reorder expense categories (drag to reorder)
-- **Manage Accounts**: Add, rename, reorder, or delete accounts
-- **Daily Reminders**: Set a reminder time (custom time picker)
-- **Include Savings**: Toggle whether savings accounts count toward total balance
-- **Export to CSV**: Download all transactions as a spreadsheet
-- **View Raw Data**: Inspect transactions, subscriptions, and goals in a database view
-- **Clear All Data**: Password-protected nuclear option
+| Setting | Description |
+|---|---|
+| **Base Currency** | RM / SGD / USD / JPY — changes everywhere |
+| **Billing Cycle** | Day 1–31 — analytics monthly view respects this |
+| **Dark Mode** | Toggle dark theme |
+| **AMOLED Black** | Pure black for OLED screens (requires Dark Mode) |
+| **Accent Color** | Blue, Emerald, Yellow, Purple, or Rose |
+| **PIN Lock** | 6-digit PIN on every cold boot |
+| **Biometrics** | Fingerprint/Face unlock (requires PIN first) |
+| **Manage Categories** | Add, delete, drag-to-reorder expense categories |
+| **Manage Accounts** | Add, rename, reorder, archive, or delete accounts |
+| **Include Savings** | Toggle whether savings accounts count toward total balance |
+| **Daily Reminders** | Set a custom reminder time |
+| **Accountant Export** | Generate and share CSV reports |
+| **View Raw Data** | Inspect your database in a table view |
+| **Clear All Data** | Password-protected wipe (irreversible) |
+
+### Modules (Enable/Disable in Profile)
+
+- Food Budget Tracker
+- Salary Planner
+- Asset Vault
+- Radar Tracker
+- Claims & Splits
+- Trading / Flipping
 
 ---
 
@@ -276,10 +209,12 @@ They sync automatically on reconnection. If they haven't synced, fully close and
 **Biometric prompt doesn't appear:**
 Ensure biometrics are enrolled in your device's system settings, and that both PIN and Biometric are enabled in Profile → Security.
 
+**An account disappeared from the dropdown:**
+It may have been archived. Go to Profile → Manage Accounts → scroll to the "Archived" section → tap Restore.
+
+**Balance shows wrong amount:**
+Ensure all pending income is accounted for (shown as amber "Pending" badge on Dashboard). Check that "Include Savings" is toggled correctly in Profile.
+
 ---
 
-## The Key Thing to Remember
-
-**Use this app exactly the same way whether you have internet or not.** Log expenses in a tunnel, check your stats on a plane, review your trades in a basement. Everything works. Everything syncs. No data is ever lost.
-
-Happy tracking.
+Happy tracking. 🚀
