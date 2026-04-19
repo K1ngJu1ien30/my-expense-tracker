@@ -2,15 +2,15 @@
 
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { TrendingUp, Wallet, Target, Clock } from "lucide-react";
+import { TrendingUp, Wallet, Target, Clock, HelpCircle } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer, Tooltip } from "recharts";
 import Link from "next/link";
 import { useAppContext } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
 
+type TrendDataPoint = { name: string; dateKey: string; income: number; value: number; transactions: number; currency: string };
 
-
-const CustomTooltip = ({ active, payload, label }: any) => {
+const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ payload: TrendDataPoint }>; label?: string }) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (
@@ -27,7 +27,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function Dashboard() {
-  const { userName, goals, transactions, includeSavings, accounts, formatCurrency, currency, isGodMode, derryActive } = useAppContext();
+  const { userName, goals, transactions, includeSavings, accounts, accountObjects, formatCurrency, currency, isGodMode, derryActive } = useAppContext();
   const pinnedGoals = isGodMode ? goals.map(g => ({ ...g, current: g.target })) : goals.filter(g => g.isPinned);
 
   // God Mode: 7 taps on avatar within 3 seconds
@@ -35,6 +35,7 @@ export default function Dashboard() {
   const godTapTimer = useRef<NodeJS.Timeout | null>(null);
   const [matrixFlash, setMatrixFlash] = useState(false);
   const [balanceRevealed, setBalanceRevealed] = useState(false);
+  const [showPendingTip, setShowPendingTip] = useState(false);
   const revealTimer = useRef<NodeJS.Timeout | null>(null);
 
   const handleRevealBalance = () => {
@@ -70,61 +71,117 @@ export default function Dashboard() {
                  : hour >= 12 && hour < 17 ? "Good afternoon," 
                  : "Good evening,";
 
-  const totalBalance = useMemo(() => {
-     const activeAccounts = includeSavings
-       ? accounts
-       : accounts.filter(acc => acc && !acc.toLowerCase().includes('saving'));
+  // === Single-pass transaction computation (Task 3: performance) ===
+  const dashData = useMemo(() => {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startOfTomorrow = startOfToday + 86400000;
+    const dayOfWeek = now.getDay() || 7;
+    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek + 1).getTime();
+    const endOfWeek = startOfWeek + 7 * 86400000;
+    const weekAgoMs = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6).getTime();
 
-     return activeAccounts.reduce((total, accountName) => {
-       const balance = transactions.reduce((acc, tx) => {
-         let newAcc = acc;
-         if (tx.account?.toLowerCase().trim() === accountName?.toLowerCase()?.trim()) {
-           if (tx.type === "Income" && tx.status !== "pending") newAcc += Number(tx.amount);
-           if (tx.type === "Expense" || tx.type === "Transfer") newAcc -= Number(tx.amount);
-         }
-         if (tx.type === "Transfer" && tx.to_account?.toLowerCase().trim() === accountName?.toLowerCase()?.trim()) {
-           newAcc += Number(tx.amount);
-         }
-         return newAcc;
-       }, 0);
-       return total + balance;
-     }, 0);
-  }, [transactions, includeSavings, accounts]);
-
-  // Per-account balances — case-insensitive, ghost-account safe, returns Record
-  const accountBalances = useMemo(() => {
-    const balances: Record<string, number> = {};
-
-    // 1. Initialize all active accounts
     const activeAccounts = includeSavings
       ? accounts
       : accounts.filter(acc => acc && !acc.toLowerCase().includes('saving'));
-    activeAccounts.forEach(a => { balances[a] = 0; });
 
-    // 2. Tally transactions, resolving case mismatches to the official name
+    // Integer math accumulators (cents) for precision
+    const balancesCents: Record<string, number> = {};
+    activeAccounts.forEach(a => { balancesCents[a] = 0; });
+
+    let totalBalanceCents = 0;
+    let pendingIncomeCents = 0;
+    let todayTotalCents = 0;
+    let weeklyTotalCents = 0;
+    const todayTxs: typeof transactions = [];
+
+    // Trend data setup
+    const fmt = new Intl.DateTimeFormat('en-US', { weekday: 'short' });
+    const trendMap: Record<string, TrendDataPoint> = {};
+    const trendData: TrendDataPoint[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      const dayLabel = fmt.format(d);
+      const dateKey = `${d.getMonth() + 1}/${d.getDate()}`;
+      const item: TrendDataPoint = { name: dayLabel, dateKey, income: 0, value: 0, transactions: 0, currency };
+      trendMap[dateKey] = item;
+      trendData.push(item);
+    }
+
+    // Single pass over all transactions
     transactions.forEach(t => {
-      if (!t.account) return;
+      const amtCents = Math.round(Number(t.amount) * 100);
+      const txTime = new Date(t.date).getTime();
+      const isSavingsAcc = t.account?.toLowerCase().includes('saving');
 
-      // Find official name (case-insensitive match against user's accounts)
-      const official = activeAccounts.find(a => a.toLowerCase() === t.account.toLowerCase());
-      const accName = official || t.account;
+      // Pending income
+      if (t.type === "Income" && t.status === "pending") {
+        pendingIncomeCents += amtCents;
+      }
 
-      if (balances[accName] === undefined) balances[accName] = 0;
-      if (t.type === "Income" && t.status !== "pending") balances[accName] += Number(t.amount);
-      if (t.type === "Expense") balances[accName] -= Number(t.amount);
-      if (t.type === "Transfer") balances[accName] -= Number(t.amount);
-
-      // Credit destination account for transfers
+      // Per-account balances (case-insensitive consolidation)
+      if (t.account) {
+        const official = activeAccounts.find(a => a.toLowerCase() === t.account.toLowerCase());
+        const accName = official || t.account;
+        if (balancesCents[accName] === undefined) balancesCents[accName] = 0;
+        if (t.type === "Income" && t.status !== "pending") balancesCents[accName] += amtCents;
+        if (t.type === "Expense") balancesCents[accName] -= amtCents;
+        if (t.type === "Transfer") balancesCents[accName] -= amtCents;
+      }
       if (t.type === "Transfer" && t.to_account) {
         const officialTo = activeAccounts.find(a => a.toLowerCase() === t.to_account!.toLowerCase());
         const toName = officialTo || t.to_account;
-        if (balances[toName] === undefined) balances[toName] = 0;
-        balances[toName] += Number(t.amount);
+        if (balancesCents[toName] === undefined) balancesCents[toName] = 0;
+        balancesCents[toName] += amtCents;
+      }
+
+      // Today & weekly expense totals
+      if (t.type === "Expense" && (!isSavingsAcc || includeSavings)) {
+        if (txTime >= startOfToday && txTime < startOfTomorrow) {
+          todayTotalCents += amtCents;
+          todayTxs.push(t);
+        }
+        if (txTime >= startOfWeek && txTime < endOfWeek) {
+          weeklyTotalCents += amtCents;
+        }
+      }
+
+      // Trend data
+      if (txTime >= weekAgoMs) {
+        const d = new Date(t.date);
+        const dateKey = `${d.getMonth() + 1}/${d.getDate()}`;
+        if (trendMap[dateKey]) {
+          if (t.type === "Income") trendMap[dateKey].income += Number(t.amount);
+          if (t.type === "Expense") trendMap[dateKey].value += Number(t.amount);
+          trendMap[dateKey].transactions += 1;
+        }
       }
     });
 
-    return balances;
-  }, [transactions, includeSavings, accounts]);
+    // Convert cents back to float for display, compute total
+    const accountBalances: Record<string, number> = {};
+    for (const [k, v] of Object.entries(balancesCents)) {
+      accountBalances[k] = v / 100;
+    }
+    totalBalanceCents = Object.values(balancesCents)
+      .filter((_, i) => {
+        const name = Object.keys(balancesCents)[i];
+        return activeAccounts.some(a => a.toLowerCase() === name.toLowerCase());
+      })
+      .reduce((sum, v) => sum + v, 0);
+
+    return {
+      totalBalance: totalBalanceCents / 100,
+      accountBalances,
+      pendingIncome: pendingIncomeCents / 100,
+      todayTotal: todayTotalCents / 100,
+      todayTransactions: todayTxs,
+      weeklyTotal: weeklyTotalCents / 100,
+      dynamicTrendData: transactions.length > 0 ? trendData : [],
+    };
+  }, [transactions, includeSavings, accounts, currency]);
+
+  const { totalBalance, accountBalances, pendingIncome, todayTotal, todayTransactions, weeklyTotal, dynamicTrendData } = dashData;
 
   // Ordered account list: official order first, ghost accounts appended
   const orderedAccountCards = useMemo(() => {
@@ -137,7 +194,6 @@ export default function Dashboard() {
       balance: accountBalances[name] || 0
     }));
 
-    // Ghost accounts: in balances but not in official list
     const officialSet = new Set(activeAccounts.map(a => a.toLowerCase()));
     const ghostCards = Object.entries(accountBalances)
       .filter(([name]) => !officialSet.has(name.toLowerCase()))
@@ -147,87 +203,18 @@ export default function Dashboard() {
   }, [accountBalances, accounts, includeSavings]);
 
   const getCurrencyPrefix = (accountName: string) => {
-    const lower = accountName.toLowerCase();
-    if (lower.includes('sgd')) return 'SGD';
-    if (lower.includes('usd')) return 'USD';
-    if (lower.includes('jpy')) return 'JPY';
-    return currency;
+    const accObj = accountObjects.find(a => a.name.toLowerCase() === accountName.toLowerCase());
+    return accObj?.currencyCode || currency;
   };
 
   const formatAccountBalance = (accountName: string, balance: number) => {
+    const cents = Math.round(balance * 100);
+    const whole = Math.floor(Math.abs(cents) / 100);
+    const remainder = Math.abs(cents) % 100;
+    const sign = cents < 0 ? '-' : '';
     const prefix = getCurrencyPrefix(accountName);
-    return `${prefix} ${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `${prefix} ${sign}${whole.toLocaleString()}.${String(remainder).padStart(2, '0')}`;
   };
-
-  const pendingIncome = useMemo(() => {
-     return transactions
-       .filter(tx => tx.type === "Income" && tx.status === "pending")
-       .reduce((sum, tx) => sum + Number(tx.amount), 0);
-  }, [transactions]);
-
-  const todayTransactions = useMemo(() => {
-     const now = new Date();
-     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-     const startOfTomorrow = startOfToday + 86400000;
-     return transactions.filter(t => {
-       if (t.type !== "Expense") return false;
-       if (!includeSavings && t.account?.toLowerCase().includes('saving')) return false;
-       const txTime = new Date(t.date).getTime();
-       return txTime >= startOfToday && txTime < startOfTomorrow;
-     });
-  }, [transactions, includeSavings]);
-
-  const todayTotal = useMemo(() => {
-     return todayTransactions.reduce((acc, curr) => acc + Number(curr.amount), 0);
-  }, [todayTransactions]);
-
-  const weeklyTransactions = useMemo(() => {
-     const now = new Date();
-     const dayOfWeek = now.getDay() || 7;
-     const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek + 1).getTime();
-     const endOfWeek = startOfWeek + 7 * 86400000;
-
-     return transactions.filter(t => {
-        if (t.type !== "Expense") return false;
-        if (!includeSavings && t.account?.toLowerCase().includes('saving')) return false;
-        const txTime = new Date(t.date).getTime();
-        return txTime >= startOfWeek && txTime < endOfWeek;
-     });
-  }, [transactions, includeSavings]);
-
-  const weeklyTotal = useMemo(() => {
-     return weeklyTransactions.reduce((acc, curr) => acc + Number(curr.amount), 0);
-  }, [weeklyTransactions]);
-
-  const dynamicTrendData = useMemo(() => {
-     if (transactions.length === 0) return [];
-     const fmt = new Intl.DateTimeFormat('en-US', { weekday: 'short' });
-     const now = new Date();
-     const data = [];
-     const map: Record<string, any> = {};
-     for (let i = 6; i >= 0; i--) {
-       const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
-       const dayLabel = fmt.format(d);
-       const dateKey = `${d.getMonth()+1}/${d.getDate()}`;
-       const item = { name: dayLabel, dateKey, income: 0, value: 0, transactions: 0, currency };
-       map[dateKey] = item;
-       data.push(item);
-     }
-     
-     const weekAgoMs = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6).getTime();
-     
-     transactions.forEach(t => {
-        const d = new Date(t.date);
-        if (d.getTime() < weekAgoMs) return;
-        const dateKey = `${d.getMonth()+1}/${d.getDate()}`;
-        if (map[dateKey]) {
-           if (t.type === "Income") map[dateKey].income += Number(t.amount);
-           if (t.type === "Expense") map[dateKey].value += Number(t.amount);
-           map[dateKey].transactions += 1;
-        }
-     });
-     return data;
-  }, [transactions]);
 
   // 🎈 Derry Horror Sequence — phased state
   const [derryPhase, setDerryPhase] = useState(0);
@@ -386,9 +373,19 @@ export default function Dashboard() {
         )}
         
         {pendingIncome > 0 && !derryActive && (
-          <div className="flex items-center gap-2 bg-amber-400/20 px-3 py-1 rounded-full backdrop-blur-md mt-2 w-fit relative z-10">
-            <Clock className="w-3 h-3 text-amber-400" />
-            <span className="text-[10px] font-bold text-amber-300">{formatCurrency(pendingIncome)} Pending</span>
+          <div className="relative z-10 mt-2">
+            <div className="flex items-center gap-2 bg-amber-400/20 px-3 py-1 rounded-full backdrop-blur-md w-fit">
+              <Clock className="w-3 h-3 text-amber-400" />
+              <span className="text-[10px] font-bold text-amber-300">{formatCurrency(pendingIncome)} Pending</span>
+              <button onClick={(e) => { e.stopPropagation(); setShowPendingTip(!showPendingTip); }} className="pointer-events-auto">
+                <HelpCircle className="w-3 h-3 text-amber-400/60" />
+              </button>
+            </div>
+            {showPendingTip && (
+              <div className="absolute left-0 top-full mt-1.5 bg-foreground text-background text-[10px] font-medium px-3 py-2 rounded-xl shadow-heavy max-w-[250px] leading-snug pointer-events-auto z-20" onClick={(e) => { e.stopPropagation(); setShowPendingTip(false); }}>
+                Pending funds do not affect your total balance until marked as cleared.
+              </div>
+            )}
           </div>
         )}
       </motion.div>

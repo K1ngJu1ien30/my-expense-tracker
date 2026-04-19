@@ -2,9 +2,8 @@
 
 import { PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useAppContext } from "@/lib/context";
-import { MonitorPlay, Music, Wifi, CreditCard, Plus, Trash2, Edit2, Zap, Smartphone, Droplet, X, Sparkles } from "lucide-react";
+import { Sparkles, MonitorPlay, Music, Wifi, CreditCard, Zap, Smartphone, Droplet } from "lucide-react";
 import React, { useState, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 
 const ICONS: Record<string, React.ReactNode> = {
   MonitorPlay: <MonitorPlay className="w-4 h-4" />,
@@ -74,75 +73,12 @@ const VelocityTooltip = ({ active, payload, label }: any) => {
 
 export default function AnalyticsPage() {
   const { 
-    subscriptions, addSubscription, deleteSubscription, updateSubscription,
-    utilities, addUtility, deleteUtility, updateUtility,
+    subscriptions, utilities,
     triggerToast, accentColor, transactions, accounts, confirmAction,
     currency, formatCurrency
   } = useAppContext();
 
   const [timeFilter, setTimeFilter] = useState("Month");
-  
-  // Modals
-  const [showAddModal, setShowAddModal] = useState<"Sub" | "Util" | null>(null);
-  const [editItemId, setEditItemId] = useState<string | null>(null);
-  
-  const [newItemName, setNewItemName] = useState("");
-  const [newItemCost, setNewItemCost] = useState("");
-  
-  // Advanced Sub properties
-  const [autoDeduct, setAutoDeduct] = useState(true);
-  const [billingDay, setBillingDay] = useState("15");
-  const [sourceAcc, setSourceAcc] = useState("Bank MBB");
-
-  const openAddModal = (type: "Sub" | "Util") => {
-     setShowAddModal(type);
-     setEditItemId(null);
-     setNewItemName("");
-     setNewItemCost("");
-     setAutoDeduct(true);
-     setBillingDay("15");
-     setSourceAcc(accounts[0] || "Bank");
-  }
-
-  const openEditModal = (type: "Sub" | "Util", item: any) => {
-     setShowAddModal(type);
-     setEditItemId(item.id);
-     setNewItemName(item.name);
-     setNewItemCost(String(item.cost));
-     setAutoDeduct(item.autoDeduct ?? true);
-     setBillingDay(String(item.billingDay || 15));
-     setSourceAcc(item.sourceAccount || accounts[0] || "Bank");
-  }
-
-  const handleSave = () => {
-     if (!newItemName || !newItemCost) return;
-     
-     const payload = { 
-        name: newItemName, 
-        cost: Number(newItemCost), 
-        autoDeduct,
-        billingDay: Number(billingDay),
-        sourceAccount: sourceAcc
-     };
-
-     if (editItemId) {
-        if (showAddModal === "Sub") updateSubscription(editItemId, payload);
-        else updateUtility(editItemId, payload);
-        triggerToast(`Updated successfully!`);
-     } else {
-        const newItem = {
-           ...payload,
-           icon: showAddModal === "Sub" ? "CreditCard" : "Zap", 
-           bg: "bg-muted", 
-           color: "text-foreground"
-        };
-        if (showAddModal === "Sub") addSubscription(newItem);
-        else addUtility(newItem);
-        triggerToast(`${newItemName} added successfully!`);
-     }
-     
-     setShowAddModal(null);
-  }
 
   const filteredTxs = useMemo(() => {
      const now = new Date();
@@ -204,11 +140,41 @@ export default function AnalyticsPage() {
   }, [filteredTxs, timeFilter]);
 
   const smartInsightText = useMemo(() => {
-     if (transactions && transactions.length === 0) return "Start tracking to uncover your financial personality!";
-     if (timeFilter === "Month") return "Great job! You've successfully mapped 15% fewer discretionary spending outputs this week.";
-     if (timeFilter === "Year") return "You are currently projecting to hit your primary Savings Goal significantly ahead of schedule!";
-     return "Your long-term financial health is strictly optimal based on historical averages.";
-  }, [timeFilter, transactions]);
+     if (!transactions || transactions.length === 0) return "Start tracking to uncover your financial personality!";
+
+     const now = new Date();
+     const dayOfWeek = now.getDay() || 7;
+     const startOfThisWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek + 1).getTime();
+     const startOfLastWeek = startOfThisWeek - 7 * 86400000;
+
+     const thisWeekExpenses: Record<string, number> = {};
+     let thisWeekTotal = 0;
+     let lastWeekTotal = 0;
+
+     transactions.forEach(t => {
+       if (t.type !== "Expense") return;
+       const txTime = new Date(t.date).getTime();
+       const amt = Number(t.amount);
+       if (txTime >= startOfThisWeek) {
+         thisWeekTotal += amt;
+         const cat = t.category || "Other";
+         thisWeekExpenses[cat] = (thisWeekExpenses[cat] || 0) + amt;
+       } else if (txTime >= startOfLastWeek && txTime < startOfThisWeek) {
+         lastWeekTotal += amt;
+       }
+     });
+
+     if (lastWeekTotal === 0 && thisWeekTotal === 0) return "No spending data for the last two weeks yet.";
+     if (lastWeekTotal === 0) return `You've spent ${formatCurrency(thisWeekTotal)} this week. Keep it up!`;
+
+     const pctChange = ((thisWeekTotal - lastWeekTotal) / lastWeekTotal) * 100;
+     const topCategory = Object.entries(thisWeekExpenses).sort((a, b) => b[1] - a[1])[0];
+     const direction = pctChange > 0 ? "more" : "less";
+     const topCatStr = topCategory ? `, primarily driven by ${topCategory[0]}` : "";
+
+     if (Math.abs(pctChange) < 2) return `Your spending is steady this week — almost identical to last week.`;
+     return `You spent ${Math.abs(pctChange).toFixed(0)}% ${direction} this week${topCatStr}.`;
+  }, [transactions, formatCurrency]);
 
   const dateRangeLabel = useMemo(() => {
      const now = new Date();
@@ -297,6 +263,15 @@ export default function AnalyticsPage() {
       </div>
 
       <p className="text-sm font-semibold text-muted-foreground">Viewing: {dateRangeLabel}</p>
+
+      {/* Empty State */}
+      {transactions.length === 0 && (
+        <div className="bg-card rounded-3xl shadow-soft border border-border/40 p-8 text-center space-y-3">
+          <p className="text-5xl">📈</p>
+          <p className="font-bold text-foreground text-lg">No data yet</p>
+          <p className="text-sm text-muted-foreground font-medium">Start logging transactions with the <strong>+</strong> button to see spending breakdowns, trends, and smart insights here.</p>
+        </div>
+      )}
 
       {/* Smart Insights Array */}
       <div style={{ backgroundColor: `${accentColor}1A`, borderColor: `${accentColor}30` }} className="border p-4 rounded-2xl flex items-start gap-4">
@@ -494,184 +469,30 @@ export default function AnalyticsPage() {
         </div>
       )}
       
-      {/* Subscriptions & Utilities Hub */}
-      <div className="space-y-6 pt-4">
-        
-        {/* Active Subscriptions Block */}
-        <div className="bg-card p-6 rounded-[2rem] shadow-soft border border-border/40 relative space-y-4">
-           <div className="flex justify-between items-start">
-             <div>
-                <h3 className="font-bold">Subscriptions</h3>
-                <p className="text-[10px] uppercase font-black tracking-wider text-muted-foreground mt-1">Total: {currency} {subscriptions.reduce((sum, s) => sum + s.cost, 0).toFixed(2)} / mo</p>
-             </div>
-             <button onClick={() => openAddModal("Sub")} style={{ color: accentColor, backgroundColor: `${accentColor}1A` }} className="p-2 rounded-full hover:scale-105 active:scale-95 transition-all"><Plus className="w-4 h-4"/></button>
-           </div>
-           
-           <div className="space-y-3 pt-2">
-             {subscriptions.map(sub => (
-               <div key={sub.id} className="flex flex-col bg-muted/20 p-3 rounded-2xl border border-border/50">
-                  <div className="flex items-center gap-4">
-                      <div className={`${sub.bg} p-2.5 rounded-xl ${sub.color}`}>
-                        {ICONS[sub.icon] || <CreditCard className="w-4 h-4" />}
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-bold text-sm text-foreground">{sub.name}</p>
-                        <p className="font-semibold text-xs text-primary mt-0.5">{currency} {sub.cost.toFixed(2)} {sub.autoDeduct ? '/mo' : ''}</p>
-                      </div>
-                      <div className="flex gap-1 shrink-0">
-                         <button onClick={() => openEditModal("Sub", sub)} className="p-2 text-muted-foreground hover:text-primary transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
-                         <button onClick={() => confirmAction("Delete Subscription", `Remove ${sub.name}?`, () => deleteSubscription(sub.id))} className="p-2 text-muted-foreground hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                      </div>
-                  </div>
-                  {/* Dynamic QoL Info Map */}
-                  {sub.autoDeduct && (
-                     <div className="mt-3 ml-[52px] bg-muted/60 px-3 py-2 rounded-xl text-[10px] font-bold text-muted-foreground leading-tight flex items-center gap-2">
-                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                         <span>Auto-deducts on {sub.billingDay ? `Day ${sub.billingDay}` : 'Day 1'} via {sub.sourceAccount || "Bank MBB"}</span>
-                     </div>
-                  )}
-               </div>
-             ))}
-             {subscriptions.length === 0 && <p className="text-xs font-semibold text-center text-muted-foreground py-2">No active subscriptions!</p>}
-           </div>
-        </div>
-
-        {/* Utilities Block */}
-        <div className="bg-card p-6 rounded-[2rem] shadow-soft border border-border/40 relative space-y-4">
-           <div className="flex justify-between items-start">
-             <div>
-                <h3 className="font-bold">Utilities</h3>
-                <p className="text-[10px] uppercase font-black tracking-wider text-muted-foreground mt-1">Total: {currency} {utilities.reduce((sum, s) => sum + s.cost, 0).toFixed(2)} / mo</p>
-             </div>
-             <button onClick={() => openAddModal("Util")} style={{ color: accentColor, backgroundColor: `${accentColor}1A` }} className="p-2 rounded-full hover:scale-105 active:scale-95 transition-all"><Plus className="w-4 h-4"/></button>
-           </div>
-           
-           <div className="space-y-3 pt-2">
-             {utilities.map(sub => (
-               <div key={sub.id} className="flex flex-col bg-muted/20 p-3 rounded-2xl border border-border/50">
-                  <div className="flex items-center gap-4">
-                      <div className={`${sub.bg} p-2.5 rounded-xl ${sub.color}`}>
-                        {ICONS[sub.icon] || <CreditCard className="w-4 h-4" />}
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-bold text-sm text-foreground">{sub.name}</p>
-                        <p className="font-semibold text-xs text-primary mt-0.5">{currency} {sub.cost.toFixed(2)}</p>
-                      </div>
-                      <div className="flex gap-1 shrink-0">
-                         <button onClick={() => openEditModal("Util", sub)} className="p-2 text-muted-foreground hover:text-primary transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
-                         <button onClick={() => confirmAction("Delete Utility", `Remove ${sub.name}?`, () => deleteUtility(sub.id))} className="p-2 text-muted-foreground hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                      </div>
-                  </div>
-                  {sub.autoDeduct && (
-                     <div className="mt-3 ml-[52px] bg-muted/60 px-3 py-2 rounded-xl text-[10px] font-bold text-muted-foreground leading-tight flex items-center gap-2">
-                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                         <span>Auto-deducts on {sub.billingDay ? `Day ${sub.billingDay}` : 'Day 1'} via {sub.sourceAccount || "Bank MBB"}</span>
-                     </div>
-                  )}
-               </div>
-             ))}
-             {utilities.length === 0 && <p className="text-xs font-semibold text-center text-muted-foreground py-2">No active utility loops!</p>}
-           </div>
-        </div>
-
-      </div>
-
-      {/* Advanced Add Item Modal */}
-      <AnimatePresence>
-        {showAddModal && (
-          <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center p-0 sm:p-4">
-             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowAddModal(null)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-             <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="bg-card w-full sm:max-w-md rounded-t-[2.5rem] sm:rounded-[2rem] shadow-heavy z-10 overflow-hidden flex flex-col p-6 space-y-5 max-h-[85vh] overflow-y-auto hide-scrollbar">
-                
-                <div className="w-12 h-1.5 bg-border rounded-full mx-auto mb-2 shrink-0 sm:hidden" />
-                <div className="flex justify-between items-center pb-2">
-                   <h3 className="font-bold text-lg text-foreground">{editItemId ? "Edit" : "Add"} {showAddModal === "Sub" ? "Subscription" : "Utility"}</h3>
-                   <button onClick={() => setShowAddModal(null)} className="p-1 px-2 bg-muted hover:bg-border rounded-full transition-colors"><X className="w-5 h-5 text-muted-foreground"/></button>
-                </div>
-                
-                <div className="space-y-4">
-                   <input 
-                      value={newItemName} 
-                      onChange={e=>setNewItemName(e.target.value)} 
-                      type="text" 
-                      placeholder="Name (e.g. Netflix)" 
-                      className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground focus:border-primary/50 transition-colors" 
-                      autoFocus
-                   />
-                   <div className="flex items-center gap-2 bg-muted/60 rounded-xl px-4 py-3 border border-border focus-within:border-primary/50 transition-colors">
-                      <span className="font-bold text-muted-foreground text-sm">{currency}</span>
-                      <input 
-                         value={newItemCost} 
-                         onChange={e=>setNewItemCost(e.target.value)} 
-                         type="number" 
-                         placeholder="0.00" 
-                         className="flex-1 bg-transparent text-sm font-bold outline-none text-foreground" 
-                      />
-                   </div>
-
-                   {/* Advanced Routing Configurations */}
-                   <div className="p-4 rounded-2xl border border-border/50 bg-muted/10 space-y-4">
-                      
-                      {/* Auto Deduct */}
-                      <div className="flex items-center justify-between cursor-pointer" onClick={() => setAutoDeduct(!autoDeduct)}>
-                         <span className="text-sm font-bold">Auto-Deduct Monthly</span>
-                         <button className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${autoDeduct ? 'border-transparent' : 'bg-muted border border-border'}`} style={autoDeduct ? { backgroundColor: accentColor } : {}}>
-                           <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${autoDeduct ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
-                         </button>
-                      </div>
-
-                      {/* Expandable Meta Configs - Replaced Selects with Premium Scrolling Arrays */}
-                      <AnimatePresence>
-                        {autoDeduct && (
-                          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="space-y-5 overflow-hidden pt-4 border-t border-border/50">
-                             
-                             <div className="flex flex-col gap-2 relative">
-                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Billing Date</span>
-                                <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
-                                    {Array.from({length:28}, (_,i) => i+1).map(d => (
-                                        <button 
-                                           key={d} 
-                                           onClick={() => { setBillingDay(String(d)); if(navigator.vibrate) navigator.vibrate(20); }} 
-                                           style={billingDay === String(d) ? { backgroundColor: accentColor, color: '#fff' } : {}}
-                                           className={`whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${billingDay === String(d) ? 'shadow-soft scale-105' : 'bg-muted/50 text-muted-foreground hover:bg-muted'}`}
-                                        >
-                                           Day {d}
-                                        </button>
-                                    ))}
-                                </div>
-                                {/* Gradient fade right side */}
-                                <div className="absolute right-0 top-6 bottom-0 w-8 bg-gradient-to-l from-card to-transparent pointer-events-none" />
-                             </div>
-
-                             <div className="flex flex-col gap-2">
-                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Source Account</span>
-                                <div className="flex flex-wrap gap-2">
-                                   {accounts.map(acc => (
-                                      <button 
-                                         key={acc} 
-                                         onClick={() => { setSourceAcc(acc); if(navigator.vibrate) navigator.vibrate(20); }}
-                                         style={sourceAcc === acc ? { backgroundColor: accentColor, color: '#fff' } : {}}
-                                         className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex-1 ${sourceAcc === acc ? 'shadow-soft scale-[1.02]' : 'bg-muted/50 text-muted-foreground hover:bg-muted'}`}
-                                      >
-                                         {acc}
-                                      </button>
-                                   ))}
-                                </div>
-                             </div>
-
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                   </div>
-
-                   <button style={{ backgroundColor: accentColor, boxShadow: `0 0 15px ${accentColor}4D` }} onClick={handleSave} className="w-full text-white py-4 rounded-xl font-bold shadow-soft hover:scale-[1.02] active:scale-[0.98] transition-all mt-4">
-                      {editItemId ? "Update Tracking Sequence" : "Deploy Tracking Vector"}
-                   </button>
-                </div>
-             </motion.div>
+      {/* Recurring Costs Summary (managed in Financial Planning) */}
+      {(subscriptions.length > 0 || utilities.length > 0) && (
+        <div className="bg-card p-5 rounded-[2rem] shadow-soft border border-border/40 space-y-3">
+          <h3 className="font-bold text-foreground text-sm">Recurring Costs</h3>
+          {subscriptions.length > 0 && (
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-muted-foreground font-medium">Subscriptions ({subscriptions.length})</span>
+              <span className="text-sm font-bold text-foreground">{formatCurrency(subscriptions.reduce((s: number, sub: any) => s + sub.cost, 0))}</span>
+            </div>
+          )}
+          {utilities.length > 0 && (
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-muted-foreground font-medium">Utilities ({utilities.length})</span>
+              <span className="text-sm font-bold text-foreground">{formatCurrency(utilities.reduce((s: number, u: any) => s + u.cost, 0))}</span>
+            </div>
+          )}
+          <div className="pt-2 border-t border-border/40 flex justify-between items-center">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Total Monthly</span>
+            <span className="text-sm font-black text-foreground">
+              {formatCurrency(subscriptions.reduce((s: number, sub: any) => s + sub.cost, 0) + utilities.reduce((s: number, u: any) => s + u.cost, 0))}
+            </span>
           </div>
-        )}
-      </AnimatePresence>
+        </div>
+      )}
 
     </div>
   )

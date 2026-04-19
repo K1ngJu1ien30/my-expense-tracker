@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Plus, X, Calendar, Wrench, Edit2, Trash2 } from "lucide-react";
+import { ArrowLeft, Plus, X, Calendar, Wrench, Edit2, Trash2, ChevronDown } from "lucide-react";
 import { useAppContext } from "@/lib/context";
 import { supabase } from "@/lib/supabase";
 import type { AssetLog } from "@/lib/context";
+import CustomDatePicker from "@/components/CustomDatePicker";
 
 const EMOJI_OPTIONS = ["📱", "💻", "📸", "👟", "⌚", "🎧", "🎮", "🚗", "🏠", "🛋️", "🧳", "👜", "📦", "🔧", "🎸"];
 
@@ -29,6 +30,7 @@ export default function AssetDetailOverlay({ assetId, onClose }: Props) {
   const [logDate, setLogDate] = useState(() => new Date().toISOString().split("T")[0]);
 
   const [showEdit, setShowEdit] = useState(false);
+  const [showEditCatDropdown, setShowEditCatDropdown] = useState(false);
   const [editName, setEditName] = useState("");
   const [editCategory, setEditCategory] = useState("");
   const [editEmoji, setEditEmoji] = useState("📦");
@@ -303,7 +305,7 @@ export default function AssetDetailOverlay({ assetId, onClose }: Props) {
                 <button onClick={() => { setShowAddLog(false); resetLogForm(); }} className="p-1 px-2 bg-muted hover:bg-border rounded-full transition-colors"><X className="w-5 h-5 text-muted-foreground" /></button>
               </div>
               <input value={logDesc} onChange={e => setLogDesc(e.target.value)} placeholder="Description (e.g. Replaced battery)" className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" autoFocus />
-              <input type="date" value={logDate} onChange={e => setLogDate(e.target.value)} className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" />
+              <CustomDatePicker value={logDate} onChange={setLogDate} accentColor={accentColor} />
               <div className="flex items-center gap-2 bg-muted/60 rounded-xl px-4 py-3 border border-border">
                 <span className="font-bold text-muted-foreground text-sm">{currency}</span>
                 <input value={logCost} onChange={e => setLogCost(e.target.value)} type="number" placeholder="0.00 (optional)" className="flex-1 bg-transparent text-sm font-bold outline-none text-foreground" />
@@ -336,20 +338,52 @@ export default function AssetDetailOverlay({ assetId, onClose }: Props) {
                 </div>
               </div>
               <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Asset name" className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" />
+
+              {/* Category — custom dropdown + free-text */}
               <div className="relative">
-                <input
-                  value={editCategory}
-                  onChange={e => setEditCategory(e.target.value)}
-                  list="edit-asset-categories"
-                  placeholder="Category"
-                  className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground"
-                  onFocus={e => { const el = e.currentTarget; setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "center" }), 300); }}
-                />
-                <datalist id="edit-asset-categories">
-                  {existingCategories.map(c => <option key={c} value={c} />)}
-                </datalist>
+                <div className="flex gap-2">
+                  <input
+                    value={editCategory}
+                    onChange={e => setEditCategory(e.target.value)}
+                    placeholder="Category"
+                    className="flex-1 bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground"
+                  />
+                  {existingCategories.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowEditCatDropdown(!showEditCatDropdown)}
+                      className="bg-muted/60 rounded-xl px-3 border border-border text-muted-foreground hover:text-foreground active:scale-95 transition-all"
+                    >
+                      <ChevronDown className={`w-4 h-4 transition-transform ${showEditCatDropdown ? 'rotate-180' : ''}`} />
+                    </button>
+                  )}
+                </div>
+                <AnimatePresence>
+                  {showEditCatDropdown && existingCategories.length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -5 }}
+                      className="absolute top-full left-0 right-0 mt-1.5 z-[60] bg-card border border-border/50 rounded-xl shadow-heavy overflow-hidden max-h-48 overflow-y-auto hide-scrollbar"
+                    >
+                      {existingCategories.map(c => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => { setEditCategory(c); setShowEditCatDropdown(false); }}
+                          className="w-full text-left px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted transition-colors border-b border-border/30 last:border-0"
+                        >
+                          {c}
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
-              <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" />
+
+              {/* Date — iOS-style picker */}
+              <CustomDatePicker value={editDate} onChange={setEditDate} accentColor={accentColor} />
+
               <div className="flex items-center gap-2 bg-muted/60 rounded-xl px-4 py-3 border border-border">
                 <span className="font-bold text-muted-foreground text-sm">{currency}</span>
                 <input value={editPrice} onChange={e => setEditPrice(e.target.value)} type="number" placeholder="0.00" className="flex-1 bg-transparent text-sm font-bold outline-none text-foreground" />

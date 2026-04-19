@@ -15,6 +15,10 @@ CREATE TABLE transactions (
     account VARCHAR(255),
     to_account VARCHAR(255),
     note TEXT,
+    status VARCHAR(50) DEFAULT 'cleared',
+    is_claimable BOOLEAN DEFAULT false,
+    claim_status VARCHAR(50) DEFAULT 'none',
+    deleted_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

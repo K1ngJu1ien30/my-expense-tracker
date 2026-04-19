@@ -1,113 +1,71 @@
 # Changelog
 
-All notable changes to **Tracker** are documented here. This project uses [Semantic Versioning](https://semver.org/).
+All notable changes to **Expense Tracker Pro** are documented in this file.
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## v5.0.0 — The Wallet & Hardware Update
-**April 19, 2026**
+## [1.0.0] — The Official Release & Native Polish — 2026-04-19
+
+The first stable, production-grade release. This version represents a complete architectural overhaul from the prototype, with emphasis on native feel, offline resilience, and multi-currency correctness.
 
 ### Major
-- **Multi-Currency Wallet Carousel**: Refactored the Hub dashboard into a compact horizontal account carousel (Wise-style). Each account displays its own balance with automatic currency prefix detection (SGD, USD, JPY). Cards respect the user's custom drag-to-reorder sort order.
-- **Accountant Export Wizard**: Full CSV report generation via `@capacitor/filesystem` + `@capacitor/share`. Supports "Current Month" or "All Time" scope with native share sheet integration (WhatsApp, Email, Google Drive).
-- **Account Archiving**: Accounts can now be archived for travel/temporary ledgers. Archived accounts are hidden from all dropdowns and the Dashboard carousel but preserve full transaction history. Restorable from Profile → Manage Accounts.
-- **Account Object Migration**: Internal accounts state migrated from `string[]` to `Array<{ name, isArchived }>` with automatic backward-compatible migration for existing users (zero data loss).
+- **Refactored Hub UI** into a multi-currency Wise-style horizontal wallet carousel. Each account card displays its own currency prefix and isolated balance — no silent FX conversions, no mixed-currency aggregates.
+- **Migrated storage engine** from `localStorage` to `localforage` (IndexedDB) for infinite offline scaling. All monetary values now stored as integer cents to eliminate floating-point drift.
+- **Implemented Soft Deletes** via a `deleted_at` timestamp column. Rows are never physically removed, preventing the classic cross-device sync conflict where a delete on Phone A gets re-seeded from Phone B's cache. Provider-level queries filter `!t.deleted_at`.
+- **Idempotent Sync** — every transaction now carries a client-generated `crypto.randomUUID()` and uses Supabase `upsert({ onConflict: 'id' })`, making retries safe.
 
 ### Feature
-- Case-insensitive account consolidation — "Tng NFC Card" and "Tng Nfc card" now resolve to a single canonical entry.
-- Ghost account recovery — legacy/deleted accounts with transaction history automatically appear at the end of the carousel.
-- Standardized currency options to `["RM", "SGD", "USD", "JPY"]` across Profile and Transaction Modal.
-- Live exchange rate conversion in the Transaction Modal (via `open.er-api.com`, cached for offline).
+- **Accountant Export Wizard** — date-range, account, and category filtering, UTF-8 BOM CSV generation via Capacitor Filesystem, handoff to native Android share sheet.
+- **Programmatic Smart Insights** — automatic week-over-week spending delta callouts on the Stats page.
+- **Upcoming widget** on the Hub — surfaces auto-deducting subscriptions and utilities in the days before their billing date.
+- **Empty states** across every list view with meaningful calls-to-action.
+- **Account archiving** — hide travel or dormant accounts from daily view without losing history; restore with one tap.
 
-### Polish
-- Upgraded to **Flagship X-Axis Linear Haptics** — `lightTick()` now uses 10ms micro-vibrations optimized for Xiaomi/Samsung linear motors.
-- Tightened wallet card padding and typography for a premium, compact look.
-- Removed redundant account balance pills from Analytics page (Hub is now the single source).
-- Fixed floating-point precision in Spending Trend chart tooltips (enforced `.toFixed(2)`).
+### UI/UX
+- **Eradicated every native HTML `<select>` and `<input type="date">`** in the codebase. Replaced with custom chevron-triggered dropdowns and a reusable `CustomDatePicker` component featuring an iOS-style inline calendar grid, M–S weekday headers, month navigation, and accent-colored selection.
+- **Pill pickers** for short enumerations (currency, theme, account type).
+- **Compact wallet carousel** — tightened card dimensions and restructured account ordering to preserve user sort preference with case-insensitive consolidation.
+- **Pending-balance tooltip** with contextual help icon.
+- **Typed Recharts tooltips** for full TypeScript safety across the trend visualization.
+
+### Organization
+- **Relocated Subscriptions and Utilities** out of the Stats page and into a dedicated **Financial Planning** module (renamed from "Goals"), alongside Savings Goals. Stats now shows a compact read-only summary card.
 
 ### Easter Egg
-- **"Derry" Cinematic Jump Scare** — Trigger: amount `6.66` or note containing "pennywise". Multi-stage 8-second horror sequence: pitch-black blood vignette → creeping text ("We all float down here...") → CSS blood drip → 200px 🤡 jump scare with `jumpScare` CSS keyframe → 800ms maximum device vibration → slow fade to normal. Body glitch filter applied for the full duration.
-- **Creepy Heartbeat Haptic**: New `NativeHaptics.creepyHeartbeat()` — 5 double-pulse vibration cycles (50ms + 80ms) over 3 seconds simulating an anxious heartbeat.
+- **"Derry" cinematic sequence** — an 8-second multi-phase jump-scare overlay (blackout → blood vignette → jump scare → fade) triggered by amount `6.66` or the keyword `pennywise`. Uses `Haptics.vibrate({ duration: 800 })` for tactile reinforcement.
 
-### Fix
-- AMOLED mode now forcefully disables when Dark Mode is toggled off.
-- Category persistence: categories now initialize from localStorage cache on mount and persist immediately on every add/delete/reorder.
-
----
-
-## v4.1.0 — The Native Polish Update
-**April 2026**
-
-### Fix
-- Intercepted Android hardware back-swipe to use Next.js `router.back()` via Capacitor's native `canGoBack` event parameter. Exits app cleanly on root paths.
-- Stripped `next/font/google` (Geist fonts) entirely. App now uses native system fonts (Roboto on Android, San Francisco on iOS) via Tailwind's `font-sans` stack. Eliminates build failures from Google Fonts fetch timeouts.
-- Disabled WebKit tap-highlights (`-webkit-tap-highlight-color: transparent`), context menus, and drag events across all elements for a true native feel.
-- App-switcher privacy blur overlay via `@capacitor/app` `appStateChange` listener.
+### Fixed
+- Stale-closure bug where `refreshData` captured outdated categories and overwrote the cache on cold boot — resolved via a synced `useRef`.
+- Case-mismatch ghost-account duplication on the Hub carousel.
+- Floating-point rounding errors in aggregate totals (now integer cents throughout).
 
 ---
 
-## v4.0.0 — The Radar Engine
-**March 2026**
-
-### Major
-- Integrated **Radar Tracker** module — personal content feed aggregating RSS, TMDB cinema, and streaming platform drops.
-- RSS fetching via `api.rss2json.com` (native `DOMParser` was crashing on device with namespaced XML tags — reverted from direct parsing).
+## [0.9.0] — The Hardware Integration Update — 2026-03-10
 
 ### Feature
-- TMDB cinema listings (Malaysian market) with poster art.
-- Per-platform streaming drops: Netflix, Disney+, Amazon Prime, Apple TV+, HBO Go.
-- Unified feed with filter pills by source, deduplication, and broken image fallbacks.
-- All TMDB functions wrapped in try/catch for graceful API failure handling.
+- Integrated **`@capacitor/biometric-auth`** — fingerprint and FaceID gate on cold launch. Failed authentication returns the user to the password screen with no exposed numeric fallback.
+- **Flagship X-Axis Linear Haptics** — `Haptics.vibrate({ duration: 10 })` micro-vibrations on every tap, swipe, and confirm. Tuned specifically for Xiaomi, Samsung, and Pixel linear-resonant actuators.
+
+### Fixed
+- **Intercepted Android hardware back-swipe** so it routes through `router.back()` instead of killing the Capacitor WebView. Respects `canGoBack` state to prevent dead-ends.
 
 ---
 
-## v3.0.0 — The Security Update
-**February 2026**
-
-### Major
-- Integrated `@aparajita/capacitor-biometric-auth` for native fingerprint/FaceID authentication.
-- Forced biometric/PIN gatekeeper on app resume and cold boot.
+## [0.8.0] — The Radar Engine — 2026-01-22
 
 ### Feature
-- 6-digit PIN lock with visual dot indicators and numpad UI.
-- PIN stored in `@capacitor/preferences` (native secure storage) with localStorage fallback.
-- Biometric requires PIN to be enabled first. `allowDeviceCredential: false` prevents background tap bypass.
-- PIN error triggers `NativeHaptics.errorShake()` (300ms vibration); success triggers `successMedium()`.
+- Integrated **`CapacitorHttp`** to bypass browser CORS restrictions and Cloudflare WAF blocks when fetching third-party feeds from inside the WebView.
+- **Robust XML parsing** for Tech and Audiophile RSS feed ingestion — tolerant of malformed CDATA, missing namespaces, and inconsistent pub-date formats.
 
 ---
 
-## v2.0.0 — The Offline-First Engine
-**January 2026**
-
-### Major
-- Transitioned from live-only Supabase calls to a **localStorage hydration pattern**.
-- App now loads instantly without network connection — full UI rendered from `tracker_data_cache`.
-
-### Feature
-- Offline transaction queue: expenses logged without connectivity are saved to `offline_tx_queue`, prepended to cached transactions for accurate balances, and auto-synced when network returns.
-- `isHydrating` loading gate blocks UI during hydration — prevents zero-balance flash.
-- Explicit Supabase error detection: `select()` doesn't throw on network failure, so errors are manually checked and thrown.
-- Strict null checks prevent caching empty data arrays.
-- Network status detection via both browser events and `@capacitor/network` native plugin.
-- Post-sync `refreshData()` call replaces offline IDs with server-assigned UUIDs.
-
----
-
-## v1.0.0 — Initial Release
-**December 2025**
+## [0.1.0] — Initial Prototype — 2025-11-05
 
 ### Base
-- Core CRUD operations for expenses (Income, Expense, Transfer types).
-- Next.js App Router with static export compiled to Android APK via Capacitor.
-- Supabase backend with email/password authentication and Row Level Security.
-- Basic dashboard with total balance, today's spending, and 7-day trend chart.
-- Category and account management in Profile.
-- Dark mode toggle with accent color selection.
-- Savings goals with progress bars and dashboard pinning.
-- Subscription and utility tracking with billing day configuration.
-- Dual-layer history filters (Time × Category with AND logic).
-- Analytics: category pie chart, cash flow bar chart, spending velocity projection.
-
----
-
-*Private project. All rights reserved.*
+- Core CRUD operations for transactions, accounts, and categories.
+- Next.js App Router scaffolding with basic page hierarchy.
+- Initial Supabase integration (auth + transactions table, no RLS yet).
+- String-based `localStorage` persistence (pre-LocalForage, pre-integer-cents).

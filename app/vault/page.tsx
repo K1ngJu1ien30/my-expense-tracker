@@ -2,9 +2,10 @@
 
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Trash2, X, Package } from "lucide-react";
+import { Plus, Trash2, X, Package, ChevronDown } from "lucide-react";
 import { useAppContext } from "@/lib/context";
 import AssetDetailOverlay from "@/components/AssetDetailOverlay";
+import CustomDatePicker from "@/components/CustomDatePicker";
 
 const EMOJI_OPTIONS = ["📱", "💻", "📸", "👟", "⌚", "🎧", "🎮", "🚗", "🏠", "🛋️", "🧳", "👜", "📦", "🔧", "🎸"];
 
@@ -19,6 +20,7 @@ export default function VaultPage() {
   const [purchaseDate, setPurchaseDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [purchasePrice, setPurchasePrice] = useState("");
   const [activeFilter, setActiveFilter] = useState("All");
+  const [showCatDropdown, setShowCatDropdown] = useState(false);
 
   const uniqueCategories = useMemo(() => {
     const cats = new Set(assets.map(a => a.category).filter(Boolean));
@@ -175,22 +177,54 @@ export default function VaultPage() {
               </div>
 
               <input value={name} onChange={e => setName(e.target.value)} placeholder="Asset name (e.g. MacBook Pro)" className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" autoFocus />
+
+              {/* Category — custom dropdown + free-text */}
               <div className="relative">
-                <input
-                  value={category}
-                  onChange={e => setCategory(e.target.value)}
-                  list="asset-categories"
-                  placeholder="Category (e.g. Electronics)"
-                  className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground"
-                  onFocus={e => { const el = e.currentTarget; setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "center" }), 300); }}
-                />
-                <datalist id="asset-categories">
-                  {existingCategories.map(c => <option key={c} value={c} />)}
-                </datalist>
+                <div className="flex gap-2">
+                  <input
+                    value={category}
+                    onChange={e => setCategory(e.target.value)}
+                    placeholder="Category (e.g. Electronics)"
+                    className="flex-1 bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground"
+                  />
+                  {existingCategories.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCatDropdown(!showCatDropdown)}
+                      className="bg-muted/60 rounded-xl px-3 border border-border text-muted-foreground hover:text-foreground active:scale-95 transition-all"
+                    >
+                      <ChevronDown className={`w-4 h-4 transition-transform ${showCatDropdown ? 'rotate-180' : ''}`} />
+                    </button>
+                  )}
+                </div>
+                <AnimatePresence>
+                  {showCatDropdown && existingCategories.length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -5 }}
+                      className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-card border border-border/50 rounded-xl shadow-heavy overflow-hidden max-h-48 overflow-y-auto hide-scrollbar"
+                    >
+                      {existingCategories.map(c => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => { setCategory(c); setShowCatDropdown(false); }}
+                          className="w-full text-left px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted transition-colors border-b border-border/30 last:border-0"
+                        >
+                          {c}
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
-              <input type="date" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" />
+
+              {/* Date — iOS-style picker */}
+              <CustomDatePicker value={purchaseDate} onChange={setPurchaseDate} accentColor={accentColor} />
+
               <div className="flex items-center gap-2 bg-muted/60 rounded-xl px-4 py-3 border border-border">
-                <span className="font-bold text-muted-foreground text-sm">RM</span>
+                <span className="font-bold text-muted-foreground text-sm">{currency}</span>
                 <input value={purchasePrice} onChange={e => setPurchasePrice(e.target.value)} type="number" placeholder="0.00" className="flex-1 bg-transparent text-sm font-bold outline-none text-foreground" />
               </div>
 

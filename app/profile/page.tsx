@@ -69,6 +69,7 @@ export default function ProfilePage() {
   // Manage Accounts modal state
   const [showAccountsModal, setShowAccountsModal] = useState(false);
   const [newAccount, setNewAccount] = useState("");
+  const [newAccountCurrency, setNewAccountCurrency] = useState("RM");
   const [editingAccount, setEditingAccount] = useState<string | null>(null);
   const [editingAccountVal, setEditingAccountVal] = useState("");
 
@@ -852,7 +853,10 @@ export default function ProfilePage() {
                        <div className="space-y-2">
                          {accountObjects.filter(a => a.isArchived).map(acc => (
                            <div key={acc.name} className="flex justify-between items-center bg-muted/30 p-3 rounded-xl border border-border/50 opacity-60">
-                             <span className="font-medium text-sm text-muted-foreground">{acc.name}</span>
+                             <div className="flex items-center gap-2">
+                               <span className="font-medium text-sm text-muted-foreground">{acc.name}</span>
+                               <span className="text-[9px] font-black text-muted-foreground/60 bg-muted px-1.5 py-0.5 rounded">{acc.currencyCode}</span>
+                             </div>
                              <button
                                onClick={() => { toggleArchiveAccount(acc.name); triggerToast(`"${acc.name}" restored`); }}
                                className="text-xs font-bold px-3 py-1 rounded-lg bg-muted text-muted-foreground hover:text-foreground transition-colors"
@@ -867,34 +871,50 @@ export default function ProfilePage() {
                    {accountObjects.length === 0 && <p className="text-center text-sm font-medium text-muted-foreground py-4">No accounts defined!</p>}
                 </div>
 
-                <div className="p-4 border-t border-border/40 bg-muted/20 flex gap-2">
-                   <input
-                     value={newAccount}
-                     onChange={e => setNewAccount(e.target.value)}
-                     type="text"
-                     placeholder="New account (e.g. Maybank)"
-                     className="flex-1 bg-card rounded-xl px-4 py-2 text-sm font-medium outline-none border border-border text-foreground"
-                     onKeyDown={(e) => {
-                       if(e.key === 'Enter' && newAccount.trim()) {
-                         addAccount(newAccount.trim());
-                         setNewAccount("");
-                         triggerToast(`"${newAccount.trim()}" added!`);
-                       }
-                     }}
-                   />
-                   <button
-                     style={{ backgroundColor: accentColor }}
-                     onClick={() => {
-                       if(newAccount.trim()) {
-                         addAccount(newAccount.trim());
-                         triggerToast(`"${newAccount.trim()}" added!`);
-                         setNewAccount("");
-                       }
-                     }}
-                     className="text-white p-3 rounded-xl hover:scale-[1.02] active:scale-95 transition-transform"
-                   >
-                     <Plus className="w-5 h-5"/>
-                   </button>
+                <div className="p-4 border-t border-border/40 bg-muted/20 space-y-2">
+                   <div className="flex gap-2">
+                     <input
+                       value={newAccount}
+                       onChange={e => setNewAccount(e.target.value)}
+                       type="text"
+                       placeholder="New account (e.g. Maybank)"
+                       className="flex-1 bg-card rounded-xl px-4 py-2 text-sm font-medium outline-none border border-border text-foreground"
+                       onKeyDown={(e) => {
+                         if(e.key === 'Enter' && newAccount.trim()) {
+                           addAccount(newAccount.trim(), newAccountCurrency);
+                           setNewAccount("");
+                           setNewAccountCurrency("RM");
+                           triggerToast(`"${newAccount.trim()}" added!`);
+                         }
+                       }}
+                     />
+                     <button
+                       style={{ backgroundColor: accentColor }}
+                       onClick={() => {
+                         if(newAccount.trim()) {
+                           addAccount(newAccount.trim(), newAccountCurrency);
+                           triggerToast(`"${newAccount.trim()}" added!`);
+                           setNewAccount("");
+                           setNewAccountCurrency("RM");
+                         }
+                       }}
+                       className="text-white p-3 rounded-xl hover:scale-[1.02] active:scale-95 transition-transform"
+                     >
+                       <Plus className="w-5 h-5"/>
+                     </button>
+                   </div>
+                   <div className="flex gap-1.5">
+                     {["RM", "SGD", "USD", "JPY"].map(cur => (
+                       <button
+                         key={cur}
+                         onClick={() => setNewAccountCurrency(cur)}
+                         style={newAccountCurrency === cur ? { backgroundColor: accentColor, color: '#fff' } : {}}
+                         className={`flex-1 py-1.5 text-[10px] font-black tracking-wider rounded-lg transition-all ${newAccountCurrency === cur ? 'shadow-sm scale-[1.03]' : 'bg-muted text-muted-foreground hover:bg-border'}`}
+                       >
+                         {cur}
+                       </button>
+                     ))}
+                   </div>
                 </div>
              </motion.div>
           </div>

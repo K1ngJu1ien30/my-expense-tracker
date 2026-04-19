@@ -7,7 +7,7 @@ import { useAppContext } from "@/lib/context";
 import { supabase } from "@/lib/supabase";
 
 export default function HubPage() {
-  const { accentColor, enableFoodBudget, enableSalaryPlanner, isVaultEnabled, isRadarEnabled, isClaimsEnabled, isTradingEnabled, transactions, session, setShowTransactionModal,formatCurrency } = useAppContext();
+  const { accentColor, enableFoodBudget, enableSalaryPlanner, isVaultEnabled, isRadarEnabled, isClaimsEnabled, isTradingEnabled, transactions, subscriptions, utilities, session, setShowTransactionModal, formatCurrency, billingCycle } = useAppContext();
 
   const [radarCount, setRadarCount] = useState(0);
 
@@ -24,6 +24,21 @@ export default function HubPage() {
       })
       .reduce((sum, t) => sum + Number(t.amount), 0);
   }, [transactions]);
+
+  // Upcoming recurring costs due before end of month (only auto-deducting items)
+  const upcomingCosts = useMemo(() => {
+    const now = new Date();
+    const currentDay = now.getDate();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const allRecurring = [...subscriptions, ...utilities];
+    const upcoming = allRecurring.filter(item => {
+      if (!item.autoDeduct) return false; // Only truly recurring items
+      const billingDay = item.billingDay || 1;
+      return billingDay > currentDay && billingDay <= daysInMonth;
+    });
+    const totalDue = upcoming.reduce((sum, item) => sum + item.cost, 0);
+    return { count: upcoming.length, total: totalDue };
+  }, [subscriptions, utilities]);
 
   // Fetch today's radar drops count
   useEffect(() => {
@@ -71,8 +86,8 @@ export default function HubPage() {
     {
       href: "/goals",
       icon: "🎯",
-      title: "Financial Goals",
-      description: "Savings goals, food budget & salary planner",
+      title: "Financial Planning",
+      description: "Goals, budgets, recurring costs & salary planner",
       color: "bg-emerald-500/10",
       enabled: true,
       sub: [
@@ -133,18 +148,26 @@ export default function HubPage() {
             <p className="text-xs font-bold uppercase tracking-wider" style={{ color: accentColor }}>{timeLabel} Briefing</p>
           </div>
 
-          <div className="flex items-baseline gap-3">
-            <div className="flex-1">
-              <p className="text-3xl font-black text-foreground tracking-tight">{formatCurrency(todaySpent)}</p>
-              <p className="text-xs text-muted-foreground font-medium mt-0.5">spent today</p>
+          {transactions.length === 0 ? (
+            <div className="text-center py-4 space-y-2">
+              <p className="text-4xl">📊</p>
+              <p className="font-bold text-foreground">No transactions yet</p>
+              <p className="text-xs text-muted-foreground font-medium">Tap the <strong>+</strong> button below to log your first expense and start tracking!</p>
             </div>
-            {isRadarEnabled && radarCount > 0 && (
-              <Link href="/hub/radar" className="flex items-center gap-1.5 bg-purple-500/10 px-3 py-1.5 rounded-full shrink-0">
-                <span className="text-sm">📡</span>
-                <span className="text-xs font-bold text-purple-500">{radarCount} New</span>
-              </Link>
-            )}
-          </div>
+          ) : (
+            <div className="flex items-baseline gap-3">
+              <div className="flex-1">
+                <p className="text-3xl font-black text-foreground tracking-tight">{formatCurrency(todaySpent)}</p>
+                <p className="text-xs text-muted-foreground font-medium mt-0.5">spent today</p>
+              </div>
+              {isRadarEnabled && radarCount > 0 && (
+                <Link href="/hub/radar" className="flex items-center gap-1.5 bg-purple-500/10 px-3 py-1.5 rounded-full shrink-0">
+                  <span className="text-sm">📡</span>
+                  <span className="text-xs font-bold text-purple-500">{radarCount} New</span>
+                </Link>
+              )}
+            </div>
+          )}
 
           <button
             onClick={() => setShowTransactionModal(true)}
@@ -156,6 +179,21 @@ export default function HubPage() {
           </button>
         </div>
       </div>
+
+      {/* Upcoming Recurring Costs */}
+      {upcomingCosts.count > 0 && (
+        <div className="bg-card rounded-3xl shadow-soft border border-border/40 p-4 flex items-center gap-4">
+          <div className="bg-amber-500/10 p-3 rounded-2xl">
+            <span className="text-2xl">📅</span>
+          </div>
+          <div className="flex-1">
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Upcoming This Month</p>
+            <p className="text-sm font-bold text-foreground mt-0.5">
+              {formatCurrency(upcomingCosts.total)} in {upcomingCosts.count} recurring payment{upcomingCosts.count !== 1 ? 's' : ''} due
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Modules */}
       <div className="space-y-4">

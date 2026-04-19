@@ -1,220 +1,143 @@
-# User Manual — Tracker V5
+# Expense Tracker Pro — User Manual
 
-Welcome to **Tracker** — your all-in-one expense tracker, multi-currency wallet, asset vault, trading profit tracker, claims manager, and content radar. This guide covers everything you need to know as a user.
+Welcome. This guide walks you through every feature of the app, from first launch to power-user tricks. No jargon, no fluff.
 
 ---
 
-## Getting Started
+## 1. Getting Started
 
-### Installation
+### Installing the App
+1. Download the `app-release.apk` file (shared with you via WhatsApp or Drive).
+2. On your Android phone, tap the file. You may need to allow "Install from unknown sources" for your browser or file manager — this is a one-time prompt.
+3. Tap **Install**. The app will appear on your home screen as **Expense Tracker**.
 
-1. Receive the APK file from the developer
-2. Install it on your Android device (enable "Install from Unknown Sources" if prompted)
-3. Open the app and create an account with your email and password
-4. Set up a PIN and optionally enable fingerprint/face unlock
+### Creating Your Account
+1. Open the app. You'll land on the sign-in screen.
+2. Tap **Sign Up**, enter your email and a password, and confirm.
+3. Check your inbox for the verification email, tap the link, then return to the app and sign in.
 
-**That's it.** You never need to reinstall. Updates happen automatically in the background — no Play Store, no download prompts. The next time you open the app after an update, it just works.
+### The Biometric Lock
+After your first successful sign-in, the app will ask permission to use your fingerprint or face unlock. Approve this — from now on, every time you open the app, a quick biometric check is all that stands between you and your dashboard. If biometrics fail, you'll be sent back to the password screen.
 
 ### Navigating the Hub
+The **Hub** is your home screen. At a glance, you'll see:
+- **Your total balance** at the top (tap it to hide/show — see Zen Mode below)
+- **Wallet carousel** — a horizontal scroll of every account you own, each showing its own currency and balance
+- **Today** and **This Week** spending cards
+- **Trend chart** — a 7-day visualization of your cash flow
+- **Upcoming** — subscriptions or utilities billing in the next few days
 
-The app has five main tabs at the bottom:
-
-| Tab | What It Does |
-|---|---|
-| **Dashboard** | Your financial overview — wallet balances, today's spending, weekly trends |
-| **History** | Full transaction history with powerful filters |
-| **+ (Center)** | Quick-log a new expense, income, or transfer |
-| **Analytics** | Charts, breakdowns, spending velocity, subscriptions |
-| **Profile** | Settings, modules, security, data management |
-
-Additional modules (Vault, Trading, Radar, Claims) are accessible from the **Hub** page.
+Use the bottom navigation to jump between Hub, Stats, Planning, Vault, and Profile.
 
 ---
 
-## Managing Wallets (Multi-Currency)
+## 2. Managing Wallets (Multi-Currency)
 
-### Your Wallet Dashboard
+The app is built around the idea that your RM account and your USD travel card are *different things*. They never get averaged or auto-converted.
 
-The Dashboard shows a **horizontal carousel** of all your active accounts. Each card displays the account name and its current balance. Swipe left/right to see all accounts. Below the carousel, a subtle **Net Total** shows your combined balance across all accounts.
+### Adding a New Account
+1. Go to **Profile → Manage Accounts**.
+2. Tap **+ Add Account**.
+3. Enter a name (e.g., "Maybank", "DBS SGD", "Japan Cash").
+4. **Select its currency** using the four pills: **RM**, **SGD**, **USD**, or **JPY**.
+5. Tap **Save**.
 
-**Tap anywhere on the wallet card** to reveal your actual balances. They auto-hide after 5 seconds for privacy (Zen Mode).
+The account now appears in the Hub carousel with its currency prefix (e.g., `SGD 1,240.00`).
 
-### Adding Accounts
+### How the Hub Separates Balances
+The Hub carousel shows one card per account. Each card:
+- Displays only that account's currency
+- Sums only transactions tagged to that account
+- Updates instantly when you log a new transaction
 
-1. Go to **Profile** → **Manage Accounts**
-2. Type a name in the text field (e.g., "SGD Savings", "TnG eWallet", "Cash USD")
-3. Tap the **+** button
-
-**Currency Detection**: If your account name contains "SGD", "USD", or "JPY", the dashboard automatically displays balances with the correct currency prefix. All other accounts use your base currency (e.g., RM).
-
-### Reordering Accounts
-
-In the Manage Accounts modal, **drag accounts** up and down to set your preferred order. The Dashboard carousel respects this exact order.
+There is **no mixed total** across currencies — the "total balance" at the top sums only your primary-currency (RM) accounts by default.
 
 ### Archiving Accounts
+Going on a trip to Japan and don't want your JPY wallet cluttering the daily view? Archive it.
 
-For travel wallets or temporary accounts you no longer use daily:
+1. Go to **Profile → Manage Accounts**.
+2. Tap the account you want to hide.
+3. Tap **Archive**.
 
-1. Go to **Profile** → **Manage Accounts**
-2. Tap the **Archive** icon (📦) next to any account
-3. The account disappears from all dropdowns and the Dashboard carousel
-4. Its transaction history is fully preserved
-5. To restore it, scroll to the **"Archived"** section at the bottom and tap **Restore**
-
-This is perfect for accounts like "Holiday SGD" that you only need occasionally.
-
-### Setting Your Base Currency
-
-Go to **Profile** → **Base Currency** and choose from: **RM**, **SGD**, **USD**, or **JPY**.
+The account disappears from the Hub and from transaction dropdowns — but all its history is preserved. To bring it back, scroll to the **Archived** section at the bottom of the Manage Accounts screen and tap **Restore**.
 
 ---
 
-## Logging Transactions
+## 3. Financial Planning
 
-### Quick-Log (3 seconds)
+The **Planning** tab (bottom nav) is your long-term financial command center. It houses three modules under one roof:
 
-1. Tap the center **+** button from any screen
-2. Enter the amount
-3. Pick a category and account
-4. Tap **Save**
+### Savings Goals
+Set aside money toward named targets (e.g., "New Laptop", "Emergency Fund"). Each goal shows a progress ring, target amount, and current saved total. Tap **+ Add Goal** to create one.
 
-### Expense
+### Subscriptions
+Track recurring monthly charges like Spotify, Netflix, YouTube Premium. For each:
+- Name, amount, and icon
+- Billing day of the month
+- Source account
+- **Auto-deduct toggle** — when on, the subscription appears in the Hub's "Upcoming" widget for the days leading up to its billing date
 
-Select **Expense** → enter amount → choose category (Food, Transport, etc.) → choose account → optionally toggle **"Claimable / Split Bill"** for reimbursable expenses → Save.
+### Utilities
+Same structure as subscriptions, but for bills that *vary* month-to-month (electricity, water, internet). Log the amount when the bill arrives; the app tracks your historical averages.
 
-### Income
-
-Select **Income** → enter amount → choose receiving account → optionally mark as **Pending** (won't count toward balance until cleared) → Save.
-
-### Transfer
-
-Select **Transfer** → enter amount → choose source and destination accounts. The source drops and destination rises by the same amount.
-
-### Multi-Currency Logging
-
-The transaction modal shows currency toggle buttons: **RM, SGD, USD, JPY**. When logging in a foreign currency, a live conversion estimate appears automatically using cached exchange rates.
+### Why They're Here Together
+Goals, subscriptions, and utilities are all *forward-looking* commitments. Grouping them separates "planning your future money" from "analyzing your past spending" (which lives in Stats).
 
 ---
 
-## Exporting Data — Accountant Export
+## 4. Exporting Data
 
-Generate professional CSV reports to share with your accountant, spouse, or for your own records.
+When tax season rolls around — or your accountant asks for numbers — use the export wizard.
 
-1. Go to **Profile** → **Accountant Export**
-2. Choose **Current Month** or **All Time**
-3. The app generates a CSV file and opens your device's **share sheet**
-4. Send via **WhatsApp**, **Email**, **Google Drive**, or save to device
+### Accountant Export Wizard
+1. Go to **Stats → Export** (or **Profile → Export Data**).
+2. Choose your date range (e.g., "Last 3 months", "Year to date", or a custom range via the date picker).
+3. Optionally filter by **account** or **category**.
+4. Tap **Generate CSV**.
 
-The CSV includes: Date, Type, Category, Sub-Category, Amount, Account, To Account, Note, Status.
+The app will:
+1. Write a UTF-8 encoded CSV file to your device's app storage
+2. Open the native Android share sheet
 
----
+### Sharing the CSV
+From the share sheet, pick your target:
+- **WhatsApp** — send directly to your accountant's chat
+- **Gmail / Outlook** — attach to a new email
+- **Drive / OneDrive** — upload to cloud
+- **Files** — save locally
 
-## History — Dual-Layer Filters
-
-The History tab has **two filter rows** that stack with AND logic:
-
-### Row 1: Time Filters
-- **Today** — transactions from today only
-- **This Week** — Monday through Sunday
-- **Show All** — complete history
-
-### Row 2: Category Filters
-Horizontally scrollable pills: All Categories, Food, Transport, Entertainment, Shopping, Bills, etc.
-
-**Example:** Selecting "This Week" + "Food" shows only food transactions from this week. The subtitle updates: *"This Week • Food — 3 transactions"*.
-
-Tap **"Clear All Filters"** to reset both layers.
+The CSV opens cleanly in Excel, Google Sheets, or Numbers with columns for date, account, category, note, amount, and currency.
 
 ---
 
-## Offline Mode — The Promise
+## 5. Hidden Features
 
-**Use this app identically whether you have internet or not.**
-
-- Open the app in Airplane Mode — your data loads instantly from device cache
-- Log expenses normally — they save to your device immediately
-- When signal returns, everything syncs automatically
-- Toast confirms: *"3 offline expenses synced to cloud!"*
-
-Log your coffee in the train tunnel. Check your stats on a plane. No data is ever lost. No sync button to press.
-
----
-
-## Hidden Features
-
-### Zen Mode (Tap-to-Reveal Balance)
-
-By default, your wallet balances are hidden behind `•••••` dots for privacy. **Tap the wallet card** to reveal all balances for 5 seconds, then they auto-hide again. Perfect for checking your balance in public without leaving it on screen.
+### Zen Mode (Balance Hiding)
+Feeling self-conscious about flashing your balance in public? Tap the large balance number at the top of the Hub. It blurs instantly. Tap again to reveal. The setting persists across launches.
 
 ### AMOLED Pitch Black Theme
+If you have an OLED screen (most flagship Android phones do), switching to true-black pixels saves battery and looks stunning.
 
-For OLED screens that physically turn off black pixels to save battery:
+1. Go to **Profile → Appearance**.
+2. Ensure **Dark Mode** is enabled.
+3. Toggle **AMOLED Pitch Black**.
 
-1. **Profile** → Enable **Dark Mode** first
-2. Then toggle **AMOLED Black**
-3. Every background becomes pure `#000000` — pixels literally turn off
+The entire app shifts from dark gray to `#000000`, letting your OLED pixels switch off entirely. Note: this toggle auto-disables itself if you turn Dark Mode off — it only works in conjunction with dark mode.
 
-> Disabling Dark Mode automatically disables AMOLED mode too.
-
-### God Mode
-
-Tap your avatar in the top-right corner of the Dashboard **7 times within 3 seconds**. A matrix-green flash confirms activation. All savings goals show as complete, and balances display as `99,999,999.00`. Tap 7 times again to deactivate. Persists across sessions.
-
-### The Derry Easter Egg 🎈
-
-Log a transaction with an amount of exactly **6.66** or include the word **"pennywise"** in the note field. We won't spoil what happens — but you might want to make sure your volume is off and your screen is facing you.
+### The Derry Easter Egg
+Some things are best discovered. If you ever log a transaction with the amount `6.66` or write `pennywise` in the note field… you'll know.
 
 ---
 
-## Settings & Security
+## 6. Tips for Daily Use
 
-All accessible from the **Profile** page:
-
-| Setting | Description |
-|---|---|
-| **Base Currency** | RM / SGD / USD / JPY — changes everywhere |
-| **Billing Cycle** | Day 1–31 — analytics monthly view respects this |
-| **Dark Mode** | Toggle dark theme |
-| **AMOLED Black** | Pure black for OLED screens (requires Dark Mode) |
-| **Accent Color** | Blue, Emerald, Yellow, Purple, or Rose |
-| **PIN Lock** | 6-digit PIN on every cold boot |
-| **Biometrics** | Fingerprint/Face unlock (requires PIN first) |
-| **Manage Categories** | Add, delete, drag-to-reorder expense categories |
-| **Manage Accounts** | Add, rename, reorder, archive, or delete accounts |
-| **Include Savings** | Toggle whether savings accounts count toward total balance |
-| **Daily Reminders** | Set a custom reminder time |
-| **Accountant Export** | Generate and share CSV reports |
-| **View Raw Data** | Inspect your database in a table view |
-| **Clear All Data** | Password-protected wipe (irreversible) |
-
-### Modules (Enable/Disable in Profile)
-
-- Food Budget Tracker
-- Salary Planner
-- Asset Vault
-- Radar Tracker
-- Claims & Splits
-- Trading / Flipping
+- **Swipe right** on the Hub to quickly reach any account's full transaction list.
+- **Long-press** a transaction to edit it; swipe left to soft-delete (recoverable for 30 days).
+- **Pull to refresh** on any page to force a Supabase sync.
+- The app works **fully offline**. Log transactions on a plane; they'll sync when you land.
 
 ---
 
-## Troubleshooting
+## Need Help?
 
-**App shows "Loading Tracker..." for too long:**
-The app is trying to reach the server and falling back to cache. If this is your first-ever launch with no cached data, wait for connectivity and reopen.
-
-**Offline expenses not syncing:**
-They sync automatically on reconnection. If they haven't synced, fully close and reopen the app.
-
-**Biometric prompt doesn't appear:**
-Ensure biometrics are enrolled in your device's system settings, and that both PIN and Biometric are enabled in Profile → Security.
-
-**An account disappeared from the dropdown:**
-It may have been archived. Go to Profile → Manage Accounts → scroll to the "Archived" section → tap Restore.
-
-**Balance shows wrong amount:**
-Ensure all pending income is accounted for (shown as amber "Pending" badge on Dashboard). Check that "Include Savings" is toggled correctly in Profile.
-
----
-
-Happy tracking. 🚀
+If something breaks, your data is safe — it's stored both locally on your device and in the cloud. A fresh reinstall with the same login will restore everything. For bugs or feedback, message the developer directly.

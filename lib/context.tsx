@@ -7,6 +7,14 @@ import { NativeHaptics } from "./haptics";
 import { motion, AnimatePresence } from "framer-motion";
 import { Capacitor } from '@capacitor/core';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
+import localforage from "localforage";
+
+// Configure localforage for IndexedDB
+localforage.config({
+  name: 'tracker',
+  storeName: 'app_cache',
+  driver: [localforage.INDEXEDDB, localforage.LOCALSTORAGE],
+});
 
 export type Goal = {
   id: string;
@@ -49,6 +57,7 @@ export type Transaction = {
   status?: string;
   is_claimable?: boolean;
   claim_status?: string;
+  deleted_at?: string | null;
 };
 
 export type ToastType = { message: string; id: number } | null;
@@ -92,6 +101,7 @@ export type TradeItem = {
 
 export type Account = {
   name: string;
+  currencyCode: string;
   isArchived: boolean;
 };
 
@@ -143,7 +153,7 @@ type AppContextType = {
   accountObjects: Account[];
   setAccounts: (val: string[]) => void;
   reorderAccounts: (val: string[]) => Promise<void>;
-  addAccount: (acc: string) => void;
+  addAccount: (acc: string, currencyCode?: string) => void;
   renameAccount: (old: string, next: string) => void;
   deleteAccount: (acc: string) => void;
   toggleArchiveAccount: (name: string) => void;
@@ -211,6 +221,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [dailyReminder, setDailyReminder] = useState(false);
   const [reminderTime, setReminderTime] = useState("20:00");
   const [categories, setCategoriesRaw] = useState<string[]>(() => {
+    // Sync fallback for initial render — localforage hydrates async below
     if (typeof window !== "undefined") {
       try {
         const cached = localStorage.getItem('tracker_data_cache');
@@ -224,6 +235,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     return ["Food", "Transport", "Entertainment", "Shopping", "Bills", "Family", "Subs"];
   });
+
+  // Async hydration from localforage (overrides sync localStorage if available)
+  useEffect(() => {
+    localforage.getItem<any>('tracker_data_cache').then(data => {
+      if (data?.categories?.length) setCategoriesRaw(data.categories);
+    }).catch(() => {});
+  }, []);
+
+  // Ref to always capture latest categories for cache saves (avoids stale closure in refreshData)
+  const categoriesRef = React.useRef(categories);
+  useEffect(() => { categoriesRef.current = categories; }, [categories]);
+
   const [includeSavings, setIncludeSavingsRaw] = useState(true);
 
   const [enableFoodBudget, setEnableFoodBudgetRaw] = useState(false);
@@ -385,9 +408,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [goals, setGoals] = useState<Goal[]>([]);
   
   const [accountObjects, setAccountObjects] = useState<Account[]>([
-    { name: "Bank", isArchived: false },
-    { name: "Cash", isArchived: false },
-    { name: "eWallet", isArchived: false }
+    { name: "Bank", currencyCode: "RM", isArchived: false },
+    { name: "Cash", currencyCode: "RM", isArchived: false },
+    { name: "eWallet", currencyCode: "RM", isArchived: false }
   ]);
   const [editTransactionId, setEditTransactionId] = useState<string | null>(null);
   const [activeAssetId, setActiveAssetId] = useState<string | null>(null);
@@ -399,16 +422,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setConfirmState({ isOpen: true, title, message, onConfirm });
   };
 
-  // Safe Migration: convert old string[] accounts to Account objects
+  // Safe Migration: convert old string[] or old { name, isArchived } accounts to full Account objects
   const migrateAccounts = (raw: any[]): Account[] => {
     if (!Array.isArray(raw) || raw.length === 0) return [
-      { name: "Bank", isArchived: false },
-      { name: "Cash", isArchived: false },
-      { name: "eWallet", isArchived: false }
+      { name: "Bank", currencyCode: "RM", isArchived: false },
+      { name: "Cash", currencyCode: "RM", isArchived: false },
+      { name: "eWallet", currencyCode: "RM", isArchived: false }
     ];
     return raw.map(acc => {
-      if (typeof acc === 'string') return { name: acc, isArchived: false };
-      return acc as Account;
+      if (typeof acc === 'string') return { name: acc, currencyCode: "RM", isArchived: false };
+      // Backfill currencyCode for old objects missing it
+      return { name: acc.name, currencyCode: acc.currencyCode || "RM", isArchived: acc.isArchived ?? false } as Account;
     });
   };
 
@@ -429,21 +453,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const reorderAccounts = async (names: string[]) => {
     // Rebuild full objects in new order, preserving isArchived, then append archived ones
     const archivedAccounts = accountObjects.filter(a => a.isArchived);
-    const reordered = names.map(name => accountObjects.find(a => a.name === name) || { name, isArchived: false });
+    const reordered = names.map(name => accountObjects.find(a => a.name === name) || { name, currencyCode: "RM", isArchived: false });
     await handleUpdateAccounts([...reordered, ...archivedAccounts]);
   };
 
-  const addAccount = (acc: string) => handleUpdateAccounts([...accountObjects, { name: acc, isArchived: false }]);
+  const addAccount = (acc: string, currencyCode: string = "RM") => handleUpdateAccounts([...accountObjects, { name: acc, currencyCode, isArchived: false }]);
   const renameAccount = (old: string, next: string) => handleUpdateAccounts(accountObjects.map(a => a.name === old ? { ...a, name: next } : a));
   const deleteAccount = (acc: string) => handleUpdateAccounts(accountObjects.filter(a => a.name !== acc));
   const toggleArchiveAccount = (name: string) => handleUpdateAccounts(accountObjects.map(a => a.name === name ? { ...a, isArchived: !a.isArchived } : a));
 
-  const persistCategories = (newCats: string[]) => {
+  const persistCategories = async (newCats: string[]) => {
     try {
-      const raw = localStorage.getItem('tracker_data_cache');
-      const data = raw ? JSON.parse(raw) : {};
+      // Async: update IndexedDB cache
+      const data: any = await localforage.getItem('tracker_data_cache') || {};
       data.categories = newCats;
-      localStorage.setItem('tracker_data_cache', JSON.stringify(data));
+      await localforage.setItem('tracker_data_cache', data);
+    } catch {}
+    try {
+      // Sync fallback: update localStorage for cold boot useState initializer
+      const raw = localStorage.getItem('tracker_data_cache');
+      const lsData = raw ? JSON.parse(raw) : {};
+      lsData.categories = newCats;
+      localStorage.setItem('tracker_data_cache', JSON.stringify(lsData));
     } catch {}
   };
 
@@ -461,8 +492,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Theming
   const [accentColor, setAccentColor] = useState("#3b82f6");
 
-  // Currency formatter
-  const formatCurrency = (amount: number) => `${currency} ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  // Currency formatter — integer math to avoid floating-point errors
+  const formatCurrency = (amount: number) => {
+    const cents = Math.round(amount * 100);
+    const whole = Math.floor(Math.abs(cents) / 100);
+    const remainder = Math.abs(cents) % 100;
+    const sign = cents < 0 ? '-' : '';
+    return `${currency} ${sign}${whole.toLocaleString()}.${String(remainder).padStart(2, '0')}`;
+  };
 
   // Exchange rate fetch — non-blocking, cached for offline
   const fetchExchangeRates = async () => {
@@ -472,13 +509,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json();
       if (data.rates) {
         setExchangeRates(data.rates);
-        try { localStorage.setItem("exchange_rates_cache", JSON.stringify(data.rates)); } catch {}
+        try { await localforage.setItem("exchange_rates_cache", data.rates); } catch {}
       }
     } catch {
-      // Offline fallback — load cached rates
       try {
-        const cached = localStorage.getItem("exchange_rates_cache");
-        if (cached) setExchangeRates(JSON.parse(cached));
+        const cached = await localforage.getItem<Record<string, number>>("exchange_rates_cache");
+        if (cached) setExchangeRates(cached);
       } catch {}
     }
   };
@@ -583,24 +619,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         assets: parsedAssets,
         tradeItems: parsedTrades,
         accounts: savedAccounts,
-        categories,
+        categories: categoriesRef.current,
       };
       try {
-        localStorage.setItem('tracker_data_cache', JSON.stringify(cachePayload));
+        await localforage.setItem('tracker_data_cache', cachePayload);
         console.log("[refreshData] Cache saved successfully.");
       } catch (storageErr) {
-        console.warn("[refreshData] localStorage.setItem failed:", storageErr);
+        console.warn("[refreshData] localforage.setItem failed:", storageErr);
       }
     } catch (err) {
       console.log("[refreshData] Network error caught. Attempting to read cache...", err);
       setAccountObjects(savedAccounts);
 
-      // Hydrate from localStorage cache on offline cold-boot
+      // Hydrate from localforage cache on offline cold-boot
       try {
-        const cached = localStorage.getItem('tracker_data_cache');
-        if (cached) {
+        const data: any = await localforage.getItem('tracker_data_cache');
+        if (data) {
           console.log("[refreshData] Cache found! Hydrating state...");
-          const data = JSON.parse(cached);
           let cachedTx = (data.transactions ?? []) as Transaction[];
           setGoals((data.goals ?? []) as Goal[]);
           setSubscriptions((data.subscriptions ?? []) as Subscription[]);
@@ -612,12 +647,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           if (data.categories?.length) setCategories(data.categories);
 
           // Prepend any pending offline transactions so balance stays accurate
-          const offlineRaw = localStorage.getItem('offline_tx_queue');
-          if (offlineRaw) {
-            const offlineQueue = JSON.parse(offlineRaw) as Partial<Transaction>[];
+          const offlineQueue = await localforage.getItem<Partial<Transaction>[]>('offline_tx_queue');
+          if (offlineQueue && offlineQueue.length > 0) {
             const offlineTxs = offlineQueue.map((tx, i) => ({
               ...tx,
-              id: `offline-${Date.now()}-${i}`,
+              id: tx.id || `offline-${Date.now()}-${i}`,
               user_id: currentUser.id,
             })) as Transaction[];
             cachedTx = [...offlineTxs, ...cachedTx];
@@ -638,14 +672,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Network status + offline queue sync
   const syncOfflineQueue = async () => {
     try {
-      const raw = localStorage.getItem("offline_tx_queue");
-      if (!raw) return;
-      const queue = JSON.parse(raw) as Partial<Transaction>[];
-      if (queue.length === 0) return;
+      const queue = await localforage.getItem<Partial<Transaction>[]>("offline_tx_queue");
+      if (!queue || queue.length === 0) return;
       for (const tx of queue) {
-        await supabase.from("transactions").insert({ ...tx, user_id: session?.user?.id });
+        // Use the client-generated id for idempotent upsert
+        await supabase.from("transactions").upsert({ ...tx, user_id: session?.user?.id }, { onConflict: 'id' });
       }
-      localStorage.removeItem("offline_tx_queue");
+      await localforage.removeItem("offline_tx_queue");
       triggerToast(`${queue.length} offline expense${queue.length > 1 ? "s" : ""} synced to cloud!`);
 
       // Post-sync: refresh state with server-assigned UUIDs
@@ -728,20 +761,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // --- Supabase CRUD ---
   
   const addTransaction = async (tx: Partial<Transaction>) => {
-    delete tx.id;
+    // Task 4: Generate client-side UUID for idempotency
+    const clientId = crypto.randomUUID();
+    const txWithId = { ...tx, id: clientId };
+
     if (isOffline) {
-      const offlineTx = { ...tx, id: `offline-${Date.now()}`, user_id: session?.user?.id };
+      const offlineTx = { ...txWithId, user_id: session?.user?.id };
       setTransactions(prev => [offlineTx as Transaction, ...prev]);
       try {
-        const existing = JSON.parse(localStorage.getItem("offline_tx_queue") || "[]");
-        existing.push({ ...tx, user_id: session?.user?.id });
-        localStorage.setItem("offline_tx_queue", JSON.stringify(existing));
+        const existing = await localforage.getItem<Partial<Transaction>[]>("offline_tx_queue") || [];
+        existing.push({ ...txWithId, user_id: session?.user?.id });
+        await localforage.setItem("offline_tx_queue", existing);
       } catch {}
       triggerToast("No connection. Expense saved offline.");
       NativeHaptics.successMedium();
       return;
     }
-    const { data, error } = await supabase.from('transactions').insert({ ...tx, user_id: session?.user?.id }).select().single();
+    const { data, error } = await supabase.from('transactions').insert({ ...txWithId, user_id: session?.user?.id }).select().single();
     if (!error && data) {
       setTransactions(prev => [data as Transaction, ...prev]);
       NativeHaptics.successMedium();
@@ -754,9 +790,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
   const deleteTransaction = async (id: string) => {
     const item = transactions.find(t => t.id === id);
-    const { error } = await supabase.from('transactions').delete().eq('id', id);
+    const now = new Date().toISOString();
+    const { error } = await supabase.from('transactions').update({ deleted_at: now }).eq('id', id);
     if (!error) {
-      setTransactions(prev => prev.filter(t => t.id !== id));
+      setTransactions(prev => prev.map(t => t.id === id ? { ...t, deleted_at: now } : t));
       NativeHaptics.heavyDoubleThud();
       if (item) cacheDeletedItem("transaction", item);
     }
@@ -929,7 +966,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addSubscription, updateSubscription, deleteSubscription,
       utilities: utilities.filter(u => !u.user_id || u.user_id === session?.user?.id),
       addUtility, updateUtility, deleteUtility,
-      transactions: transactions.filter(t => !t.user_id || t.user_id === session?.user?.id),
+      transactions: transactions.filter(t => (!t.user_id || t.user_id === session?.user?.id) && !t.deleted_at),
       addTransaction, updateTransaction, deleteTransaction,
       editTransactionId, setEditTransactionId,
       goals: goals.filter(g => !g.user_id || g.user_id === session?.user?.id),
