@@ -162,7 +162,7 @@ export default function VaultPage() {
               <div className="w-12 h-1.5 bg-border rounded-full mx-auto mb-2 shrink-0 sm:hidden" />
               <div className="flex justify-between items-center">
                 <h3 className="font-bold text-lg text-foreground">Add Asset</h3>
-                <button onClick={() => setShowAdd(false)} className="p-1 px-2 bg-muted hover:bg-border rounded-full transition-colors"><X className="w-5 h-5 text-muted-foreground" /></button>
+                <button type="button" aria-label="Close" onClick={() => setShowAdd(false)} className="p-1 px-2 bg-muted hover:bg-border rounded-full transition-colors"><X className="w-5 h-5 text-muted-foreground" aria-hidden="true" /></button>
               </div>
 
               <div>

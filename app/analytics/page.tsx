@@ -2,29 +2,41 @@
 
 import { PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useAppContext } from "@/lib/context";
-import { Sparkles, MonitorPlay, Music, Wifi, CreditCard, Zap, Smartphone, Droplet } from "lucide-react";
-import React, { useState, useMemo } from "react";
+import { Sparkles, Receipt } from "lucide-react";
+import { useState, useMemo } from "react";
+import MonthlyReceiptModal from "@/components/MonthlyReceiptModal";
+import type { ReceiptMonth } from "@/lib/receiptData";
 
-const ICONS: Record<string, React.ReactNode> = {
-  MonitorPlay: <MonitorPlay className="w-4 h-4" />,
-  Music: <Music className="w-4 h-4" />,
-  Wifi: <Wifi className="w-4 h-4" />,
-  CreditCard: <CreditCard className="w-4 h-4" />,
-  Zap: <Zap className="w-4 h-4" />,
-  Smartphone: <Smartphone className="w-4 h-4" />,
-  Droplet: <Droplet className="w-4 h-4" />
+// Minimal shape Recharts hands to custom tooltip components. Fields like `dataKey`,
+// `fill`, `stroke`, and `payload` are always present at runtime, but Recharts' own
+// generics are overly restrictive for our use, so we describe just what we read.
+type ChartPayload = {
+  name?: string | number;
+  value?: number | string;
+  dataKey?: string | number;
+  fill?: string;
+  stroke?: string;
+  color?: string;
+  payload?: { fill?: string; color?: string; currency?: string };
 };
 
-const PieTooltip = ({ active, payload }: any) => {
+type TooltipProps = {
+  active?: boolean;
+  payload?: ChartPayload[];
+  label?: string | number;
+};
+
+const PieTooltip = ({ active, payload }: TooltipProps) => {
   if (active && payload && payload.length) {
-    const { name, value } = payload[0];
-    const color = payload[0].payload.fill || payload[0].payload.color;
+    const first = payload[0];
+    const { name, value } = first;
+    const color = first.payload?.fill || first.payload?.color;
     return (
       <div className="bg-card/95 backdrop-blur-xl border border-border/50 rounded-2xl shadow-heavy p-3 min-w-[140px]">
         <p className="text-xs font-bold text-muted-foreground mb-2 pb-2 border-b border-border/50">{name}</p>
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color }} />
-          <span className="text-sm font-black text-foreground">{payload[0].payload.currency || 'RM'} {Number(value).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+          <span className="text-sm font-black text-foreground">{first.payload?.currency || 'RM'} {Number(value).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
         </div>
       </div>
     );
@@ -32,13 +44,13 @@ const PieTooltip = ({ active, payload }: any) => {
   return null;
 };
 
-const BarTooltip = ({ active, payload, label }: any) => {
+const BarTooltip = ({ active, payload, label }: TooltipProps) => {
   if (active && payload && payload.length) {
     return (
       <div className="bg-card/95 backdrop-blur-xl border border-border/50 rounded-2xl shadow-heavy p-3 min-w-[150px]">
         <p className="text-xs font-bold text-muted-foreground mb-2 pb-2 border-b border-border/50">{label}</p>
         <div className="space-y-1.5">
-          {payload.map((entry: any, i: number) => (
+          {payload.map((entry, i) => (
             <div key={i} className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-2 min-w-0">
                 <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: entry.fill || entry.color }} />
@@ -54,12 +66,12 @@ const BarTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-const VelocityTooltip = ({ active, payload, label }: any) => {
+const VelocityTooltip = ({ active, payload, label }: TooltipProps) => {
   if (active && payload && payload.length) {
     return (
       <div className="bg-card/95 backdrop-blur-xl border border-border/50 rounded-2xl shadow-heavy p-3 min-w-[130px]">
         <p className="text-xs font-bold text-muted-foreground mb-2 pb-2 border-b border-border/50">Day {label}</p>
-        {payload.map((entry: any, i: number) => (
+        {payload.map((entry, i) => (
           <div key={i} className="flex items-center gap-2">
             <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: entry.stroke || entry.color }} />
             <span className="text-xs font-black text-foreground">{entry.payload?.currency || ''} {Number(entry.value).toFixed(2)}</span>
@@ -71,14 +83,49 @@ const VelocityTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
+// Takes `formatCurrency` as a prop so it can be rendered via a parent-provided
+// closure instead of reaching into context directly. Passed as a JSX element to
+// <Tooltip /> so Recharts clones it with `active`/`payload`/`label` at runtime.
+const IncomeTooltip = ({ active, payload, label, formatCurrency }: TooltipProps & { formatCurrency: (n: number) => string }) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-card/95 backdrop-blur-xl border border-border/50 rounded-2xl shadow-heavy p-3 min-w-[130px]">
+      <p className="text-xs font-bold text-muted-foreground mb-2 pb-2 border-b border-border/50">{label}</p>
+      <span className="text-sm font-black text-emerald-500">{formatCurrency(Number(payload[0].value))}</span>
+    </div>
+  );
+};
+
 export default function AnalyticsPage() {
-  const { 
+  const {
     subscriptions, utilities,
-    triggerToast, accentColor, transactions, accounts, confirmAction,
+    accentColor, transactions,
     currency, formatCurrency
   } = useAppContext();
 
   const [timeFilter, setTimeFilter] = useState("Month");
+
+  // ─── Monthly Receipt trigger state ─────────────────────────────────────
+  // Opens the receipt modal. The `target` is passed in so we can open the
+  // recap for the CURRENT month (if user triggers from Analytics with
+  // timeFilter="Month"), the previous month (default), or any other.
+  const [showReceipt, setShowReceipt] = useState(false);
+  const [receiptTarget, setReceiptTarget] = useState<ReceiptMonth | undefined>(undefined);
+
+  const openCurrentMonthReceipt = () => {
+    const now = new Date();
+    setReceiptTarget({ year: now.getFullYear(), month: now.getMonth() });
+    setShowReceipt(true);
+  };
+
+  const openLastMonthReceipt = () => {
+    const now = new Date();
+    setReceiptTarget({
+      year: now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear(),
+      month: now.getMonth() === 0 ? 11 : now.getMonth() - 1,
+    });
+    setShowReceipt(true);
+  };
 
   const filteredTxs = useMemo(() => {
      const now = new Date();
@@ -102,13 +149,16 @@ export default function AnalyticsPage() {
     });
     const colors = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4'];
     return Object.entries(map).map(([name, value], i) => ({ name, value, color: colors[i % colors.length], currency })).sort((a,b)=>b.value-a.value);
-  }, [filteredTxs]);
+  }, [filteredTxs, currency]);
 
   const totalExpense = useMemo(() => categoryData.reduce((acc, curr) => acc + curr.value, 0), [categoryData]);
 
   const stackedCashFlow = useMemo(() => {
-     const data: any[] = [];
-     const map: Record<string, any> = {};
+     // Each row is `{ name: string, [category]: number }`. Values are union typed
+     // because `name` is a string while category totals are numbers.
+     type CashFlowRow = { name: string } & Record<string, string | number>;
+     const data: CashFlowRow[] = [];
+     const map: Record<string, CashFlowRow> = {};
      const uniqueCats = new Set<string>();
      
      // Reverse for chronological ordering on the chart
@@ -127,7 +177,8 @@ export default function AnalyticsPage() {
             data.push(map[key]);
          }
          uniqueCats.add(t.category);
-         map[key][t.category] = (map[key][t.category] || 0) + Number(t.amount);
+         const prev = typeof map[key][t.category] === "number" ? (map[key][t.category] as number) : 0;
+         map[key][t.category] = prev + Number(t.amount);
      });
      
      // If data is entirely empty, just mock a shell so the chart doesn't crash visually
@@ -284,6 +335,53 @@ export default function AnalyticsPage() {
          </div>
       </div>
 
+      {/* Monthly Receipt trigger cards — two-up grid.
+          "This Month" gives a live mid-month snapshot; "Last Month" is the
+          full close-out receipt that's also surfaced automatically on the
+          Dashboard during the first week of a new month. */}
+      {transactions.length > 0 && (
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={openCurrentMonthReceipt}
+            aria-label="Generate this month's receipt"
+            className="bg-card p-4 rounded-2xl shadow-soft border border-border/40 text-left active:scale-[0.98] transition-transform"
+          >
+            <div className="w-8 h-8 rounded-xl bg-amber-500/15 flex items-center justify-center mb-2">
+              <Receipt className="w-4 h-4 text-amber-500" aria-hidden="true" />
+            </div>
+            <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+              Receipt
+            </p>
+            <p className="text-sm font-bold text-foreground leading-tight mt-0.5">
+              This Month
+            </p>
+          </button>
+          <button
+            type="button"
+            onClick={openLastMonthReceipt}
+            aria-label="Generate last month's receipt"
+            className="bg-card p-4 rounded-2xl shadow-soft border border-border/40 text-left active:scale-[0.98] transition-transform"
+          >
+            <div className="w-8 h-8 rounded-xl bg-amber-500/15 flex items-center justify-center mb-2">
+              <Receipt className="w-4 h-4 text-amber-500" aria-hidden="true" />
+            </div>
+            <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+              Receipt
+            </p>
+            <p className="text-sm font-bold text-foreground leading-tight mt-0.5">
+              Last Month
+            </p>
+          </button>
+        </div>
+      )}
+
+      <MonthlyReceiptModal
+        isOpen={showReceipt}
+        onClose={() => setShowReceipt(false)}
+        target={receiptTarget}
+      />
+
       {/* Spending Breakdown */}
       <div className="bg-card p-6 rounded-[2rem] shadow-heavy shadow-black/5 border border-border/40 relative">
         <h3 className="font-bold text-foreground mb-6">Spending Category</h3>
@@ -303,9 +401,9 @@ export default function AnalyticsPage() {
                   dataKey="value"
                   stroke="none"
                   labelLine={true}
-                  label={({ name, percent, x, y, textAnchor }: any) => (
+                  label={({ name, percent, x, y, textAnchor }: { name?: string; percent?: number; x?: number; y?: number; textAnchor?: "start" | "middle" | "end" | "inherit" }) => (
                     <text x={x} y={y} textAnchor={textAnchor} dominantBaseline="central" className="fill-foreground text-[10px] font-bold">
-                      {name} ({(percent * 100).toFixed(0)}%)
+                      {name} ({((percent ?? 0) * 100).toFixed(0)}%)
                     </text>
                   )}
                 >
@@ -375,15 +473,9 @@ export default function AnalyticsPage() {
                 <XAxis dataKey="account" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--muted-foreground)', fontWeight: 600 }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--muted-foreground)', fontWeight: 600 }} />
                 <Tooltip
-                  content={({ active, payload, label }: any) => {
-                    if (!active || !payload?.length) return null;
-                    return (
-                      <div className="bg-card/95 backdrop-blur-xl border border-border/50 rounded-2xl shadow-heavy p-3 min-w-[130px]">
-                        <p className="text-xs font-bold text-muted-foreground mb-2 pb-2 border-b border-border/50">{label}</p>
-                        <span className="text-sm font-black text-emerald-500">{formatCurrency(Number(payload[0].value))}</span>
-                      </div>
-                    );
-                  }}
+                  content={
+                    <IncomeTooltip formatCurrency={formatCurrency} />
+                  }
                   cursor={{ fill: 'var(--muted)', opacity: 0.2 }}
                 />
                 <Bar dataKey="amount" fill="#10b981" radius={[6, 6, 0, 0]} maxBarSize={40} />
@@ -476,19 +568,19 @@ export default function AnalyticsPage() {
           {subscriptions.length > 0 && (
             <div className="flex justify-between items-center">
               <span className="text-xs text-muted-foreground font-medium">Subscriptions ({subscriptions.length})</span>
-              <span className="text-sm font-bold text-foreground">{formatCurrency(subscriptions.reduce((s: number, sub: any) => s + sub.cost, 0))}</span>
+              <span className="text-sm font-bold text-foreground">{formatCurrency(subscriptions.reduce((s, sub) => s + sub.cost, 0))}</span>
             </div>
           )}
           {utilities.length > 0 && (
             <div className="flex justify-between items-center">
               <span className="text-xs text-muted-foreground font-medium">Utilities ({utilities.length})</span>
-              <span className="text-sm font-bold text-foreground">{formatCurrency(utilities.reduce((s: number, u: any) => s + u.cost, 0))}</span>
+              <span className="text-sm font-bold text-foreground">{formatCurrency(utilities.reduce((s, u) => s + u.cost, 0))}</span>
             </div>
           )}
           <div className="pt-2 border-t border-border/40 flex justify-between items-center">
             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Total Monthly</span>
             <span className="text-sm font-black text-foreground">
-              {formatCurrency(subscriptions.reduce((s: number, sub: any) => s + sub.cost, 0) + utilities.reduce((s: number, u: any) => s + u.cost, 0))}
+              {formatCurrency(subscriptions.reduce((s, sub) => s + sub.cost, 0) + utilities.reduce((s, u) => s + u.cost, 0))}
             </span>
           </div>
         </div>

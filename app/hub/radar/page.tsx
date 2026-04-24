@@ -40,6 +40,27 @@ type RadarItem = {
   platform?: string;
 };
 
+// Minimal shape of an item returned by api.rss2json.com. Fields are optional
+// because the upstream RSS feeds can be inconsistent.
+type RssFeedItem = {
+  title?: string;
+  description?: string;
+  link?: string;
+  pubDate?: string;
+  thumbnail?: string;
+  enclosure?: { link?: string };
+};
+
+// Minimal shape of a movie result from TMDB's discover / now_playing endpoints.
+type TmdbMovieResult = {
+  id: number;
+  title?: string;
+  original_title?: string;
+  release_date?: string;
+  overview?: string;
+  poster_path?: string | null;
+};
+
 function stripHtml(html: string): string {
   if (typeof document !== "undefined") {
     const tmp = document.createElement("div");
@@ -59,9 +80,9 @@ async function fetchRssSource(source: RadarSource): Promise<RadarItem[]> {
     ? source.keywords.split(",").map((k) => k.trim().toLowerCase()).filter(Boolean)
     : [];
 
-  let items: any[] = data.items;
+  let items: RssFeedItem[] = data.items;
   if (keywords.length > 0) {
-    items = items.filter((item: any) => {
+    items = items.filter((item) => {
       const text = ((item.title || "") + " " + (item.description || "")).toLowerCase();
       return keywords.some((kw) => text.includes(kw));
     });
@@ -69,7 +90,7 @@ async function fetchRssSource(source: RadarSource): Promise<RadarItem[]> {
 
   const badgeText = source.keywords ? source.keywords.split(",")[0].trim() : source.name;
 
-  return items.map((item: any) => ({
+  return items.map((item) => ({
     id: `rss-${item.link}-${item.pubDate}`,
     title: item.title || "",
     date: item.pubDate || "",
@@ -90,7 +111,7 @@ async function fetchTmdbCinema(source: RadarSource): Promise<RadarItem[]> {
     if (!res.ok) return [];
     const data = await res.json();
     if (!data.results) return [];
-    return data.results.map((m: any) => ({
+    return (data.results as TmdbMovieResult[]).map((m) => ({
       id: `tmdb-cinema-${m.id}`,
       title: m.title || m.original_title || "",
       date: m.release_date || "",
@@ -116,7 +137,7 @@ async function fetchTmdbStreaming(source: RadarSource): Promise<RadarItem[]> {
     if (!res.ok) return [];
     const data = await res.json();
     if (!data.results) return [];
-    return data.results.map((m: any) => ({
+    return (data.results as TmdbMovieResult[]).map((m) => ({
       id: `tmdb-stream-${m.id}`,
       title: m.title || m.original_title || "",
       date: m.release_date || "",
@@ -143,7 +164,14 @@ export default function RadarPage() {
   const [activeFilter, setActiveFilter] = useState("All");
 
   useEffect(() => {
-    if (!session?.user) { setLoading(false); return; }
+    // Early return path: no user → stop showing loading spinner. This is
+    // legit external-state sync (auth session). Safe from cascading
+    // renders because `session?.user` changes at most a handful of times.
+    if (!session?.user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLoading(false);
+      return;
+    }
 
     const load = async () => {
       const { data } = await supabase
@@ -252,11 +280,12 @@ export default function RadarPage() {
 
       {/* Search */}
       <div className="flex items-center gap-2 bg-card rounded-xl px-4 py-3 border border-border/50 shadow-sm">
-        <Search className="w-4 h-4 text-muted-foreground shrink-0" />
+        <Search className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden="true" />
         <input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search articles & movies..."
+          aria-label="Search articles and movies"
           className="flex-1 bg-transparent text-sm font-semibold outline-none text-foreground placeholder:text-muted-foreground"
         />
       </div>
@@ -323,12 +352,22 @@ export default function RadarPage() {
                 transition={{ delay: i * 0.03 }}
               >
                 <button
+                  type="button"
+                  aria-label={`Open ${item.title} in new tab`}
                   onClick={() => window.open(item.link, "_blank")}
                   className="w-full text-left bg-card rounded-2xl shadow-sm border border-border/40 hover:scale-[1.01] active:scale-[0.98] transition-all overflow-hidden"
                 >
                   {/* TMDB cards show a larger poster banner */}
                   {isTmdb && item.image ? (
                     <div className="relative">
+                      {/*
+                        Intentional <img>: Radar renders arbitrary remote
+                        URLs from RSS feeds / TMDB / Reddit etc. next/image
+                        requires an allow-list of domains at build time,
+                        which we can't know ahead of time. eslint-disable
+                        is the correct call here.
+                      */}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={item.image}
                         alt=""
@@ -358,6 +397,9 @@ export default function RadarPage() {
                     <div className="p-4">
                       <div className="flex items-start gap-3">
                         {item.image && (
+                          // Same rationale as the TMDB banner above —
+                          // untrusted remote hosts preclude next/image.
+                          // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={item.image}
                             alt=""

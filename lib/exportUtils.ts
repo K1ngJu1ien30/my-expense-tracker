@@ -3,7 +3,10 @@ import type { Transaction } from "./context";
 export async function exportDataToCSV(
   transactions: Transaction[],
   monthFilter: string | null,
-  currency: string
+  // `currency` reserved for a future per-currency CSV formatter — kept in
+  // the signature so callers don't have to change when that lands. Prefix
+  // with `_` to silence the unused-var linter without losing the name.
+  _currency: string
 ): Promise<void> {
   if (transactions.length === 0) throw new Error("No transactions to export.");
 
@@ -41,12 +44,9 @@ export async function exportDataToCSV(
 
   // Try native Capacitor export first (Android)
   try {
-    // @ts-ignore - Native plugin, not available in web builds
     const { Capacitor } = await import("@capacitor/core");
     if (Capacitor.isNativePlatform()) {
-      // @ts-ignore
       const { Filesystem, Directory, Encoding } = await import("@capacitor/filesystem");
-      // @ts-ignore
       const { Share } = await import("@capacitor/share");
 
       await Filesystem.writeFile({

@@ -2,6 +2,8 @@
 
 Welcome. This guide walks you through every feature of the app, from first launch to power-user tricks. No jargon, no fluff.
 
+> **What's new in v1.1.5 (April 2026):** no visible changes — this release is a deep code-quality and performance audit pass. The app should feel marginally snappier on older phones when you have thousands of transactions, and nothing else. If you're coming from v1.1.4, everything you already know still works exactly the same way.
+
 ---
 
 ## 1. Getting Started
@@ -127,13 +129,106 @@ The entire app shifts from dark gray to `#000000`, letting your OLED pixels swit
 ### The Derry Easter Egg
 Some things are best discovered. If you ever log a transaction with the amount `6.66` or write `pennywise` in the note field… you'll know.
 
+If you're feeling extra brave, there's a hidden **Friday the 13th Mode** — press and hold the **"Personality & Fun"** heading in Profile for about a second to reveal it. Once enabled, on any Friday the 13th at 13:13 local time the horror sequence triggers on its own. Fires at most once per day. Hidden by default so nobody can flip it on your phone while borrowing it.
+
+**To hide it again:** turn the Friday the 13th toggle OFF first, then long-press the same "Personality & Fun" heading a second time. The option tucks itself away.
+
+### The Animal Menagerie
+The app reacts to unusual money moves with themed animations:
+- 🐋 **Whale** — any expense ≥ RM 5,000
+- 🐧 **Penguin** — any expense < RM 10 between 1 AM and 5 AM ("Late-Night Snack Detected")
+- 🐉 **Dragon** — the moment a Savings Goal crosses 100%
+- 🔥 **Phoenix** — rises when you shake your phone to undo a just-deleted transaction
+- 🦈 **Shark** — swims across on every successful undo
+
+### Time-Based Greetings
+If you open the app between 02:00–05:00 you'll get a 🦉 instead of "Good morning." Burning the midnight oil at 23:00–02:00 gets you a 🌙. Want the classic "Good morning / afternoon / evening" every time? Turn it off under **Profile → Personality & Fun → Time-Based Greetings**.
+
+Independent of the greeting text, the home screen carries a **bold color gradient** that shifts gently across the day — warm orange at dawn, sky blue at noon, rose at dusk, deep indigo at night. This runs regardless of the greetings toggle (it's background mood, not a loud theme change). Respects your dark-mode setting.
+
+### Weather-Aware Theming (opt-in)
+Want the dashboard to react to what it's actually doing outside? Go to **Profile → Personalization → Weather Locations** and type in a primary city (e.g. "Kuala Lumpur") and optionally a secondary city. The app will:
+
+- Show a **weather chip** on the Home greeting with current temperature and a 3-letter city code
+- Decorate the gradient with weather-specific overlays: 🌧️ rain goes cooler/darker, ❄️ snow whitens, ⛈️ thunderstorms pump up the contrast, 🌫️ fog mutes everything
+- Refresh quietly every hour while the app is open
+
+**Privacy note:** we never ask for GPS permission. Cities are resolved on-device via Open-Meteo's free API; coordinates are cached forever so repeated lookups are instant. If you leave the location blank, weather theming is simply off.
+
+### Broke & Rich Moods
+- If your Net Total dips below zero, the number **subtly glitches** — a gentle reminder. It stops the moment you're back in the black.
+- If your Net Total ever exceeds RM 1,000,000, the number gains a **soft gold shimmer**. Yes, we know you made it.
+
+### Konami God Mode (Desktop only)
+On desktop PWA builds, press **↑ ↑ ↓ ↓ ← → ← → B A** on the keyboard. On mobile, tap the avatar on the Hub 7 times in 3 seconds. Either way, god mode activates and your Hub transforms into a fake-rich fantasy across the UI. Re-enter the sequence to disable.
+
 ---
 
-## 6. Tips for Daily Use
+## 6. Power Features (v1.1+)
 
-- **Swipe right** on the Hub to quickly reach any account's full transaction list.
-- **Long-press** a transaction to edit it; swipe left to soft-delete (recoverable for 30 days).
-- **Pull to refresh** on any page to force a Supabase sync.
+### 🔍 Power Search (History page)
+The search bar in **History** understands more than plain text. Combine any of these with a space between them — they AND together:
+
+| What you type | What it does |
+|---|---|
+| `coffee` | Matches "coffee" anywhere in your notes, categories, or accounts |
+| `"morning coffee"` | Quoted phrase — matched as a single exact token |
+| `#food` | Category filter — only show Food-tagged transactions |
+| `@bank` | Account filter — only show transactions in an account named "Bank…" |
+| `>50` | Amount greater than 50 |
+| `<100` | Amount less than 100 |
+| `100-500` | Amount between 100 and 500 (inclusive) |
+| `today`, `yesterday` | Single-day window |
+| `last week`, `this month`, `last month` | Calendar-relative windows |
+| `april 2026`, `2025` | Specific month or year |
+
+**Example:** `#food @bank >50 last week` → Food expenses above RM 50, paid from a "Bank"-labelled account, in the last 7 days.
+
+Unknown tokens just become free-text — don't worry about getting the syntax perfect. The chips under the search bar show exactly what the app understood.
+
+### 👆 Swipe-to-Edit/Delete (History)
+Slide any transaction row **to the left** to reveal Edit (blue) and Delete (red) buttons. Let go and it snaps shut; slide past the halfway mark and it stays open until you tap away. Tapping Delete goes through the usual confirmation step — nothing destructive happens by accident.
+
+Prefer buttons? They still appear when you hover or keyboard-focus a row.
+
+### ⚡ Quick Templates (Long-press FAB)
+Press and **hold** the `+` button at the bottom of the screen for about half a second. A small card pops up with up to 4 of your most-repeated expenses from the last 30 days — tap one to instantly log a transaction with that amount, category, account, and note. No modal, no typing.
+
+If you don't see any templates, log a few expenses first — the feature auto-learns from repetition and needs at least 2 occurrences of a similar purchase to surface it.
+
+### 🧠 Category Auto-Suggest
+As you type the Note field in the transaction modal, the app watches for patterns from your history. If what you're writing looks like something you've always tagged as "Food", a little **✨ Looks like Food?** pill appears above the category picker. Tap it to accept; tap the × to dismiss it for this note only. The app never picks a category behind your back.
+
+The first 5 transactions you save don't trigger suggestions (cold-start protection). After that, it learns with every save and gets better over time.
+
+### 💰 Split-Bill Widget
+If you enable **Claims & Splits** in Profile, any expense you mark as claimable shows up on an amber card on your Home screen:
+
+> **Unclaimed** RM 240.00
+> 5 expenses · 3 payees
+> **Review →**
+
+Tap it to jump straight to the Claims tracker. The "payees" count is inferred from your note text — if you write "Dinner with Alex" as the note, Alex becomes a payee.
+
+### 🧾 Monthly Recap Receipt
+On the **1st through 7th** of each month, your Home screen shows a small "Your monthly receipt is ready" card. Tap it to see last month's recap rendered as an old-school thermal receipt — category breakdown, net saved, top splurge, quiet-day streak, vs-last-month delta, all the stats.
+
+The **Share as PNG** button on the receipt hands it off to WhatsApp, Instagram stories, Gmail, or anything else on your share sheet. It's a perfect 2× retina PNG that fits an Instagram story at 9:16.
+
+You can also generate a receipt manually any time:
+1. Open **Stats**
+2. Scroll to the two receipt cards: **This Month** (mid-month snapshot) or **Last Month**
+3. Tap either to open the receipt viewer
+
+---
+
+## 7. Tips for Daily Use
+
+- **Long-press** the + FAB for instant one-tap repeats of your most common expenses
+- **Swipe left** on any row in History to edit or delete without tapping the card first
+- **Shake your phone** after deleting a transaction to undo — the 🦈 shark confirms it worked
+- **Tap the big balance** on the Hub to reveal/hide it (Zen Mode); it auto-hides again after 5 seconds
+- **Hold the + FAB** to skip the form when you're just logging "the usual"
 - The app works **fully offline**. Log transactions on a plane; they'll sync when you land.
 
 ---

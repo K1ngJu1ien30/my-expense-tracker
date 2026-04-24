@@ -252,7 +252,7 @@ export default function AssetDetailPage() {
               <div className="w-12 h-1.5 bg-border rounded-full mx-auto mb-2 shrink-0 sm:hidden" />
               <div className="flex justify-between items-center">
                 <h3 className="font-bold text-lg text-foreground">Add Maintenance Log</h3>
-                <button onClick={() => setShowAddLog(false)} className="p-1 px-2 bg-muted hover:bg-border rounded-full transition-colors"><X className="w-5 h-5 text-muted-foreground" /></button>
+                <button type="button" aria-label="Close" onClick={() => setShowAddLog(false)} className="p-1 px-2 bg-muted hover:bg-border rounded-full transition-colors"><X className="w-5 h-5 text-muted-foreground" aria-hidden="true" /></button>
               </div>
               <input value={logDesc} onChange={e => setLogDesc(e.target.value)} placeholder="Description (e.g. Replaced battery)" className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" autoFocus />
               <input type="date" value={logDate} onChange={e => setLogDate(e.target.value)} className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" />
@@ -277,7 +277,7 @@ export default function AssetDetailPage() {
               <div className="w-12 h-1.5 bg-border rounded-full mx-auto mb-2 shrink-0 sm:hidden" />
               <div className="flex justify-between items-center">
                 <h3 className="font-bold text-lg text-foreground">Edit Asset</h3>
-                <button onClick={() => setShowEdit(false)} className="p-1 px-2 bg-muted hover:bg-border rounded-full transition-colors"><X className="w-5 h-5 text-muted-foreground" /></button>
+                <button type="button" aria-label="Close" onClick={() => setShowEdit(false)} className="p-1 px-2 bg-muted hover:bg-border rounded-full transition-colors"><X className="w-5 h-5 text-muted-foreground" aria-hidden="true" /></button>
               </div>
               <div>
                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Icon</p>

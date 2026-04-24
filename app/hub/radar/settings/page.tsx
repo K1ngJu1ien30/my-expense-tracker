@@ -90,7 +90,14 @@ export default function RadarSettingsPage() {
     if (!formName.trim()) return triggerToast("Name is required");
     if (formType === "rss" && !formUrl.trim()) return triggerToast("RSS URL is required");
 
-    const payload: any = {
+    // Supabase insert/update payload. `user_id` is only added for inserts below.
+    const payload: {
+      source_type: "rss" | "tmdb_cinema" | "tmdb_streaming";
+      name: string;
+      url: string | null;
+      keywords: string | null;
+      user_id?: string;
+    } = {
       source_type: formType,
       name: formName.trim(),
       url: formType === "rss" ? formUrl.trim() : formType === "tmdb_streaming" ? formProvider : null,
@@ -148,11 +155,13 @@ export default function RadarSettingsPage() {
           <p className="text-xs text-muted-foreground font-medium">Manage your custom feeds & trackers</p>
         </div>
         <button
+          type="button"
+          aria-label="Add radar source"
           onClick={openAdd}
           style={{ backgroundColor: accentColor }}
           className="p-2.5 rounded-xl text-white shadow-sm active:scale-95 transition-transform"
         >
-          <Plus className="w-5 h-5" />
+          <Plus className="w-5 h-5" aria-hidden="true" />
         </button>
       </div>
 
@@ -205,17 +214,21 @@ export default function RadarSettingsPage() {
                   </div>
                   <div className="flex flex-col gap-1.5 shrink-0">
                     <button
+                      type="button"
+                      aria-label={`Edit ${src.name}`}
                       onClick={() => openEdit(src)}
                       style={{ color: accentColor, backgroundColor: `${accentColor}1A` }}
                       className="p-2 rounded-xl transition-colors"
                     >
-                      <Pencil className="w-4 h-4" />
+                      <Pencil className="w-4 h-4" aria-hidden="true" />
                     </button>
                     <button
+                      type="button"
+                      aria-label={`Delete ${src.name}`}
                       onClick={() => handleDelete(src.id, src.name)}
                       className="p-2 bg-red-500/10 rounded-xl text-red-500 hover:bg-red-500/20 transition-colors"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-4 h-4" aria-hidden="true" />
                     </button>
                   </div>
                 </div>
@@ -234,6 +247,7 @@ export default function RadarSettingsPage() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowModal(false)}
+              aria-hidden="true"
               className="absolute inset-0 bg-black/40 backdrop-blur-md"
             />
             <motion.div
@@ -241,12 +255,15 @@ export default function RadarSettingsPage() {
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 30, stiffness: 300 }}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="radar-source-modal-title"
               className="bg-card w-full max-w-lg rounded-t-[2rem] shadow-heavy z-10 p-6 space-y-5 border-t border-border/50 max-h-[85vh] overflow-y-auto"
             >
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold">{editingId ? "Edit Source" : "Add New Source"}</h2>
-                <button onClick={() => setShowModal(false)} className="p-2 bg-muted rounded-xl">
-                  <X className="w-4 h-4 text-foreground" />
+                <h2 id="radar-source-modal-title" className="text-lg font-bold">{editingId ? "Edit Source" : "Add New Source"}</h2>
+                <button type="button" aria-label="Close" onClick={() => setShowModal(false)} className="p-2 bg-muted rounded-xl">
+                  <X className="w-4 h-4 text-foreground" aria-hidden="true" />
                 </button>
               </div>
 

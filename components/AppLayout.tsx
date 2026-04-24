@@ -19,7 +19,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cleanup: (() => void) | undefined;
     try {
-      // @ts-ignore
       import('@capacitor/app').then(({ App }) => {
         App.addListener('backButton', ({ canGoBack }: { canGoBack: boolean }) => {
           if (canGoBack) {
@@ -36,6 +35,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setShowTransactionModal(false);
+    // `setShowTransactionModal` is a stable context setter — re-adding it
+    // to the deps array would cause React 19's linter to suggest wrapping
+    // it in useCallback inside the provider, which is already the case.
+    // Excluded here to keep this effect's intent (reset-on-route-change)
+    // clear.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
   useEffect(() => {
@@ -62,7 +67,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cleanup: (() => void) | undefined;
     try {
-      // @ts-ignore
       import('@capacitor/app').then(({ App }) => {
         App.addListener('appStateChange', ({ isActive }: { isActive: boolean }) => {
           const el = document.getElementById('app-privacy-blur');
@@ -80,11 +84,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="relative mx-auto w-full max-w-md h-[100dvh] lg:min-h-0 lg:h-[844px] lg:my-8 bg-background shadow-2xl flex flex-col overflow-hidden lg:rounded-[3rem] lg:border-[12px] lg:border-white/10 ring-1 ring-black/5 dark:ring-white/10">
       <AuthScreen />
       <InstallPrompt />
+      {/*
+        Toast lives in an ARIA live region so screen readers announce it
+        without stealing focus. `aria-live="polite"` waits for the user to
+        finish their current task before reading it; `role="status"` makes
+        this explicit for older assistive tech.
+      */}
       <AnimatePresence>
         {toast && (
-          <motion.div initial={{ y: -50, opacity: 0}} animate={{ y: 0, opacity: 1}} exit={{ y: -50, opacity: 0 }} className="absolute pt-12 top-0 left-0 right-0 z-[10000] flex justify-center px-4 pointer-events-none">
+          <motion.div initial={{ y: -50, opacity: 0}} animate={{ y: 0, opacity: 1}} exit={{ y: -50, opacity: 0 }} role="status" aria-live="polite" aria-atomic="true" className="absolute pt-12 top-0 left-0 right-0 z-[10000] flex justify-center px-4 pointer-events-none">
             <div className="bg-foreground text-background px-6 py-3 rounded-full shadow-heavy font-bold text-sm tracking-wide flex gap-2 items-center text-center">
-               <span className="text-emerald-400">⚡</span> {toast.message}
+               <span className="text-emerald-400" aria-hidden="true">⚡</span> {toast.message}
             </div>
           </motion.div>
         )}
@@ -97,9 +107,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="relative mx-auto w-full max-w-md h-[100dvh] lg:min-h-0 lg:h-[844px] lg:my-8 bg-background shadow-2xl flex flex-col overflow-hidden lg:rounded-[3rem] lg:border-[12px] lg:border-white/10 ring-1 ring-black/5 dark:ring-white/10">
       <AnimatePresence>
         {toast && (
-          <motion.div initial={{ y: -50, opacity: 0}} animate={{ y: 0, opacity: 1}} exit={{ y: -50, opacity: 0 }} className="absolute pt-12 top-0 left-0 right-0 z-[100] flex justify-center px-4 pointer-events-none">
+          <motion.div initial={{ y: -50, opacity: 0}} animate={{ y: 0, opacity: 1}} exit={{ y: -50, opacity: 0 }} role="status" aria-live="polite" aria-atomic="true" className="absolute pt-12 top-0 left-0 right-0 z-[100] flex justify-center px-4 pointer-events-none">
             <div className="bg-foreground text-background px-6 py-3 rounded-full shadow-heavy font-bold text-sm tracking-wide flex gap-2 items-center text-center">
-               <span className="text-emerald-400">✅</span> {toast.message}
+               <span className="text-emerald-400" aria-hidden="true">✅</span> {toast.message}
             </div>
           </motion.div>
         )}
@@ -112,7 +122,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <InstallPrompt />
       <TransactionModal isOpen={showTransactionModal} onClose={() => setShowTransactionModal(false)} />
       <BottomNav onOpenAdd={() => setShowTransactionModal(true)} />
-      <div id="app-privacy-blur" style={{ display: 'none' }} className="fixed inset-0 z-[10000] bg-background/80 backdrop-blur-2xl pointer-events-none" />
+      <div id="app-privacy-blur" aria-hidden="true" style={{ display: 'none' }} className="fixed inset-0 z-[10000] bg-background/80 backdrop-blur-2xl pointer-events-none" />
     </div>
     </AuthGate>
   );

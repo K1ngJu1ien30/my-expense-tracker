@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, X, DollarSign, Package, TrendingUp, Trash2, Check } from "lucide-react";
+import { Plus, X, DollarSign, Package, TrendingUp, Trash2 } from "lucide-react";
 import { useAppContext } from "@/lib/context";
 
 export default function TradingPage() {
@@ -191,7 +191,7 @@ export default function TradingPage() {
               <div className="w-12 h-1.5 bg-border rounded-full mx-auto mb-2 shrink-0 sm:hidden" />
               <div className="flex justify-between items-center">
                 <h3 className="font-bold text-lg text-foreground">Add Trade Item</h3>
-                <button onClick={() => setShowAddModal(false)} className="p-1 px-2 bg-muted hover:bg-border rounded-full transition-colors"><X className="w-5 h-5 text-muted-foreground" /></button>
+                <button type="button" aria-label="Close" onClick={() => setShowAddModal(false)} className="p-1 px-2 bg-muted hover:bg-border rounded-full transition-colors"><X className="w-5 h-5 text-muted-foreground" aria-hidden="true" /></button>
               </div>
               <input
                 value={newName}

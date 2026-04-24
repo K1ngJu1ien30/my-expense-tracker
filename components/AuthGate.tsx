@@ -8,7 +8,6 @@ import { NativeHaptics } from "@/lib/haptics";
 
 async function isNative(): Promise<boolean> {
   try {
-    // @ts-ignore - Capacitor core may not exist in web builds
     const { Capacitor } = await import("@capacitor/core");
     return Capacitor.isNativePlatform();
   } catch {
@@ -19,7 +18,6 @@ async function isNative(): Promise<boolean> {
 async function getStoredPin(): Promise<string | null> {
   try {
     if (await isNative()) {
-      // @ts-ignore - Native plugin, not available in web builds
       const { Preferences } = await import("@capacitor/preferences");
       const { value } = await Preferences.get({ key: "app_lock_pin" });
       return value;
@@ -32,7 +30,6 @@ async function getStoredPin(): Promise<string | null> {
 async function setStoredPin(pin: string): Promise<void> {
   try {
     if (await isNative()) {
-      // @ts-ignore - Native plugin, not available in web builds
       const { Preferences } = await import("@capacitor/preferences");
       await Preferences.set({ key: "app_lock_pin", value: pin });
       return;
@@ -44,7 +41,6 @@ async function setStoredPin(pin: string): Promise<void> {
 async function tryBiometric(): Promise<boolean> {
   try {
     if (!(await isNative())) return false;
-    // @ts-ignore - Native plugin, not available in web builds
     const { BiometricAuth } = await import("@aparajita/capacitor-biometric-auth");
     if (!BiometricAuth) return false;
     await BiometricAuth.authenticate({
@@ -62,7 +58,6 @@ async function tryBiometric(): Promise<boolean> {
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const { isPinEnabled, isBiometricEnabled, session, authLoading } = useAppContext();
   const [isLocked, setIsLocked] = useState(true);
-  const [showPinPad, setShowPinPad] = useState(false);
   const [pinInput, setPinInput] = useState("");
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(true);
@@ -77,13 +72,18 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     if (!session || authLoading) return;
 
     if (!isPinEnabled) {
+      // PIN-gate disabled → unlock synchronously. This is a legitimate
+      // "sync external config into UI lock state" pattern; it runs once
+      // per toggle so there's no cascading-render risk.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsLocked(false);
+       
       setChecking(false);
       return;
     }
 
+     
     setChecking(true);
-    setShowPinPad(false);
     const attemptUnlock = async () => {
       if (isBiometricEnabled) {
         const success = await tryBiometric();
@@ -93,8 +93,8 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
           return;
         }
       }
-      // Only show PIN pad if biometric was not attempted or failed
-      setShowPinPad(true);
+      // Biometric not available or failed — fall through to PIN pad
+      // (the locked UI below is always rendered whenever checking=false).
       setChecking(false);
     };
     attemptUnlock();
@@ -143,24 +143,25 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[9999] bg-background flex flex-col items-center justify-center p-6">
+    <div role="dialog" aria-modal="true" aria-labelledby="app-lock-title" className="fixed inset-0 z-[9999] bg-background flex flex-col items-center justify-center p-6">
       <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         className="flex flex-col items-center w-full max-w-xs"
       >
         <div className="bg-primary/10 p-5 rounded-3xl mb-6">
-          <ShieldCheck className="w-10 h-10 text-primary" />
+          <ShieldCheck className="w-10 h-10 text-primary" aria-hidden="true" />
         </div>
 
-        <h2 className="text-xl font-black text-foreground mb-1">App Locked</h2>
+        <h2 id="app-lock-title" className="text-xl font-black text-foreground mb-1">App Locked</h2>
         <p className="text-sm text-muted-foreground font-medium mb-8">Enter your 6-digit PIN to unlock</p>
 
-        {/* PIN Dots */}
-        <div className="flex gap-3 mb-8">
+        {/* PIN Dots — `aria-live="polite"` announces progress to screen readers as each digit is entered. */}
+        <div className="flex gap-3 mb-8" role="status" aria-live="polite" aria-label={`${pinInput.length} of 6 digits entered`}>
           {Array.from({ length: 6 }).map((_, i) => (
             <motion.div
               key={i}
+              aria-hidden="true"
               animate={error && i === 0 ? { x: [0, -8, 8, -4, 4, 0] } : {}}
               transition={{ duration: 0.4 }}
               className={`w-4 h-4 rounded-full border-2 transition-all ${
@@ -178,6 +179,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
               initial={{ opacity: 0, y: -5 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
+              role="alert"
               className="text-rose-500 text-xs font-bold mb-4"
             >
               {error}
@@ -190,6 +192,8 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
           {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map(digit => (
             <button
               key={digit}
+              type="button"
+              aria-label={`PIN digit ${digit}`}
               onClick={() => handlePinDigit(digit)}
               className="h-16 rounded-2xl bg-card border border-border/50 text-2xl font-bold text-foreground hover:bg-muted active:scale-95 transition-all shadow-sm"
             >
@@ -197,22 +201,28 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
             </button>
           ))}
           <button
+            type="button"
+            aria-label="Use biometric authentication"
             onClick={retryBiometric}
             className="h-16 rounded-2xl bg-card border border-border/50 flex items-center justify-center text-primary hover:bg-muted active:scale-95 transition-all shadow-sm"
           >
-            <Fingerprint className="w-6 h-6" />
+            <Fingerprint className="w-6 h-6" aria-hidden="true" />
           </button>
           <button
+            type="button"
+            aria-label="PIN digit 0"
             onClick={() => handlePinDigit("0")}
             className="h-16 rounded-2xl bg-card border border-border/50 text-2xl font-bold text-foreground hover:bg-muted active:scale-95 transition-all shadow-sm"
           >
             0
           </button>
           <button
+            type="button"
+            aria-label="Delete last digit"
             onClick={handleDelete}
             className="h-16 rounded-2xl bg-card border border-border/50 flex items-center justify-center text-muted-foreground hover:bg-muted active:scale-95 transition-all shadow-sm"
           >
-            <Delete className="w-6 h-6" />
+            <Delete className="w-6 h-6" aria-hidden="true" />
           </button>
         </div>
       </motion.div>

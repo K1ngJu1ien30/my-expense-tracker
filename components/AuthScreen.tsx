@@ -42,8 +42,9 @@ export default function AuthScreen() {
                 if (error) throw error;
                 triggerToast("Account created successfully! Check your email.");
             }
-        } catch (error: any) {
-            triggerToast(error.message || "Failed to authenticate.");
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : "Failed to authenticate.";
+            triggerToast(message);
             if(navigator.vibrate) navigator.vibrate([20, 20, 20]);
         } finally {
             setLoading(false);
@@ -56,7 +57,7 @@ export default function AuthScreen() {
                 
                 <div className="flex justify-center mb-6">
                     <div style={{ backgroundColor: `${accentColor}1A`, color: accentColor }} className="p-4 rounded-full border border-border/50">
-                        <Sparkles className="w-8 h-8" />
+                        <Sparkles className="w-8 h-8" aria-hidden="true" />
                     </div>
                 </div>
 
@@ -69,10 +70,12 @@ export default function AuthScreen() {
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div className="relative">
-                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <input 
-                            type="email" 
-                            placeholder="Email address" 
+                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                        <input
+                            type="email"
+                            placeholder="Email address"
+                            aria-label="Email address"
+                            autoComplete="email"
                             value={email}
                             onChange={e=>setEmail(e.target.value)}
                             className="w-full bg-muted/60 text-sm font-semibold pl-11 pr-4 py-3.5 rounded-xl border border-border focus:border-primary outline-none transition-colors"
@@ -83,10 +86,12 @@ export default function AuthScreen() {
                     <AnimatePresence>
                       {!isReset && (
                         <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="relative">
-                            <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                            <input 
-                                type="password" 
-                                placeholder="Password" 
+                            <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                            <input
+                                type="password"
+                                placeholder="Password"
+                                aria-label="Password"
+                                autoComplete={isLogin ? "current-password" : "new-password"}
                                 value={password}
                                 onChange={e=>setPassword(e.target.value)}
                                 className="w-full bg-muted/60 text-sm font-semibold pl-11 pr-4 py-3.5 rounded-xl border border-border focus:border-primary outline-none transition-colors"
@@ -104,14 +109,14 @@ export default function AuthScreen() {
                         </div>
                     )}
 
-                    <button 
+                    <button
                         disabled={loading}
                         type="submit"
                         style={{ backgroundColor: accentColor, boxShadow: `0 0 20px ${accentColor}60` }}
                         className="w-full text-white py-4 mt-2 rounded-xl font-bold active:scale-[0.98] transition-all flex justify-center items-center gap-2"
                     >
                         {loading ? "Processing..." : (isReset ? "Send Reset Link" : (isLogin ? "Sign In" : "Sign Up"))}
-                        {!loading && !isReset && <Lock className="w-4 h-4" />}
+                        {!loading && !isReset && <Lock className="w-4 h-4" aria-hidden="true" />}
                     </button>
                 </form>
 

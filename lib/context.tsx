@@ -1,116 +1,55 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from "react";
 import { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
-import { NativeHaptics } from "./haptics";
 import { motion, AnimatePresence } from "framer-motion";
-import { Capacitor } from '@capacitor/core';
-import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import localforage from "localforage";
+import type {
+  Goal,
+  Subscription,
+  Transaction,
+  ToastType,
+  PlannerItem,
+  Asset,
+  AssetLog,
+  TradeItem,
+  Account,
+} from "./types";
+import { useEasterEggsUI } from "./hooks/useEasterEggsUI";
+import { useUIState } from "./hooks/useUIState";
+import { useUserPreferences } from "./hooks/useUserPreferences";
+import { useAccountsState } from "./hooks/useAccountsState";
+import { useSyncState } from "./hooks/useSyncState";
+import { useMoneyState } from "./hooks/useMoneyState";
+import { usePlanningState } from "./hooks/usePlanningState";
+import { useModulesData } from "./hooks/useModulesData";
 
-// Configure localforage for IndexedDB
-localforage.config({
-  name: 'tracker',
-  storeName: 'app_cache',
-  driver: [localforage.INDEXEDDB, localforage.LOCALSTORAGE],
-});
-
-export type Goal = {
-  id: string;
-  title: string;
-  subtitle: string;
-  current: number;
-  target: number;
-  isPinned: boolean;
-  color: string;
-  bg: string;
-  iconName: string;
-  user_id?: string;
+// Re-export for backward compatibility — existing pages import from "@/lib/context".
+// Keeping this until we move everything to direct type imports from "@/lib/types".
+export type {
+  Goal,
+  Subscription,
+  Transaction,
+  ToastType,
+  PlannerItem,
+  Asset,
+  AssetLog,
+  TradeItem,
+  Account,
 };
 
-export type Subscription = { 
-  id: string; 
-  name: string; 
-  cost: number; 
-  icon: string; 
-  bg: string; 
-  color: string; 
-  autoDeduct?: boolean; 
-  billingDay?: number; 
-  sourceAccount?: string; 
-  type?: string;
-  user_id?: string; 
-};
-
-export type Transaction = { 
-  id: string; 
-  type: string; 
-  amount: number; 
-  category: string; 
-  sub_category?: string;
-  account: string; 
-  to_account?: string;
-  date: string; 
-  note?: string; 
-  user_id?: string;
-  status?: string;
-  is_claimable?: boolean;
-  claim_status?: string;
-  deleted_at?: string | null;
-};
-
-export type ToastType = { message: string; id: number } | null;
-
-export type PlannerItem = {
-  id: string;
-  category: string;
-  item_name: string;
-  amount: number;
-  user_id?: string;
-};
-
-export type Asset = {
-  id: string;
-  name: string;
-  category: string;
-  emoji_icon: string;
-  purchase_date: string;
-  purchase_price: number;
-  user_id?: string;
-};
-
-export type AssetLog = {
-  id: string;
-  asset_id: string;
-  log_date: string;
-  description: string;
-  cost: number;
-};
-
-export type TradeItem = {
-  id: string;
-  item_name: string;
-  buy_price: number;
-  sell_price: number | null;
-  status: 'held' | 'sold';
-  date_acquired: string;
-  date_sold: string | null;
-  user_id?: string;
-};
-
-export type Account = {
-  name: string;
-  currencyCode: string;
-  isArchived: boolean;
-};
-
-type ConfirmState = {
-  isOpen: boolean;
-  title: string;
-  message: string;
-  onConfirm: () => void;
-};
+// Configure localforage for IndexedDB.
+// Browser-only guard: during Next.js SSR there's no IndexedDB or localStorage,
+// so calling this on the server produces a noisy "No available storage method
+// found" rejection. We defer config to the client where it actually works.
+if (typeof window !== "undefined") {
+  localforage.config({
+    name: 'tracker',
+    storeName: 'app_cache',
+    driver: [localforage.INDEXEDDB, localforage.LOCALSTORAGE],
+  });
+}
 
 type AppContextType = {
   userName: string;
@@ -162,7 +101,7 @@ type AppContextType = {
   authLoading: boolean;
   includeSavings: boolean;
   toggleIncludeSavings: (val: boolean) => void;
-  session: any | null; // using any to avoid import issues if not already there, but wait, it's Session | null in this file originally.
+  session: Session | null;
   confirmAction: (title: string, message: string, onConfirm: () => void) => void;
   enableFoodBudget: boolean;
   toggleFoodBudget: (val: boolean) => void;
@@ -204,7 +143,18 @@ type AppContextType = {
   whaleAlert: boolean;
   sharkUndo: boolean;
   derryActive: boolean;
+  penguinAlert: boolean;
+  dragonAlert: boolean;
+  phoenixAlert: boolean;
   triggerDerry: () => void;
+  enableTimeBasedGreeting: boolean;
+  toggleTimeBasedGreeting: (val: boolean) => Promise<void>;
+  enableFridayThe13th: boolean;
+  toggleFridayThe13th: (val: boolean) => Promise<void>;
+  primaryLocation: string;
+  setPrimaryLocation: (val: string) => Promise<void>;
+  secondaryLocation: string;
+  setSecondaryLocation: (val: string) => Promise<void>;
 };
 
 export const AppContext = createContext<AppContextType | null>(null);
@@ -214,292 +164,261 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [authLoading, setAuthLoading] = useState(true);
   const [isHydrating, setIsHydrating] = useState(true);
 
-  const [userName, setUserNameRaw] = useState("User");
-  const [currency, setCurrency] = useState("RM");
+  // ─── User preferences + feature flags (persisted to user_metadata) ──────
+  const prefs = useUserPreferences(session);
+  const {
+    userName, setUserName,
+    currency, setCurrency,
+    billingCycle, setBillingCycle,
+    dailyReminder, setDailyReminder,
+    reminderTime, setReminderTime,
+    accentColor, setAccentColor,
+    includeSavings, toggleIncludeSavings,
+    enableFoodBudget, toggleFoodBudget,
+    enableSalaryPlanner, toggleSalaryPlanner,
+    foodDailyLimit, setFoodDailyLimit,
+    foodMonthlyLimit, setFoodMonthlyLimit,
+    isPinEnabled, togglePin,
+    isBiometricEnabled, toggleBiometric,
+    isVaultEnabled, toggleVault,
+    isRadarEnabled, toggleRadar,
+    isClaimsEnabled, toggleClaims,
+    isTradingEnabled, toggleTrading,
+    enableTimeBasedGreeting, toggleTimeBasedGreeting,
+    enableFridayThe13th, toggleFridayThe13th,
+    primaryLocation, setPrimaryLocation,
+    secondaryLocation, setSecondaryLocation,
+  } = prefs;
+
+  // ─── Remaining non-preference state ─────────────────────────────────────
   const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({});
-  const [billingCycle, setBillingCycle] = useState("1");
-  const [dailyReminder, setDailyReminder] = useState(false);
-  const [reminderTime, setReminderTime] = useState("20:00");
-  const [categories, setCategoriesRaw] = useState<string[]>(() => {
-    // Sync fallback for initial render — localforage hydrates async below
-    if (typeof window !== "undefined") {
-      try {
-        const cached = localStorage.getItem('tracker_data_cache');
-        if (cached) {
-          const data = JSON.parse(cached);
-          if (Array.isArray(data.categories) && data.categories.length > 0) {
-            return data.categories;
-          }
-        }
-      } catch {}
-    }
-    return ["Food", "Transport", "Entertainment", "Shopping", "Bills", "Family", "Subs"];
-  });
 
-  // Async hydration from localforage (overrides sync localStorage if available)
-  useEffect(() => {
-    localforage.getItem<any>('tracker_data_cache').then(data => {
-      if (data?.categories?.length) setCategoriesRaw(data.categories);
-    }).catch(() => {});
-  }, []);
+  // ─── Accounts + Categories (extracted to hooks/useAccountsState) ────────
+  const {
+    accountObjects,
+    setAccountObjects,
+    accounts,
+    setAccounts,
+    addAccount,
+    renameAccount,
+    deleteAccount,
+    toggleArchiveAccount,
+    reorderAccounts,
+    categories,
+    setCategoriesRaw,
+    setCategories,
+    addCategory,
+    deleteCategory,
+    categoriesRef,
+  } = useAccountsState(session);
 
-  // Ref to always capture latest categories for cache saves (avoids stale closure in refreshData)
-  const categoriesRef = React.useRef(categories);
-  useEffect(() => { categoriesRef.current = categories; }, [categories]);
+  // ─── Remaining app-level state moved to dedicated CRUD hooks below ──────
 
-  const [includeSavings, setIncludeSavingsRaw] = useState(true);
+  // ─── Easter Eggs (UI state extracted to hooks/useEasterEggsUI) ──────────
+  const {
+    isGodMode,
+    whaleAlert,
+    sharkUndo,
+    derryActive,
+    penguinAlert,
+    dragonAlert,
+    phoenixAlert,
+    triggerWhaleAlert,
+    maybeTriggerPenguinAlert,
+    triggerDragonAlert,
+    triggerPhoenixAlert,
+    triggerDerry,
+    showSharkUndo,
+    deletedItemCacheRef,
+    cacheDeletedItem,
+    clearCacheTimeout,
+  } = useEasterEggsUI();
 
-  const [enableFoodBudget, setEnableFoodBudgetRaw] = useState(false);
-  const [enableSalaryPlanner, setEnableSalaryPlannerRaw] = useState(false);
-  const [foodDailyLimit, setFoodDailyLimitRaw] = useState(0);
-  const [foodMonthlyLimit, setFoodMonthlyLimitRaw] = useState(0);
-  const [plannerItems, setPlannerItems] = useState<PlannerItem[]>([]);
-  const [isPinEnabled, setIsPinEnabledRaw] = useState(false);
-  const [isBiometricEnabled, setIsBiometricEnabledRaw] = useState(false);
-  const [assets, setAssets] = useState<Asset[]>([]);
-  const [isVaultEnabled, setIsVaultEnabledRaw] = useState(false);
-  const [isRadarEnabled, setIsRadarEnabledRaw] = useState(false);
-  const [isClaimsEnabled, setIsClaimsEnabledRaw] = useState(false);
-  const [isTradingEnabled, setIsTradingEnabledRaw] = useState(false);
-  const [tradeItems, setTradeItems] = useState<TradeItem[]>([]);
-  const [isOffline, setIsOffline] = useState(false);
-
-  // Easter Egg States
-  const [isGodMode] = useState(() => typeof window !== "undefined" && localStorage.getItem("god_mode") === "true");
-  const [whaleAlert, setWhaleAlert] = useState(false);
-  const [sharkUndo, setSharkUndo] = useState(false);
-  const [derryActive, setDerryActive] = useState(false);
-  const deletedItemCacheRef = React.useRef<{ type: string; item: any; timeout: NodeJS.Timeout } | null>(null);
-
-  const triggerWhaleAlert = () => {
-    setWhaleAlert(true);
-    NativeHaptics.heavyDoubleThud();
-    setTimeout(() => setWhaleAlert(false), 2000);
-  };
-
-  const triggerDerry = () => {
-    setDerryActive(true);
-    document.body.classList.add('derry-active');
-    NativeHaptics.creepyHeartbeat();
-    setTimeout(() => {
-      document.body.classList.remove('derry-active');
-      setDerryActive(false);
-    }, 8000);
-  };
-
+  // Shark-undo restore — lives here because it needs access to the CRUD
+  // setters from multiple domains (transactions, goals, trade items, assets).
   const triggerSharkUndo = async () => {
     const cached = deletedItemCacheRef.current;
     if (!cached) return;
-    clearTimeout(cached.timeout);
-    deletedItemCacheRef.current = null;
-
-    NativeHaptics.successMedium();
-    setSharkUndo(true);
-    setTimeout(() => setSharkUndo(false), 1500);
+    clearCacheTimeout();
+    showSharkUndo();
 
     try {
       const { type, item } = cached;
       if (type === "transaction") {
-        const { id, ...rest } = item;
+        const { id: _id, ...rest } = item as Transaction;
         const { data } = await supabase.from("transactions").insert(rest).select().single();
         if (data) setTransactions(prev => [data as Transaction, ...prev]);
       } else if (type === "goal") {
-        const { id, subtitle, color, bg, iconName, ...rest } = item;
-        const payload = { title: rest.title, current_amount: rest.current || 0, target_amount: rest.target, is_pinned: rest.isPinned || false, user_id: rest.user_id };
+        const g = item as Goal;
+        const payload = { title: g.title, current_amount: g.current || 0, target_amount: g.target, is_pinned: g.isPinned || false, user_id: g.user_id };
         const { data } = await supabase.from("goals").insert(payload).select().single();
-        if (data) setGoals(prev => [{ ...item, id: data.id } as Goal, ...prev]);
+        if (data) setGoals(prev => [{ ...g, id: data.id } as Goal, ...prev]);
       } else if (type === "trade") {
-        const { id, ...rest } = item;
+        const { id: _id, ...rest } = item as TradeItem;
         const { data } = await supabase.from("trade_items").insert(rest).select().single();
         if (data) setTradeItems(prev => [data as TradeItem, ...prev]);
       } else if (type === "asset") {
-        const { id, ...rest } = item;
+        const { id: _id, ...rest } = item as Asset;
         const { data } = await supabase.from("asset_vault").insert(rest).select().single();
         if (data) setAssets(prev => [data as Asset, ...prev]);
       }
       triggerToast("🦈 Undo successful!");
+      // 🔥 Phoenix rises — decorative flourish when a transaction/goal/asset
+      // is resurrected from the 5-second undo cache. Runs in parallel with
+      // the shark swim-by without blocking.
+      triggerPhoenixAlert();
     } catch {
       triggerToast("Undo failed.");
     }
-  };
-
-  const cacheDeletedItem = (type: string, item: any) => {
-    if (deletedItemCacheRef.current) clearTimeout(deletedItemCacheRef.current.timeout);
-    const timeout = setTimeout(() => { deletedItemCacheRef.current = null; }, 5000);
-    deletedItemCacheRef.current = { type, item, timeout };
   };
 
   // Shake-to-Undo: Listen for device acceleration
   useEffect(() => {
     let cleanup: (() => void) | undefined;
     try {
-      // @ts-ignore
       import('@capacitor/motion').then(({ Motion }) => {
         let lastShake = 0;
-        const listener = Motion.addListener('accel', (event: any) => {
-          const { x, y, z } = event.acceleration || event;
+        type AccelEvent = { x?: number; y?: number; z?: number; acceleration?: { x: number; y: number; z: number } };
+        const listener = Motion.addListener('accel', (event: AccelEvent) => {
+          const src = event.acceleration || event;
+          const x = src.x ?? 0;
+          const y = src.y ?? 0;
+          const z = src.z ?? 0;
           const magnitude = Math.sqrt(x * x + y * y + z * z);
           if (magnitude > 25 && Date.now() - lastShake > 2000) {
             lastShake = Date.now();
             if (deletedItemCacheRef.current) triggerSharkUndo();
           }
         });
-        cleanup = () => { listener.then((l: any) => l.remove?.()).catch(() => {}); };
+        cleanup = () => { listener.then((l: { remove?: () => void }) => l.remove?.()).catch(() => {}); };
       }).catch(() => {});
     } catch {}
     return () => { if (cleanup) cleanup(); };
+    // `deletedItemCacheRef` is a ref (stable by contract) and
+    // `triggerSharkUndo` closes over the same ref — rebinding the motion
+    // listener on every callback identity change would rip the accelerometer
+    // subscription up/down on every render. Mount-once is correct.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Capgo OTA Safe Boot Trigger
+  // Removed: app ships as a full APK per release, no over-the-air updates,
+  // so there is no pending bundle to "confirm ready" to the updater plugin.
+
+  // ─── UI State (toast, confirm modal, modal flags) ───────────────────────
+  const {
+    toast,
+    triggerToast,
+    confirmState,
+    confirmAction,
+    closeConfirm,
+    editTransactionId,
+    setEditTransactionId,
+    activeAssetId,
+    setActiveAssetId,
+    showTransactionModal,
+    setShowTransactionModal,
+  } = useUIState();
+
+  // Forward-declared ref for `isOffline` so useMoneyState can read it lazily.
+  // useSyncState (declared below) keeps this ref synced via a useEffect.
+  const isOfflineRef = React.useRef(false);
+
+  // ─── Planning state (goals + plannerItems + their CRUD) ─────────────────
+  const {
+    goals,
+    setGoals,
+    plannerItems,
+    setPlannerItems,
+    addGoal,
+    updateGoal,
+    deleteGoal,
+    addPlannerItem,
+    deletePlannerItem,
+  } = usePlanningState({ session, cacheDeletedItem, triggerDragonAlert });
+
+  // ─── Modules data (assets + tradeItems + their CRUD) ────────────────────
+  const {
+    assets,
+    setAssets,
+    tradeItems,
+    setTradeItems,
+    addAsset,
+    updateAsset,
+    deleteAsset,
+    addTradeItem,
+    updateTradeItem,
+    deleteTradeItem,
+  } = useModulesData({ session, triggerWhaleAlert, cacheDeletedItem });
+
+  // ─── Money state (transactions, subscriptions, utilities + their CRUD) ──
+  const {
+    transactions,
+    setTransactions,
+    subscriptions,
+    setSubscriptions,
+    utilities,
+    setUtilities,
+    addTransaction,
+    updateTransaction,
+    deleteTransaction,
+    addSubscription,
+    updateSubscription,
+    deleteSubscription,
+    addUtility,
+    updateUtility,
+    deleteUtility,
+  } = useMoneyState({
+    session,
+    isOfflineRef,
+    triggerToast,
+    triggerWhaleAlert,
+    maybeTriggerPenguinAlert,
+    cacheDeletedItem,
+  });
+
+  // ─── Sync layer (refreshData, offline queue, network listeners) ─────────
+  const { isOffline, refreshData, syncOfflineQueue: _syncOfflineQueue } = useSyncState(session, {
+    setTransactions,
+    setGoals,
+    setSubscriptions,
+    setUtilities,
+    setPlannerItems,
+    setAssets,
+    setTradeItems,
+    setAccountObjects,
+    setCategoriesRaw,
+    setCategories,
+    triggerToast,
+    categoriesRef,
+  });
+  // Suppress unused-var warning — the hook owns this internally; we expose
+  // it here only for completeness in case future code paths need to trigger
+  // a manual sync.
+  void _syncOfflineQueue;
+
+  // Keep isOfflineRef synced with the live isOffline state for lazy reads
+  // inside useMoneyState callbacks.
   useEffect(() => {
-    if (Capacitor.isNativePlatform()) {
-      CapacitorUpdater.notifyAppReady();
-    }
-  }, []);
+    isOfflineRef.current = isOffline;
+  }, [isOffline]);
 
-  const toggleIncludeSavings = async (val: boolean) => {
-    setIncludeSavingsRaw(val);
-    if (session?.user) {
-       await supabase.auth.updateUser({ data: { include_savings: val } });
-    }
-  };
+  // Theming: accentColor is owned by useUserPreferences (see top of provider)
 
-  const toggleFoodBudget = async (val: boolean) => {
-    setEnableFoodBudgetRaw(val);
-    if (session?.user) await supabase.auth.updateUser({ data: { enable_food_budget: val } });
-  };
-  const toggleSalaryPlanner = async (val: boolean) => {
-    setEnableSalaryPlannerRaw(val);
-    if (session?.user) await supabase.auth.updateUser({ data: { enable_salary_planner: val } });
-  };
-  const setFoodDailyLimit = async (val: number) => {
-    setFoodDailyLimitRaw(val);
-    if (session?.user) await supabase.auth.updateUser({ data: { food_daily_limit: val } });
-  };
-  const setFoodMonthlyLimit = async (val: number) => {
-    setFoodMonthlyLimitRaw(val);
-    if (session?.user) await supabase.auth.updateUser({ data: { food_monthly_limit: val } });
-  };
-  const toggleAppLock = async (val: boolean) => {
-    setIsPinEnabledRaw(val);
-    if (!val) setIsBiometricEnabledRaw(false);
-    if (session?.user) {
-      const data: Record<string, boolean> = { pin_enabled: val };
-      if (!val) data.biometric_enabled = false;
-      await supabase.auth.updateUser({ data });
-    }
-  };
-  const togglePin = toggleAppLock;
-  const toggleBiometric = async (val: boolean) => {
-    setIsBiometricEnabledRaw(val);
-    if (session?.user) await supabase.auth.updateUser({ data: { biometric_enabled: val } });
-  };
-
-  const [toast, setToast] = useState<ToastType>(null);
-  const triggerToast = (message: string) => {
-    const id = Date.now();
-    setToast({ message, id });
-    setTimeout(() => setToast(prev => prev?.id === id ? null : prev), 3000);
-  };
-
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
-  const [utilities, setUtilities] = useState<Subscription[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [goals, setGoals] = useState<Goal[]>([]);
-  
-  const [accountObjects, setAccountObjects] = useState<Account[]>([
-    { name: "Bank", currencyCode: "RM", isArchived: false },
-    { name: "Cash", currencyCode: "RM", isArchived: false },
-    { name: "eWallet", currencyCode: "RM", isArchived: false }
-  ]);
-  const [editTransactionId, setEditTransactionId] = useState<string | null>(null);
-  const [activeAssetId, setActiveAssetId] = useState<string | null>(null);
-  const [showTransactionModal, setShowTransactionModal] = useState(false);
-  
-  const [confirmState, setConfirmState] = useState<ConfirmState>({ isOpen: false, title: "", message: "", onConfirm: () => {} });
-
-  const confirmAction = (title: string, message: string, onConfirm: () => void) => {
-    setConfirmState({ isOpen: true, title, message, onConfirm });
-  };
-
-  // Safe Migration: convert old string[] or old { name, isArchived } accounts to full Account objects
-  const migrateAccounts = (raw: any[]): Account[] => {
-    if (!Array.isArray(raw) || raw.length === 0) return [
-      { name: "Bank", currencyCode: "RM", isArchived: false },
-      { name: "Cash", currencyCode: "RM", isArchived: false },
-      { name: "eWallet", currencyCode: "RM", isArchived: false }
-    ];
-    return raw.map(acc => {
-      if (typeof acc === 'string') return { name: acc, currencyCode: "RM", isArchived: false };
-      // Backfill currencyCode for old objects missing it
-      return { name: acc.name, currencyCode: acc.currencyCode || "RM", isArchived: acc.isArchived ?? false } as Account;
-    });
-  };
-
-  // Derived: non-archived account names for consumers
-  const accounts = accountObjects.filter(a => !a.isArchived).map(a => a.name);
-
-  // Compat setter for consumers that pass string[]
-  const setAccounts = (val: string[]) => {
-    setAccountObjects(migrateAccounts(val));
-  };
-
-  const handleUpdateAccounts = async (newAccountsArray: Account[]) => {
-    setAccountObjects(newAccountsArray);
-    if (session?.user) {
-      await supabase.auth.updateUser({ data: { custom_accounts: newAccountsArray } });
-    }
-  };
-  const reorderAccounts = async (names: string[]) => {
-    // Rebuild full objects in new order, preserving isArchived, then append archived ones
-    const archivedAccounts = accountObjects.filter(a => a.isArchived);
-    const reordered = names.map(name => accountObjects.find(a => a.name === name) || { name, currencyCode: "RM", isArchived: false });
-    await handleUpdateAccounts([...reordered, ...archivedAccounts]);
-  };
-
-  const addAccount = (acc: string, currencyCode: string = "RM") => handleUpdateAccounts([...accountObjects, { name: acc, currencyCode, isArchived: false }]);
-  const renameAccount = (old: string, next: string) => handleUpdateAccounts(accountObjects.map(a => a.name === old ? { ...a, name: next } : a));
-  const deleteAccount = (acc: string) => handleUpdateAccounts(accountObjects.filter(a => a.name !== acc));
-  const toggleArchiveAccount = (name: string) => handleUpdateAccounts(accountObjects.map(a => a.name === name ? { ...a, isArchived: !a.isArchived } : a));
-
-  const persistCategories = async (newCats: string[]) => {
-    try {
-      // Async: update IndexedDB cache
-      const data: any = await localforage.getItem('tracker_data_cache') || {};
-      data.categories = newCats;
-      await localforage.setItem('tracker_data_cache', data);
-    } catch {}
-    try {
-      // Sync fallback: update localStorage for cold boot useState initializer
-      const raw = localStorage.getItem('tracker_data_cache');
-      const lsData = raw ? JSON.parse(raw) : {};
-      lsData.categories = newCats;
-      localStorage.setItem('tracker_data_cache', JSON.stringify(lsData));
-    } catch {}
-  };
-
-  const setCategories = (cats: string[] | ((prev: string[]) => string[])) => {
-    setCategoriesRaw(prev => {
-      const next = typeof cats === 'function' ? cats(prev) : cats;
-      persistCategories(next);
-      return next;
-    });
-  };
-
-  const addCategory = (cat: string) => setCategories(prev => [...prev, cat]);
-  const deleteCategory = (cat: string) => setCategories(prev => prev.filter(c => c !== cat));
-
-  // Theming
-  const [accentColor, setAccentColor] = useState("#3b82f6");
-
-  // Currency formatter — integer math to avoid floating-point errors
-  const formatCurrency = (amount: number) => {
-    const cents = Math.round(amount * 100);
-    const whole = Math.floor(Math.abs(cents) / 100);
-    const remainder = Math.abs(cents) % 100;
-    const sign = cents < 0 ? '-' : '';
-    return `${currency} ${sign}${whole.toLocaleString()}.${String(remainder).padStart(2, '0')}`;
-  };
+  // Currency formatter — integer math to avoid floating-point errors.
+  // Wrapped in useCallback so downstream components that receive
+  // `formatCurrency` as a prop / dep can keep their memoised derivations
+  // stable across provider re-renders (e.g. analytics' useMemo chains).
+  const formatCurrency = useCallback(
+    (amount: number) => {
+      const cents = Math.round(amount * 100);
+      const whole = Math.floor(Math.abs(cents) / 100);
+      const remainder = Math.abs(cents) % 100;
+      const sign = cents < 0 ? "-" : "";
+      return `${currency} ${sign}${whole.toLocaleString()}.${String(remainder).padStart(2, "0")}`;
+    },
+    [currency]
+  );
 
   // Exchange rate fetch — non-blocking, cached for offline
   const fetchExchangeRates = async () => {
@@ -521,6 +440,64 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Fetch rates on mount
   useEffect(() => { fetchExchangeRates(); }, []);
+
+  // 🎃 Friday the 13th — auto-trigger the Derry horror sequence at 13:13
+  // local time on any Friday the 13th, behind the `enableFridayThe13th` flag
+  // in Profile so it's opt-in. Fires at most once per calendar day via a
+  // localStorage guard.
+  useEffect(() => {
+    if (!enableFridayThe13th) return;
+    if (typeof window === "undefined") return;
+    const check = () => {
+      const now = new Date();
+      if (now.getDay() !== 5) return; // Friday only (0=Sun..5=Fri)
+      if (now.getDate() !== 13) return;
+      if (now.getHours() !== 13 || now.getMinutes() !== 13) return;
+      const key = `derry_fired_${now.toISOString().slice(0, 10)}`;
+      if (localStorage.getItem(key) === "true") return;
+      localStorage.setItem(key, "true");
+      triggerDerry();
+    };
+    // Check immediately on mount (covers opening the app AT 13:13), then
+    // poll every 30s so we don't miss the minute boundary.
+    check();
+    const interval = setInterval(check, 30000);
+    return () => clearInterval(interval);
+  }, [enableFridayThe13th, triggerDerry]);
+
+  // 🎮 Konami Code listener — ↑↑↓↓←→←→BA toggles god mode on desktop PWA
+  // builds. Mobile users still have the 7-tap avatar gesture.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const SEQUENCE = [
+      "ArrowUp", "ArrowUp",
+      "ArrowDown", "ArrowDown",
+      "ArrowLeft", "ArrowRight",
+      "ArrowLeft", "ArrowRight",
+      "b", "a",
+    ];
+    let idx = 0;
+    const handler = (e: KeyboardEvent) => {
+      const expected = SEQUENCE[idx];
+      const pressed = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      if (pressed === expected) {
+        idx += 1;
+        if (idx === SEQUENCE.length) {
+          idx = 0;
+          const current = localStorage.getItem("god_mode") === "true";
+          localStorage.setItem("god_mode", current ? "false" : "true");
+          window.location.reload();
+        }
+      } else {
+        // Allow partial restart: if the mismatched key IS the first in the
+        // sequence, treat it as a fresh attempt.
+        idx = pressed === SEQUENCE[0] ? 1 : 0;
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   useEffect(() => {
     const initSession = async () => {
       try {
@@ -544,202 +521,41 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  // refreshData, syncOfflineQueue, network listeners — all owned by useSyncState (above).
 
-
-  // Standalone data refresh — used by initial load and post-sync
-  const refreshData = async (currentUser: { id: string; user_metadata?: any }) => {
-    const savedAccounts = migrateAccounts(currentUser.user_metadata?.custom_accounts || ['Bank', 'Cash', 'eWallet']);
-
-    try {
-      console.log("[refreshData] Fetching live data...");
-      const [txs, gls, subs, plannerRes, assetsRes, tradesRes] = await Promise.all([
-        supabase.from("transactions").select("*").eq('user_id', currentUser.id).order("date", { ascending: false }),
-        supabase.from("goals").select("*").eq('user_id', currentUser.id).order("created_at", { ascending: false }),
-        supabase.from("subscriptions").select("*").eq('user_id', currentUser.id).order("created_at", { ascending: false }),
-        supabase.from("salary_planner").select("*").eq('user_id', currentUser.id).order("created_at", { ascending: false }),
-        supabase.from("asset_vault").select("*").eq('user_id', currentUser.id).order("created_at", { ascending: false }),
-        supabase.from("trade_items").select("*").eq('user_id', currentUser.id).order("created_at", { ascending: false })
-      ]);
-
-      console.log("SUPABASE TRADES RESPONSE:", tradesRes);
-
-      // Supabase select() does not throw on network failure — force it
-      if (txs.error || gls.error || subs.error || plannerRes.error || assetsRes.error || tradesRes.error) {
-        console.log("[refreshData] Supabase returned error objects:", { txs: txs.error, gls: gls.error, subs: subs.error, planner: plannerRes.error, assets: assetsRes.error, trades: tradesRes.error });
-        throw new Error("Supabase fetch returned errors");
-      }
-
-      // Strict null check — if Supabase returned no data arrays, treat as failure
-      if (!txs.data || !gls.data || !subs.data || !plannerRes.data || !assetsRes.data || !tradesRes.data) {
-        console.log("[refreshData] Supabase returned null data arrays — treating as offline");
-        throw new Error("Supabase returned null data");
-      }
-
-      const parsedTransactions = txs.data as Transaction[];
-      const parsedGoals = gls.data.map((g: any) => ({
-        id: g.id,
-        title: g.title,
-        subtitle: 'Goal',
-        current: Number(g.current_amount),
-        target: Number(g.target_amount),
-        isPinned: g.is_pinned,
-        color: "bg-emerald-500",
-        bg: "bg-emerald-500/10",
-        iconName: "Target",
-        user_id: g.user_id
-      })) as Goal[];
-      const parsedSubscriptions = subs.data.filter((s: any) => s.type === "subscription").map((s: any) => ({
-        id: s.id, name: s.name, cost: Number(s.amount), billingDay: s.billing_day, sourceAccount: s.source_account, autoDeduct: s.auto_deduct, user_id: s.user_id, icon: "MonitorPlay", bg: "bg-red-500/10", color: "text-red-500"
-      })) as Subscription[];
-      const parsedUtilities = subs.data.filter((s: any) => s.type === "utility").map((s: any) => ({
-        id: s.id, name: s.name, cost: Number(s.amount), billingDay: s.billing_day, sourceAccount: s.source_account, autoDeduct: s.auto_deduct, user_id: s.user_id, icon: "Zap", bg: "bg-yellow-500/10", color: "text-yellow-500"
-      })) as Subscription[];
-      const parsedPlanner = plannerRes.data as PlannerItem[];
-      const parsedAssets = assetsRes.data as Asset[];
-      const parsedTrades = tradesRes.data as TradeItem[];
-
-      console.log("[refreshData] Live data fetch successful. Saving to cache...", { tx: parsedTransactions.length, goals: parsedGoals.length, subs: parsedSubscriptions.length, utils: parsedUtilities.length, planner: parsedPlanner.length, assets: parsedAssets.length, trades: parsedTrades.length });
-
-      setTransactions(parsedTransactions);
-      setGoals(parsedGoals);
-      setSubscriptions(parsedSubscriptions);
-      setUtilities(parsedUtilities);
-      setPlannerItems(parsedPlanner);
-      setAssets(parsedAssets);
-      setTradeItems(parsedTrades);
-      setAccountObjects(savedAccounts);
-
-      // Only cache when we confirmed valid non-null data above
-      const cachePayload = {
-        transactions: parsedTransactions,
-        goals: parsedGoals,
-        subscriptions: parsedSubscriptions,
-        utilities: parsedUtilities,
-        plannerItems: parsedPlanner,
-        assets: parsedAssets,
-        tradeItems: parsedTrades,
-        accounts: savedAccounts,
-        categories: categoriesRef.current,
-      };
-      try {
-        await localforage.setItem('tracker_data_cache', cachePayload);
-        console.log("[refreshData] Cache saved successfully.");
-      } catch (storageErr) {
-        console.warn("[refreshData] localforage.setItem failed:", storageErr);
-      }
-    } catch (err) {
-      console.log("[refreshData] Network error caught. Attempting to read cache...", err);
-      setAccountObjects(savedAccounts);
-
-      // Hydrate from localforage cache on offline cold-boot
-      try {
-        const data: any = await localforage.getItem('tracker_data_cache');
-        if (data) {
-          console.log("[refreshData] Cache found! Hydrating state...");
-          let cachedTx = (data.transactions ?? []) as Transaction[];
-          setGoals((data.goals ?? []) as Goal[]);
-          setSubscriptions((data.subscriptions ?? []) as Subscription[]);
-          setUtilities((data.utilities ?? []) as Subscription[]);
-          setPlannerItems((data.plannerItems ?? []) as PlannerItem[]);
-          setAssets((data.assets ?? []) as Asset[]);
-          setTradeItems((data.tradeItems ?? []) as TradeItem[]);
-          if (data.accounts) setAccountObjects(migrateAccounts(data.accounts));
-          if (data.categories?.length) setCategories(data.categories);
-
-          // Prepend any pending offline transactions so balance stays accurate
-          const offlineQueue = await localforage.getItem<Partial<Transaction>[]>('offline_tx_queue');
-          if (offlineQueue && offlineQueue.length > 0) {
-            const offlineTxs = offlineQueue.map((tx, i) => ({
-              ...tx,
-              id: tx.id || `offline-${Date.now()}-${i}`,
-              user_id: currentUser.id,
-            })) as Transaction[];
-            cachedTx = [...offlineTxs, ...cachedTx];
-            console.log("[refreshData] Prepended", offlineTxs.length, "offline queue items to cached transactions.");
-          }
-
-          setTransactions(cachedTx);
-          console.log("[refreshData] Cache hydration complete.", { tx: cachedTx.length, goals: (data.goals ?? []).length });
-        } else {
-          console.log("[refreshData] Cache empty or missing!");
-        }
-      } catch (cacheErr) {
-        console.error("[refreshData] Cache hydration failed:", cacheErr);
-      }
-    }
-  };
-
-  // Network status + offline queue sync
-  const syncOfflineQueue = async () => {
-    try {
-      const queue = await localforage.getItem<Partial<Transaction>[]>("offline_tx_queue");
-      if (!queue || queue.length === 0) return;
-      for (const tx of queue) {
-        // Use the client-generated id for idempotent upsert
-        await supabase.from("transactions").upsert({ ...tx, user_id: session?.user?.id }, { onConflict: 'id' });
-      }
-      await localforage.removeItem("offline_tx_queue");
-      triggerToast(`${queue.length} offline expense${queue.length > 1 ? "s" : ""} synced to cloud!`);
-
-      // Post-sync: refresh state with server-assigned UUIDs
-      if (session?.user) await refreshData(session.user);
-    } catch (err) {
-      console.error("Offline sync failed:", err);
-    }
-  };
-
-  useEffect(() => {
-    // Browser fallback
-    const handleOnline = () => { setIsOffline(false); syncOfflineQueue(); };
-    const handleOffline = () => setIsOffline(true);
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-    setIsOffline(!navigator.onLine);
-
-    // Capacitor native network listener
-    let nativeCleanup: (() => void) | undefined;
-    try {
-      // @ts-ignore
-      import('@capacitor/network').then(({ Network }) => {
-        Network.getStatus().then((status: any) => setIsOffline(!status.connected)).catch(() => {});
-        Network.addListener('networkStatusChange', (status: any) => {
-          const wasOffline = !navigator.onLine;
-          setIsOffline(!status.connected);
-          if (status.connected && wasOffline) syncOfflineQueue();
-        });
-        nativeCleanup = () => { Network.removeAllListeners().catch(() => {}); };
-      }).catch(() => {});
-    } catch {}
-
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-      if (nativeCleanup) nativeCleanup();
-    };
-  }, [session]);
+  // ─── Memoised public-facing slices ──────────────────────────────────────
+  // Without these `.filter()`s would re-run on every provider render (and at
+  // 10k+ tx every Easter-egg/toast/modal toggle would burn ~1ms + force every
+  // downstream useMemo that depends on `transactions` to recompute because
+  // the array reference would change). Memoising stabilises the references.
+  const sessionUserId = session?.user?.id;
+  const visibleTransactions = useMemo(
+    () =>
+      transactions.filter(
+        (t) => (!t.user_id || t.user_id === sessionUserId) && !t.deleted_at
+      ),
+    [transactions, sessionUserId]
+  );
+  const visibleSubscriptions = useMemo(
+    () => subscriptions.filter((s) => !s.user_id || s.user_id === sessionUserId),
+    [subscriptions, sessionUserId]
+  );
+  const visibleUtilities = useMemo(
+    () => utilities.filter((u) => !u.user_id || u.user_id === sessionUserId),
+    [utilities, sessionUserId]
+  );
+  const visibleGoals = useMemo(
+    () => goals.filter((g) => !g.user_id || g.user_id === sessionUserId),
+    [goals, sessionUserId]
+  );
 
   useEffect(() => {
     if (session?.user) {
-      const metaName = session.user.user_metadata?.display_name;
-      const emailName = session.user.email?.split('@')[0];
-      setUserNameRaw(metaName || emailName || "User");
-
-      const savedIncludeSavings = session.user.user_metadata?.include_savings ?? true;
-      setIncludeSavingsRaw(savedIncludeSavings);
-
-      setEnableFoodBudgetRaw(session.user.user_metadata?.enable_food_budget === true);
-      setEnableSalaryPlannerRaw(session.user.user_metadata?.enable_salary_planner === true);
-      setFoodDailyLimitRaw(session.user.user_metadata?.food_daily_limit ?? 0);
-      setFoodMonthlyLimitRaw(session.user.user_metadata?.food_monthly_limit ?? 0);
-      setIsPinEnabledRaw(session.user.user_metadata?.pin_enabled === true);
-      setIsBiometricEnabledRaw(session.user.user_metadata?.biometric_enabled === true);
-      setIsVaultEnabledRaw(session.user.user_metadata?.vault_enabled === true);
-      setIsRadarEnabledRaw(session.user.user_metadata?.radar_enabled === true);
-      setIsClaimsEnabledRaw(session.user.user_metadata?.claims_enabled === true);
-      setIsTradingEnabledRaw(session.user.user_metadata?.trading_enabled === true);
-
+      // Hydrate every user preference / feature flag from user_metadata.
+      prefs.hydrateFromMetadata(session.user.user_metadata, session.user.email);
       refreshData(session.user).finally(() => setIsHydrating(false));
     } else {
+       prefs.resetPreferences();
        setTransactions([]);
        setGoals([]);
        setSubscriptions([]);
@@ -749,200 +565,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
        setTradeItems([]);
        setIsHydrating(false);
     }
+    // This effect fires only when the Supabase session changes. All the
+    // setters, `prefs`, and `refreshData` are stable references produced
+    // by the child hooks and don't need to retrigger hydration — doing so
+    // would cause every state update inside those hooks to re-run the
+    // full hydrate/refresh cycle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
-  const setUserName = async (newName: string) => {
-     setUserNameRaw(newName);
-     if (session?.user) {
-        await supabase.auth.updateUser({ data: { display_name: newName } });
-     }
-  };
-
-  // --- Supabase CRUD ---
-  
-  const addTransaction = async (tx: Partial<Transaction>) => {
-    // Task 4: Generate client-side UUID for idempotency
-    const clientId = crypto.randomUUID();
-    const txWithId = { ...tx, id: clientId };
-
-    if (isOffline) {
-      const offlineTx = { ...txWithId, user_id: session?.user?.id };
-      setTransactions(prev => [offlineTx as Transaction, ...prev]);
-      try {
-        const existing = await localforage.getItem<Partial<Transaction>[]>("offline_tx_queue") || [];
-        existing.push({ ...txWithId, user_id: session?.user?.id });
-        await localforage.setItem("offline_tx_queue", existing);
-      } catch {}
-      triggerToast("No connection. Expense saved offline.");
-      NativeHaptics.successMedium();
-      return;
-    }
-    const { data, error } = await supabase.from('transactions').insert({ ...txWithId, user_id: session?.user?.id }).select().single();
-    if (!error && data) {
-      setTransactions(prev => [data as Transaction, ...prev]);
-      NativeHaptics.successMedium();
-      if (Number(tx.amount) >= 5000) triggerWhaleAlert();
-    }
-  };
-  const updateTransaction = async (id: string, patch: Partial<Transaction>) => {
-    const { data, error } = await supabase.from('transactions').update(patch).eq('id', id).select().single();
-    if (!error && data) { setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...data } : t)); NativeHaptics.lightTick(); }
-  };
-  const deleteTransaction = async (id: string) => {
-    const item = transactions.find(t => t.id === id);
-    const now = new Date().toISOString();
-    const { error } = await supabase.from('transactions').update({ deleted_at: now }).eq('id', id);
-    if (!error) {
-      setTransactions(prev => prev.map(t => t.id === id ? { ...t, deleted_at: now } : t));
-      NativeHaptics.heavyDoubleThud();
-      if (item) cacheDeletedItem("transaction", item);
-    }
-  };
-
-  const addSubscription = async (sub: Partial<Subscription>) => {
-    delete sub.id;
-    const { icon, bg, color, cost, billingDay, sourceAccount, autoDeduct, ...rest } = sub;
-    const payload = { ...rest, amount: cost, billing_day: billingDay, source_account: sourceAccount, auto_deduct: autoDeduct, type: "subscription", user_id: session?.user?.id };
-    const { data, error } = await supabase.from('subscriptions').insert(payload).select().single();
-    if (!error && data) { setSubscriptions(prev => [{...sub, id: data.id} as Subscription, ...prev]); NativeHaptics.successMedium(); }
-  };
-  const updateSubscription = async (id: string, patch: Partial<Subscription>) => {
-    const { icon, bg, color, cost, billingDay, sourceAccount, autoDeduct, ...rest } = patch;
-    const payload: any = { ...rest };
-    if (cost !== undefined) payload.amount = cost;
-    if (billingDay !== undefined) payload.billing_day = billingDay;
-    if (sourceAccount !== undefined) payload.source_account = sourceAccount;
-    if (autoDeduct !== undefined) payload.auto_deduct = autoDeduct;
-
-    const { data, error } = await supabase.from('subscriptions').update(payload).eq('id', id).select().single();
-    if (!error && data) { setSubscriptions(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s)); NativeHaptics.lightTick(); }
-  };
-  const deleteSubscription = async (id: string) => {
-    const { error } = await supabase.from('subscriptions').delete().eq('id', id);
-    if (!error) { setSubscriptions(prev => prev.filter(s => s.id !== id)); NativeHaptics.heavyDoubleThud(); }
-  };
-
-  const addUtility = async (sub: Partial<Subscription>) => {
-    delete sub.id;
-    const { icon, bg, color, cost, billingDay, sourceAccount, autoDeduct, ...rest } = sub;
-    const payload = { ...rest, amount: cost, billing_day: billingDay, source_account: sourceAccount, auto_deduct: autoDeduct, type: "utility", user_id: session?.user?.id };
-    const { data, error } = await supabase.from('subscriptions').insert(payload).select().single();
-    if (!error && data) { setUtilities(prev => [{...sub, id: data.id} as Subscription, ...prev]); NativeHaptics.successMedium(); }
-  };
-  const updateUtility = async (id: string, patch: Partial<Subscription>) => {
-    const { icon, bg, color, cost, billingDay, sourceAccount, autoDeduct, ...rest } = patch;
-    const payload: any = { ...rest };
-    if (cost !== undefined) payload.amount = cost;
-    if (billingDay !== undefined) payload.billing_day = billingDay;
-    if (sourceAccount !== undefined) payload.source_account = sourceAccount;
-    if (autoDeduct !== undefined) payload.auto_deduct = autoDeduct;
-
-    const { data, error } = await supabase.from('subscriptions').update(payload).eq('id', id).select().single();
-    if (!error && data) { setUtilities(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s)); NativeHaptics.lightTick(); }
-  };
-  const deleteUtility = async (id: string) => {
-    const { error } = await supabase.from('subscriptions').delete().eq('id', id);
-    if (!error) { setUtilities(prev => prev.filter(s => s.id !== id)); NativeHaptics.heavyDoubleThud(); }
-  };
-
-  const addGoal = async (goal: Partial<Goal>) => {
-    delete goal.id;
-    const { title, current, target, isPinned } = goal;
-    const payload = { title, current_amount: current || 0, target_amount: target, is_pinned: isPinned || false, user_id: session?.user?.id };
-    const { data, error } = await supabase.from('goals').insert(payload).select().single();
-    if (!error && data) { setGoals(prev => [{...goal, id: data.id} as Goal, ...prev]); NativeHaptics.successMedium(); }
-  };
-  const updateGoal = async (id: string, patch: Partial<Goal>) => {
-    const { title, current, target, isPinned } = patch;
-    const payload: any = {};
-    if (title !== undefined) payload.title = title;
-    if (current !== undefined) payload.current_amount = current;
-    if (target !== undefined) payload.target_amount = target;
-    if (isPinned !== undefined) payload.is_pinned = isPinned;
-
-    const { data, error } = await supabase.from('goals').update(payload).eq('id', id).select().single();
-    if (!error && data) { setGoals(prev => prev.map(g => g.id === id ? { ...g, ...patch } : g)); NativeHaptics.lightTick(); }
-  };
-  const deleteGoal = async (id: string) => {
-    const item = goals.find(g => g.id === id);
-    const { error } = await supabase.from('goals').delete().eq('id', id);
-    if (!error) {
-      setGoals(prev => prev.filter(g => g.id !== id));
-      NativeHaptics.heavyDoubleThud();
-      if (item) cacheDeletedItem("goal", item);
-    }
-  };
-
-  const addPlannerItem = async (item: Partial<PlannerItem>) => {
-    delete item.id;
-    const payload = { ...item, user_id: session?.user?.id };
-    const { data, error } = await supabase.from('salary_planner').insert(payload).select().single();
-    if (!error && data) { setPlannerItems(prev => [data as PlannerItem, ...prev]); NativeHaptics.successMedium(); }
-  };
-  const deletePlannerItem = async (id: string) => {
-    const { error } = await supabase.from('salary_planner').delete().eq('id', id);
-    if (!error) { setPlannerItems(prev => prev.filter(p => p.id !== id)); NativeHaptics.heavyDoubleThud(); }
-  };
-
-  const addAsset = async (asset: Partial<Asset>) => {
-    delete asset.id;
-    const payload = { ...asset, user_id: session?.user?.id };
-    const { data, error } = await supabase.from('asset_vault').insert(payload).select().single();
-    if (!error && data) { setAssets(prev => [data as Asset, ...prev]); NativeHaptics.successMedium(); }
-  };
-  const deleteAsset = async (id: string) => {
-    const item = assets.find(a => a.id === id);
-    const { error } = await supabase.from('asset_vault').delete().eq('id', id);
-    if (!error) {
-      setAssets(prev => prev.filter(a => a.id !== id));
-      NativeHaptics.heavyDoubleThud();
-      if (item) cacheDeletedItem("asset", item);
-    }
-  };
-  const updateAsset = async (id: string, patch: Partial<Asset>) => {
-    const { data, error } = await supabase.from('asset_vault').update(patch).eq('id', id).select().single();
-    if (!error && data) { setAssets(prev => prev.map(a => a.id === id ? { ...a, ...data } as Asset : a)); NativeHaptics.lightTick(); }
-  };
-  const toggleVault = async (val: boolean) => {
-    setIsVaultEnabledRaw(val);
-    if (session?.user) await supabase.auth.updateUser({ data: { vault_enabled: val } });
-  };
-  const toggleRadar = async (val: boolean) => {
-    setIsRadarEnabledRaw(val);
-    if (session?.user) await supabase.auth.updateUser({ data: { radar_enabled: val } });
-  };
-  const toggleClaims = async (val: boolean) => {
-    setIsClaimsEnabledRaw(val);
-    if (session?.user) await supabase.auth.updateUser({ data: { claims_enabled: val } });
-  };
-  const toggleTrading = async (val: boolean) => {
-    setIsTradingEnabledRaw(val);
-    if (session?.user) await supabase.auth.updateUser({ data: { trading_enabled: val } });
-  };
-
-  const addTradeItem = async (item: Partial<TradeItem>) => {
-    delete (item as any).id;
-    const payload = { ...item, user_id: session?.user?.id };
-    const { data, error } = await supabase.from('trade_items').insert(payload).select().single();
-    if (!error && data) {
-      setTradeItems(prev => [data as TradeItem, ...prev]);
-      NativeHaptics.successMedium();
-      if (Number(item.buy_price) >= 5000) triggerWhaleAlert();
-    }
-  };
-  const updateTradeItem = async (id: string, patch: Partial<TradeItem>) => {
-    const { data, error } = await supabase.from('trade_items').update(patch).eq('id', id).select().single();
-    if (!error && data) { setTradeItems(prev => prev.map(t => t.id === id ? { ...t, ...data } as TradeItem : t)); NativeHaptics.successMedium(); }
-  };
-  const deleteTradeItem = async (id: string) => {
-    const item = tradeItems.find(t => t.id === id);
-    const { error } = await supabase.from('trade_items').delete().eq('id', id);
-    if (!error) {
-      setTradeItems(prev => prev.filter(t => t.id !== id));
-      NativeHaptics.heavyDoubleThud();
-      if (item) cacheDeletedItem("trade", item);
-    }
-  };
+  // --- Supabase CRUD (transactions/subs/utilities owned by useMoneyState;
+  //     goals/planner owned by usePlanningState; assets/trades owned by
+  //     useModulesData — see provider hook calls above) ---
 
   if (isHydrating || authLoading) {
     return (
@@ -962,14 +595,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       categories, setCategories, addCategory, deleteCategory,
       includeSavings, toggleIncludeSavings,
       toast, triggerToast,
-      subscriptions: subscriptions.filter(s => !s.user_id || s.user_id === session?.user?.id),
+      subscriptions: visibleSubscriptions,
       addSubscription, updateSubscription, deleteSubscription,
-      utilities: utilities.filter(u => !u.user_id || u.user_id === session?.user?.id),
+      utilities: visibleUtilities,
       addUtility, updateUtility, deleteUtility,
-      transactions: transactions.filter(t => (!t.user_id || t.user_id === session?.user?.id) && !t.deleted_at),
+      transactions: visibleTransactions,
       addTransaction, updateTransaction, deleteTransaction,
       editTransactionId, setEditTransactionId,
-      goals: goals.filter(g => !g.user_id || g.user_id === session?.user?.id),
+      goals: visibleGoals,
       addGoal, updateGoal, deleteGoal,
       accounts, accountObjects, setAccounts, reorderAccounts, addAccount, renameAccount, deleteAccount, toggleArchiveAccount,
       accentColor, setAccentColor,
@@ -987,11 +620,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       isRadarEnabled, toggleRadar,
       isClaimsEnabled, toggleClaims,
       isTradingEnabled, toggleTrading,
+      enableTimeBasedGreeting, toggleTimeBasedGreeting,
+      enableFridayThe13th, toggleFridayThe13th,
+      primaryLocation, setPrimaryLocation,
+      secondaryLocation, setSecondaryLocation,
       tradeItems, addTradeItem, updateTradeItem, deleteTradeItem,
       activeAssetId, setActiveAssetId,
       showTransactionModal, setShowTransactionModal,
       isOffline,
-      isGodMode, whaleAlert, sharkUndo, derryActive, triggerDerry
+      isGodMode, whaleAlert, sharkUndo, derryActive, triggerDerry,
+      penguinAlert, dragonAlert, phoenixAlert,
     }}>
       {children}
 
@@ -1002,6 +640,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            aria-hidden="true"
             className="fixed inset-0 z-[500] flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-none"
           >
             <motion.div
@@ -1014,6 +653,77 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               <span className="text-[120px] block">🐋</span>
               <p className="text-white font-black text-xl mt-2 tracking-wide">WHALE ALERT</p>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 🐧 Penguin Alert — late-night snack detector. Softer than whale
+          because it's a gentle callout, not a flex. */}
+      <AnimatePresence>
+        {penguinAlert && (
+          <motion.div
+            initial={{ opacity: 0, y: -30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -30 }}
+            transition={{ type: "spring", damping: 20 }}
+            aria-hidden="true"
+            className="fixed top-20 left-0 right-0 z-[500] flex justify-center pointer-events-none"
+          >
+            <div className="bg-card/95 backdrop-blur-xl border border-border/50 rounded-2xl px-5 py-3 shadow-heavy flex items-center gap-3">
+              <span className="text-3xl">🐧</span>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-wider text-sky-500">
+                  Late-Night Snack
+                </p>
+                <p className="text-xs font-bold text-foreground">Detected. Sweet dreams.</p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 🐉 Dragon Alert — fires when a savings goal is completed. Full
+          center-screen hero because reaching a goal is a big deal. */}
+      <AnimatePresence>
+        {dragonAlert && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            aria-hidden="true"
+            className="fixed inset-0 z-[500] flex items-center justify-center pointer-events-none"
+            style={{ background: "radial-gradient(ellipse at center, rgba(251,191,36,0.25) 0%, rgba(0,0,0,0.7) 70%)" }}
+          >
+            <motion.div
+              initial={{ scale: 0.3, rotate: -12, opacity: 0 }}
+              animate={{ scale: 1, rotate: 0, opacity: 1 }}
+              exit={{ scale: 1.5, rotate: 8, opacity: 0 }}
+              transition={{ type: "spring", damping: 14 }}
+              className="text-center"
+            >
+              <span className="text-[140px] block drop-shadow-[0_0_30px_rgba(251,191,36,0.8)]">🐉</span>
+              <p className="text-amber-400 font-black text-2xl mt-2 tracking-[0.2em] drop-shadow-[0_0_12px_rgba(251,191,36,0.6)]">
+                GOAL CONQUERED
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 🔥 Phoenix Alert — decorative flourish when an item is restored via
+          shake-to-undo. Fades up and flies off to the top so the user sees
+          their transaction rising from the ashes. */}
+      <AnimatePresence>
+        {phoenixAlert && (
+          <motion.div
+            initial={{ opacity: 0, y: 40, scale: 0.6 }}
+            animate={{ opacity: 1, y: -120, scale: 1.1 }}
+            exit={{ opacity: 0, y: -180, scale: 1.3 }}
+            transition={{ duration: 1.8, ease: "easeOut" }}
+            aria-hidden="true"
+            className="fixed left-1/2 top-2/3 -translate-x-1/2 z-[500] pointer-events-none"
+          >
+            <span className="text-[100px] block drop-shadow-[0_0_20px_rgba(239,68,68,0.6)]">🔥</span>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1037,19 +747,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       <AnimatePresence>
         {confirmState.isOpen && (
           <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
-             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setConfirmState({...confirmState, isOpen: false})} className="absolute inset-0 bg-black/40 backdrop-blur-md" />
-             <motion.div initial={{ y: 20, opacity: 0, scale: 0.95 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 20, opacity: 0, scale: 0.95 }} className="bg-card w-full max-w-sm rounded-[2rem] shadow-heavy z-10 overflow-hidden p-6 space-y-4 border border-border/50">
+             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={closeConfirm} aria-hidden="true" className="absolute inset-0 bg-black/40 backdrop-blur-md" />
+             <motion.div initial={{ y: 20, opacity: 0, scale: 0.95 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 20, opacity: 0, scale: 0.95 }} role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message" className="bg-card w-full max-w-sm rounded-[2rem] shadow-heavy z-10 overflow-hidden p-6 space-y-4 border border-border/50">
                <div>
-                  <h3 className="font-bold text-lg text-foreground leading-tight">{confirmState.title}</h3>
-                  <p className="text-sm text-muted-foreground font-medium mt-1.5">{confirmState.message}</p>
+                  <h3 id="confirm-title" className="font-bold text-lg text-foreground leading-tight">{confirmState.title}</h3>
+                  <p id="confirm-message" className="text-sm text-muted-foreground font-medium mt-1.5">{confirmState.message}</p>
                </div>
                
                <div className="flex gap-3 pt-2">
-                 <button onClick={() => setConfirmState({...confirmState, isOpen: false})} className="flex-1 py-3 bg-muted rounded-xl font-bold text-sm text-foreground hover:bg-border transition-colors outline-none focus:ring-2 focus:ring-border">
+                 <button type="button" onClick={closeConfirm} className="flex-1 py-3 bg-muted rounded-xl font-bold text-sm text-foreground hover:bg-border transition-colors outline-none focus:ring-2 focus:ring-border">
                    Cancel
                  </button>
-                 <button 
-                   onClick={() => { confirmState.onConfirm(); setConfirmState({...confirmState, isOpen: false}); }} 
+                 <button
+                   type="button"
+                   onClick={() => { confirmState.onConfirm(); closeConfirm(); }}
                    className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold text-sm active:scale-95 transition-all outline-none focus:ring-2 focus:ring-red-500/50 shadow-sm"
                  >
                    Delete

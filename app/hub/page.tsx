@@ -7,7 +7,7 @@ import { useAppContext } from "@/lib/context";
 import { supabase } from "@/lib/supabase";
 
 export default function HubPage() {
-  const { accentColor, enableFoodBudget, enableSalaryPlanner, isVaultEnabled, isRadarEnabled, isClaimsEnabled, isTradingEnabled, transactions, subscriptions, utilities, session, setShowTransactionModal, formatCurrency, billingCycle } = useAppContext();
+  const { accentColor, enableFoodBudget, enableSalaryPlanner, isVaultEnabled, isRadarEnabled, isClaimsEnabled, isTradingEnabled, transactions, subscriptions, utilities, session, setShowTransactionModal, formatCurrency } = useAppContext();
 
   const [radarCount, setRadarCount] = useState(0);
 
@@ -60,7 +60,7 @@ export default function HubPage() {
             const res = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(src.url!)}`);
             const data = await res.json();
             if (data.status === "ok" && data.items) {
-              return data.items.filter((item: any) => (item.pubDate || "").startsWith(today)).length;
+              return (data.items as Array<{ pubDate?: string }>).filter((item) => (item.pubDate || "").startsWith(today)).length;
             }
           } catch { /* skip failed feeds */ }
           return 0;

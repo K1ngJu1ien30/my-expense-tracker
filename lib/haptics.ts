@@ -1,8 +1,13 @@
+// Type-safe map of friendly names to `@capacitor/haptics` ImpactStyle enum
+// values. We derive the value-type from a dynamic import so we stay decoupled
+// from whether the package is installed at type-check time on web builds.
+type ImpactStyleEnum = typeof import("@capacitor/haptics")["ImpactStyle"];
+type ImpactStyleValue = ImpactStyleEnum[keyof ImpactStyleEnum];
+
 const haptic = async (style: string) => {
   try {
-    // @ts-ignore - Native plugin, not available in web builds
     const { Haptics, ImpactStyle } = await import("@capacitor/haptics");
-    const map: Record<string, any> = {
+    const map: Record<string, ImpactStyleValue> = {
       light: ImpactStyle.Light,
       medium: ImpactStyle.Medium,
       heavy: ImpactStyle.Heavy,
@@ -16,7 +21,6 @@ const haptic = async (style: string) => {
 export const NativeHaptics = {
   lightTick: async () => {
     try {
-      // @ts-ignore
       const { Haptics } = await import("@capacitor/haptics");
       await Haptics.vibrate({ duration: 10 });
     } catch {}
@@ -32,7 +36,6 @@ export const NativeHaptics = {
 
   errorShake: async () => {
     try {
-      // @ts-ignore
       const { Haptics } = await import("@capacitor/haptics");
       await Haptics.vibrate({ duration: 300 });
     } catch {}
@@ -40,7 +43,6 @@ export const NativeHaptics = {
 
   creepyHeartbeat: async () => {
     try {
-      // @ts-ignore
       const { Haptics } = await import("@capacitor/haptics");
       let count = 0;
       const interval = setInterval(async () => {

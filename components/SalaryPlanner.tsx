@@ -143,10 +143,12 @@ export default function SalaryPlanner() {
                   <td className="text-center p-3 font-black text-foreground">{currency} {Number(item.amount).toFixed(2)}</td>
                   <td className="text-center p-3">
                     <button
+                      type="button"
+                      aria-label={`Delete ${item.item_name}`}
                       onClick={() => confirmAction("Delete Item", `Remove "${item.item_name}"?`, () => deletePlannerItem(item.id))}
                       className="text-muted-foreground hover:text-red-500 transition-colors p-1"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                     </button>
                   </td>
                 </tr>

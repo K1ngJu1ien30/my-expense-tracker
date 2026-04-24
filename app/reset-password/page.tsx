@@ -16,7 +16,10 @@ export default function ResetPasswordPage() {
 
     // Read "#access_token=" payload hash injected by Supabase inherently
     useEffect(() => {
-        supabase.auth.onAuthStateChange(async (event, session) => {
+        // Subscribe just to catch the PASSWORD_RECOVERY event — the session
+        // payload itself is captured into Supabase's internal state, we
+        // don't need the `session` argument here.
+        supabase.auth.onAuthStateChange(async (event) => {
             if (event == "PASSWORD_RECOVERY") {
                 // The URL is fully loaded and hash token is actively captured into session dynamically.
             }
@@ -46,8 +49,9 @@ export default function ResetPasswordPage() {
             setTimeout(() => {
                 router.replace("/");
             }, 2000);
-        } catch (error: any) {
-            setErrorMsg(error.message || "Failed to update password");
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : "Failed to update password";
+            setErrorMsg(message);
         } finally {
             setLoading(false);
         }

@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { X, ArrowRight, Calendar, ChevronLeft, ChevronRight } from "lucide-react";
+import { motion, AnimatePresence, PanInfo } from "framer-motion";
+import { X, ArrowRight, Calendar, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect } from "react";
 
 import { useAppContext } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
+import { loadModel, predict, type Prediction, type PredictorModel } from "@/lib/categoryPredictor";
 
 type TxType = "Expense" | "Income" | "Transfer";
 
@@ -76,18 +77,39 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
   const [status, setStatus] = useState<"cleared" | "pending">("cleared");
   const [isClaimable, setIsClaimable] = useState(false);
 
+  // ─── Category auto-suggest state ───────────────────────────────────────
+  // Loaded once when the modal opens; refreshed on close so learnings from
+  // the previous save appear on the next open.
+  const [predictorModel, setPredictorModel] = useState<PredictorModel | null>(null);
+  const [prediction, setPrediction] = useState<Prediction | null>(null);
+  // Dismissed suggestions shouldn't re-appear for the same note in this session.
+  const [dismissedForNote, setDismissedForNote] = useState<string>("");
+  // Track whether the user manually picked a category so we don't overwrite
+  // their choice with a later prediction.
+  const [userPickedCategory, setUserPickedCategory] = useState(false);
+
   const isActuallyOpen = isOpen || editTransactionId !== null;
 
   useEffect(() => {
-    // Set default accounts once accounts array is loaded
+    // Seed default accounts once the accounts list arrives from the
+    // context loader. This effect is a one-shot form initializer, not a
+    // render-driven update — silencing the linter is intentional here.
+     
     if (!account && accounts.length > 0) setAccount(accounts[0]);
+     
     if (!toAccount && accounts.length > 1) setToAccount(accounts[1] || accounts[0]);
+    // `account`/`toAccount` deliberately excluded — including them would
+    // re-trigger the seed on every pick and overwrite user selection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accounts]);
 
   useEffect(() => {
     if (editTransactionId) {
        const tx = transactions.find(t => t.id === editTransactionId);
        if (tx) {
+         // Load-into-form-on-edit — a form initializer, same rationale as
+         // the accounts seed above. Not a cascading-render pattern.
+          
          setTxType(tx.type as TxType);
          setCategory(tx.category || categories[0]);
          setAccount(tx.account || "Bank (MBB)");
@@ -97,17 +119,51 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
          setDate(tx.date ? new Date(tx.date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0]);
          setStatus((tx.status as "cleared" | "pending") || "cleared");
          setIsClaimable(tx.is_claimable === true);
+         setUserPickedCategory(true); // Editing an existing tx — respect its category
+          
        }
     } else {
+        
        setAmount("");
        setNote("");
        setDate(new Date().toISOString().split("T")[0]);
        setStatus("cleared");
        setIsClaimable(false);
+       setUserPickedCategory(false);
+       setDismissedForNote("");
+        
     }
   }, [editTransactionId, transactions, categories]);
 
-  const handleDragEnd = (_: any, info: any) => {
+  // Load the predictor model once when the modal opens. Reload on every open
+  // so freshly-learned associations from the previous save are available.
+  useEffect(() => {
+    if (!isActuallyOpen) return;
+    loadModel().then(setPredictorModel).catch(() => setPredictorModel({}));
+  }, [isActuallyOpen]);
+
+  // Re-score the note whenever it changes. Only suggests for new expenses
+  // (editing a transaction respects its saved category) and hides the pill
+  // once the user has dismissed it or manually changed the category.
+  useEffect(() => {
+     
+    if (!predictorModel) { setPrediction(null); return; }
+    if (txType !== "Expense") { setPrediction(null); return; }
+    if (editTransactionId) { setPrediction(null); return; }
+    if (userPickedCategory) { setPrediction(null); return; }
+    if (!note || note === dismissedForNote) { setPrediction(null); return; }
+
+    const p = predict(predictorModel, note, transactions.length);
+    // Don't suggest what's already selected — no value in reaffirming.
+    if (p && p.category === category) { setPrediction(null); return; }
+    // Also skip if the suggested category isn't in the user's current list
+    // (e.g. they renamed/deleted a category after training).
+    if (p && !categories.includes(p.category)) { setPrediction(null); return; }
+    setPrediction(p);
+     
+  }, [note, txType, editTransactionId, userPickedCategory, dismissedForNote, predictorModel, transactions.length, category, categories]);
+
+  const handleDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     if (info.offset.y > 100) handleClose();
   };
 
@@ -125,6 +181,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={handleClose}
+            aria-hidden="true"
             className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 rounded-[inherit]"
           />
           <motion.div
@@ -136,15 +193,18 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
             dragConstraints={{ top: 0 }}
             dragElastic={0.2}
             onDragEnd={handleDragEnd}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tx-modal-title"
             className="absolute bottom-0 left-0 right-0 bg-card z-[51] rounded-t-[2rem] shadow-heavy flex flex-col max-h-[90vh]"
           >
-            <div className="w-12 h-1.5 bg-border rounded-full mx-auto mt-3 mb-5 cursor-grab active:cursor-grabbing" />
+            <div className="w-12 h-1.5 bg-border rounded-full mx-auto mt-3 mb-5 cursor-grab active:cursor-grabbing" aria-hidden="true" />
             
             <div className="px-6 pb-8 overflow-y-auto hide-scrollbar">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold">{editTransactionId ? "Edit" : "New"} Transaction</h2>
-                <button onClick={handleClose} className="p-2 bg-muted rounded-full text-muted-foreground hover:text-foreground transition-colors">
-                  <X className="w-5 h-5" />
+                <h2 id="tx-modal-title" className="text-xl font-bold">{editTransactionId ? "Edit" : "New"} Transaction</h2>
+                <button type="button" aria-label="Close" onClick={handleClose} className="p-2 bg-muted rounded-full text-muted-foreground hover:text-foreground transition-colors">
+                  <X className="w-5 h-5" aria-hidden="true" />
                 </button>
               </div>
 
@@ -168,6 +228,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                   <input 
                     type="number" 
                     placeholder="0.00" 
+                    aria-label="Amount"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     className="bg-transparent text-5xl font-black text-foreground outline-none w-full max-w-[200px] text-center placeholder:text-muted"
@@ -216,7 +277,59 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                 {txType !== "Transfer" && txType !== "Income" && (
                   <div>
                     <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-3">Category</label>
-                    <PillSelector options={categories} value={category} onChange={setCategory} />
+                    {/*
+                      Smart Suggestion Pill — appears only when the predictor
+                      is confident. One tap applies the suggestion (and also
+                      teaches the model by later save). X dismisses for the
+                      current note only.
+                    */}
+                    <AnimatePresence>
+                      {prediction && (
+                        <motion.button
+                          key={prediction.category}
+                          type="button"
+                          initial={{ opacity: 0, y: -4, scale: 0.96 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: -4, scale: 0.96 }}
+                          transition={{ type: "spring", damping: 20, stiffness: 320 }}
+                          onClick={() => {
+                            setCategory(prediction.category);
+                            setUserPickedCategory(true);
+                            setPrediction(null);
+                            NativeHaptics.lightTick();
+                          }}
+                          aria-label={`Use suggested category ${prediction.category}`}
+                          className="w-full mb-3 flex items-center gap-2.5 bg-card border border-border/50 rounded-xl px-3 py-2.5 shadow-sm hover:border-primary/40 active:scale-[0.99] transition-all text-left"
+                          style={{ borderColor: `${accentColor}33` }}
+                        >
+                          <Sparkles className="w-3.5 h-3.5 shrink-0" style={{ color: accentColor }} aria-hidden="true" />
+                          <span className="text-[11px] font-semibold text-muted-foreground">
+                            Looks like{" "}
+                            <span className="font-black" style={{ color: accentColor }}>
+                              {prediction.category}
+                            </span>
+                            ?
+                          </span>
+                          <span
+                            role="presentation"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDismissedForNote(note);
+                              setPrediction(null);
+                            }}
+                            className="ml-auto text-muted-foreground/70 hover:text-muted-foreground p-0.5 cursor-pointer"
+                            aria-hidden="true"
+                          >
+                            <X className="w-3 h-3" />
+                          </span>
+                        </motion.button>
+                      )}
+                    </AnimatePresence>
+                    <PillSelector
+                      options={categories}
+                      value={category}
+                      onChange={(c) => { setCategory(c); setUserPickedCategory(true); }}
+                    />
                   </div>
                 )}
 
@@ -257,6 +370,10 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                       <p className="text-[10px] text-muted-foreground font-medium mt-0.5">Mark as reimbursable or shared expense</p>
                     </div>
                     <button
+                      type="button"
+                      role="switch"
+                      aria-checked={isClaimable}
+                      aria-label="Mark as claimable or split bill"
                       className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${isClaimable ? "" : "bg-muted border border-border"}`}
                       style={isClaimable ? { backgroundColor: accentColor } : {}}
                     >
@@ -283,7 +400,10 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                       const daysInMonth = new Date(year, month + 1, 0).getDate();
                       const blanks = Array.from({ length: (firstDay || 7) - 1 }, (_, i) => i);
                       const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-                      const selectedDay = date === `${year}-${String(month + 1).padStart(2, '0')}-${String(new Date(date).getDate()).padStart(2, '0')}` ? new Date(date).getDate() : -1;
+                      // Selected-day highlight not currently rendered — reserved
+                      // for a future visual affordance. Prefix-underscored so
+                      // the unused-var linter stays quiet.
+                      // const _selectedDay = ...
 
                       return (
                         <motion.div
@@ -294,9 +414,9 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                         >
                           <div className="bg-card border border-border/50 rounded-2xl p-4 shadow-soft">
                             <div className="flex items-center justify-between mb-3">
-                              <button type="button" onClick={() => setPickerMonth(new Date(year, month - 1, 1))} className="p-1.5 rounded-lg hover:bg-muted transition-colors"><ChevronLeft className="w-4 h-4 text-muted-foreground" /></button>
+                              <button type="button" aria-label="Previous month" onClick={() => setPickerMonth(new Date(year, month - 1, 1))} className="p-1.5 rounded-lg hover:bg-muted transition-colors"><ChevronLeft className="w-4 h-4 text-muted-foreground" aria-hidden="true" /></button>
                               <p className="text-sm font-bold text-foreground">{pickerMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
-                              <button type="button" onClick={() => setPickerMonth(new Date(year, month + 1, 1))} className="p-1.5 rounded-lg hover:bg-muted transition-colors"><ChevronRight className="w-4 h-4 text-muted-foreground" /></button>
+                              <button type="button" aria-label="Next month" onClick={() => setPickerMonth(new Date(year, month + 1, 1))} className="p-1.5 rounded-lg hover:bg-muted transition-colors"><ChevronRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" /></button>
                             </div>
                             <div className="grid grid-cols-7 gap-1 text-center">
                               {['M','T','W','T','F','S','S'].map((d, i) => <span key={i} className="text-[10px] font-bold text-muted-foreground py-1">{d}</span>)}
@@ -327,6 +447,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                   <input 
                     type="text" 
                     placeholder="Sub-category / Note (Optional)" 
+                    aria-label="Note"
                     value={note}
                     onChange={e=>setNote(e.target.value)}
                     className="w-full bg-muted text-sm px-4 py-3 rounded-xl border border-border/50 text-foreground outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium placeholder:text-muted-foreground/70"
@@ -348,7 +469,17 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                     const payload = {
                        type: txType,
                        amount: Number(amount),
-                       category: txType === "Transfer" ? "Transfer" : category,
+                       // Income is a top-level concept — it has no spending
+                       // category (Salary, Bonus, etc. are tracked via notes,
+                       // not category tags). Transfers get a canonical
+                       // "Transfer" tag. Expenses carry the user-picked
+                       // category.
+                       category:
+                         txType === "Transfer"
+                           ? "Transfer"
+                           : txType === "Income"
+                             ? ""
+                             : category,
                        account,
                        to_account: txType === "Transfer" ? toAccount : undefined,
                        note,
