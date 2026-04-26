@@ -1,0 +1,22 @@
+# EditorConfig — keeps every editor & contributor on the same whitespace rules.
+# https://editorconfig.org
+#
+# Why this exists: without it, Windows + Git's default core.autocrlf=true checks
+# files out as CRLF, which produces noisy whitespace-only diffs the moment
+# anyone on Linux/macOS (or any LF-aware tool) re-saves them. This file pins
+# every text source to LF so the working tree, the git index, and every
+# editor agree.
+
+root = true
+
+[*]
+end_of_line = lf
+insert_final_newline = true
+charset = utf-8
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Markdown intentionally preserves trailing spaces (used for hard line breaks).
+[*.md]
+trim_trailing_whitespace = false

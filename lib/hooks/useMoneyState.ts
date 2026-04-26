@@ -14,6 +14,32 @@ import { learn, loadModel, saveModel } from "../categoryPredictor";
 const WHALE_THRESHOLD = 5000;
 
 /**
+ * Single-flight serializer for the offline transaction queue.
+ *
+ * Without this, two rapid `addTransaction` calls while offline can race:
+ * call #2's `getItem` may resolve before call #1's `setItem`, causing call
+ * #1's transaction to be silently dropped from the persisted queue.
+ *
+ * Module-scoped (not per-instance) because there's only ever one queue key
+ * (`offline_tx_queue`) and we want correctness even if the hook re-mounts.
+ * The chain only holds the IndexedDB read+write window — typically <5ms —
+ * so contention is invisible to the user.
+ */
+let offlineQueueLock: Promise<void> = Promise.resolve();
+function enqueueOfflineTx(tx: Partial<Transaction>): Promise<void> {
+  const next = offlineQueueLock.then(async () => {
+    const existing =
+      (await localforage.getItem<Partial<Transaction>[]>("offline_tx_queue")) || [];
+    existing.push(tx);
+    await localforage.setItem("offline_tx_queue", existing);
+  });
+  // Always release the lock, even on failure — a swallowed error here must
+  // not deadlock subsequent saves.
+  offlineQueueLock = next.catch(() => {});
+  return next;
+}
+
+/**
  * Cross-cutting dependencies that the CRUD functions need to wire into the
  * rest of the app. The provider supplies these so this hook can remain
  * focused purely on transactions / subscriptions / utilities.
@@ -87,12 +113,10 @@ export function useMoneyState(deps: MoneyStateDeps) {
         const offlineTx = { ...txWithId, user_id: session?.user?.id };
         setTransactions(prev => [offlineTx as Transaction, ...prev]);
         try {
-          const existing =
-            (await localforage.getItem<Partial<Transaction>[]>("offline_tx_queue")) || [];
-          existing.push({ ...txWithId, user_id: session?.user?.id });
-          await localforage.setItem("offline_tx_queue", existing);
+          // Serialized read-modify-write — see `enqueueOfflineTx` for why.
+          await enqueueOfflineTx(offlineTx);
         } catch {
-          /* swallow */
+          /* swallow — UI already reflects the optimistic insert */
         }
         await teachPredictor();
         triggerToast("No connection. Expense saved offline.");
@@ -201,15 +225,17 @@ export function useMoneyState(deps: MoneyStateDeps) {
 
   const addSubscription = useCallback(
     async (sub: Partial<Subscription>) => {
-      delete sub.id;
-      const payload = buildSubsPayload(sub, "subscription");
+      // Strip caller's id (if any) without mutating the input object — the
+      // caller may keep referencing `sub` after this call returns.
+      const { id: _id, ...rest } = sub;
+      const payload = buildSubsPayload(rest, "subscription");
       const { data, error } = await supabase
         .from("subscriptions")
         .insert(payload)
         .select()
         .single();
       if (!error && data) {
-        setSubscriptions(prev => [{ ...sub, id: data.id } as Subscription, ...prev]);
+        setSubscriptions(prev => [{ ...rest, id: data.id } as Subscription, ...prev]);
         NativeHaptics.successMedium();
       }
     },
@@ -243,15 +269,16 @@ export function useMoneyState(deps: MoneyStateDeps) {
 
   const addUtility = useCallback(
     async (sub: Partial<Subscription>) => {
-      delete sub.id;
-      const payload = buildSubsPayload(sub, "utility");
+      // Same non-mutating strip pattern as addSubscription above.
+      const { id: _id, ...rest } = sub;
+      const payload = buildSubsPayload(rest, "utility");
       const { data, error } = await supabase
         .from("subscriptions")
         .insert(payload)
         .select()
         .single();
       if (!error && data) {
-        setUtilities(prev => [{ ...sub, id: data.id } as Subscription, ...prev]);
+        setUtilities(prev => [{ ...rest, id: data.id } as Subscription, ...prev]);
         NativeHaptics.successMedium();
       }
     },

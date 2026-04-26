@@ -125,8 +125,9 @@ export function usePlanningState(deps: PlanningStateDeps) {
 
   const addPlannerItem = useCallback(
     async (item: Partial<PlannerItem>) => {
-      delete item.id;
-      const payload = { ...item, user_id: session?.user?.id };
+      // Strip id without mutating the caller's object.
+      const { id: _id, ...rest } = item;
+      const payload = { ...rest, user_id: session?.user?.id };
       const { data, error } = await supabase
         .from("salary_planner")
         .insert(payload)

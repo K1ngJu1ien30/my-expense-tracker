@@ -236,7 +236,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Shark-undo restore — lives here because it needs access to the CRUD
   // setters from multiple domains (transactions, goals, trade items, assets).
-  const triggerSharkUndo = async () => {
+  //
+  // Wrapped in useCallback (and mirrored into a ref below) so the mount-once
+  // shake-listener always invokes the LATEST closure rather than the one
+  // captured on first render. Today every dep this closes over happens to be
+  // stable, so it works either way — but pinning the contract here means a
+  // future refactor that adds, say, a state-derived dep won't silently break
+  // shake-to-undo by restoring stale data.
+  const triggerSharkUndo = useCallback(async () => {
     const cached = deletedItemCacheRef.current;
     if (!cached) return;
     clearCacheTimeout();
@@ -270,7 +277,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch {
       triggerToast("Undo failed.");
     }
-  };
+  }, [
+    deletedItemCacheRef,
+    clearCacheTimeout,
+    showSharkUndo,
+    triggerToast,
+    triggerPhoenixAlert,
+    // setTransactions / setGoals / setTradeItems / setAssets are React state
+    // setters and are guaranteed-stable for the component's lifetime, so we
+    // intentionally omit them from the dep array. Including them would also
+    // create a temporal-dead-zone reference (they're declared further down
+    // in this provider) — React's rules-of-hooks linter is satisfied either
+    // way, but Next's build-time TS check is stricter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ]);
+
+  // Ref mirror so the mount-once accelerometer listener can call the current
+  // version of triggerSharkUndo without rebinding on every callback identity
+  // change (which would tear down + reinstall the native motion subscription
+  // every render — wasteful and battery-unfriendly).
+  const triggerSharkUndoRef = React.useRef(triggerSharkUndo);
+  useEffect(() => {
+    triggerSharkUndoRef.current = triggerSharkUndo;
+  }, [triggerSharkUndo]);
 
   // Shake-to-Undo: Listen for device acceleration
   useEffect(() => {
@@ -287,17 +316,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           const magnitude = Math.sqrt(x * x + y * y + z * z);
           if (magnitude > 25 && Date.now() - lastShake > 2000) {
             lastShake = Date.now();
-            if (deletedItemCacheRef.current) triggerSharkUndo();
+            // Read through the ref so we always invoke the freshest closure
+            // even though the listener itself is bound exactly once.
+            if (deletedItemCacheRef.current) triggerSharkUndoRef.current();
           }
         });
         cleanup = () => { listener.then((l: { remove?: () => void }) => l.remove?.()).catch(() => {}); };
       }).catch(() => {});
     } catch {}
     return () => { if (cleanup) cleanup(); };
-    // `deletedItemCacheRef` is a ref (stable by contract) and
-    // `triggerSharkUndo` closes over the same ref — rebinding the motion
-    // listener on every callback identity change would rip the accelerometer
-    // subscription up/down on every render. Mount-once is correct.
+    // Mount-once: the listener reads `triggerSharkUndoRef.current` on every
+    // shake, so we never need to re-subscribe. `deletedItemCacheRef` is a
+    // stable ref by contract.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

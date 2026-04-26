@@ -39,8 +39,10 @@ export function useModulesData(deps: ModulesDataDeps) {
 
   const addAsset = useCallback(
     async (asset: Partial<Asset>) => {
-      delete asset.id;
-      const payload = { ...asset, user_id: session?.user?.id };
+      // Strip id without mutating the caller's object — same pattern as
+      // addTradeItem below.
+      const { id: _id, ...rest } = asset;
+      const payload = { ...rest, user_id: session?.user?.id };
       const { data, error } = await supabase
         .from("asset_vault")
         .insert(payload)

@@ -148,11 +148,17 @@ export default function Dashboard() {
   const handleAvatarTap = useCallback(() => {
     godTapCount.current++;
     if (godTapCount.current === 1) {
-      godTapTimer.current = setTimeout(() => { godTapCount.current = 0; }, 3000);
+      godTapTimer.current = setTimeout(() => {
+        godTapCount.current = 0;
+        godTapTimer.current = null;
+      }, 3000);
     }
     if (godTapCount.current >= 7) {
       godTapCount.current = 0;
-      if (godTapTimer.current) clearTimeout(godTapTimer.current);
+      if (godTapTimer.current) {
+        clearTimeout(godTapTimer.current);
+        godTapTimer.current = null;
+      }
       // Toggle god mode via context — we need to access the raw setter
       // Flash matrix green
       NativeHaptics.heavyDoubleThud().then(() => NativeHaptics.lightTick());

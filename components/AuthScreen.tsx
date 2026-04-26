@@ -18,12 +18,10 @@ export default function AuthScreen() {
         e.preventDefault();
         setLoading(true);
 
-        // Fallback fake logic if Supabase placeholder triggers
-        if (process.env.NEXT_PUBLIC_SUPABASE_URL === undefined && password.length > 3) {
-            triggerToast("Cannot run Auth: Missing ENV keys locally! Waiting for host DB.");
-            setLoading(false);
-            return;
-        }
+        // Note: missing Supabase env vars are now caught loudly in
+        // `lib/supabase.ts` (dev throws, prod logs + uses an obvious fake
+        // URL so auth fails fast). The previous "missing env" guard here
+        // was unreachable — removed.
 
         try {
             if (isReset) {
