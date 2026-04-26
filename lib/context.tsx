@@ -281,14 +281,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     deletedItemCacheRef,
     clearCacheTimeout,
     showSharkUndo,
-    triggerToast,
     triggerPhoenixAlert,
-    // setTransactions / setGoals / setTradeItems / setAssets are React state
-    // setters and are guaranteed-stable for the component's lifetime, so we
-    // intentionally omit them from the dep array. Including them would also
-    // create a temporal-dead-zone reference (they're declared further down
-    // in this provider) — React's rules-of-hooks linter is satisfied either
-    // way, but Next's build-time TS check is stricter.
+    // Intentionally excluded from the dep array:
+    //   - setTransactions / setGoals / setTradeItems / setAssets: React state
+    //     setters are guaranteed-stable for the component's lifetime.
+    //   - triggerToast: a stable useCallback from useUIState (declared further
+    //     down in this provider — including it would be a temporal-dead-zone
+    //     reference at module-eval time and Next's build-time TS check is
+    //     stricter than the rules-of-hooks linter about TDZ).
+    // The ref-mirror pattern below means even if any of these somehow changed
+    // identity, the accelerometer listener still picks up the latest version.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   ]);
 
