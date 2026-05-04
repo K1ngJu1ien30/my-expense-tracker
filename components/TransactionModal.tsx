@@ -199,6 +199,24 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
   // Collapsed by default; expands only when the user wants to override.
   const [showMoreOptions, setShowMoreOptions] = useState(false);
 
+  // Imperative ref for the amount <input>, kept for future use if we ever
+  // want to programmatically focus it. NOT auto-focused on open — see the
+  // rationale below.
+  //
+  // UX decision: the modal does NOT auto-focus any field on open.
+  //   - `autoFocus` is unreliable because AppLayout keeps the modal
+  //     mounted across opens, so it only fires the first time.
+  //   - Programmatic focus-on-open is worse: on Android WebView the
+  //     keyboard then animates up immediately and covers the form,
+  //     and (critically) whichever field Android decides to restore
+  //     focus to — amount, note, or nothing — is non-deterministic.
+  //     Users reported the keyboard popping up on the wrong field
+  //     (note instead of amount) intermittently.
+  //   - Doing nothing on open is both simpler and what the user
+  //     actually wants: the modal just appears, they tap what they
+  //     want to edit. No phantom keyboards.
+  const amountInputRef = useRef<HTMLInputElement>(null);
+
   // ─── Category auto-suggest state ───────────────────────────────────────
   // Loaded once when the modal opens; refreshed on close so learnings from
   // the previous save appear on the next open.
@@ -304,6 +322,19 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
       // Don't reset amount/note/category/account here — those are
       // seeded elsewhere and resetting them would wipe a quick-template
       // pre-fill on the way in.
+
+      // Actively blur whatever the browser thinks is focused.
+      //
+      // Why: AppLayout keeps this modal mounted across opens. If the
+      // user saved a transaction with a note in a previous session,
+      // Android WebView sometimes auto-restores focus to that note
+      // <input> when the modal re-appears — which makes the Android
+      // keyboard spring up on the wrong field. Blurring on open
+      // guarantees no field is focused and no keyboard opens. The
+      // user can then tap whichever field they actually want to edit.
+      if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
     }
     // Only depend on isActuallyOpen / editTransactionId — we want this
     // to fire exactly once per "open as fresh add" transition.
@@ -452,6 +483,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                     />
                   </button>
                   <input
+                    ref={amountInputRef}
                     type="number"
                     inputMode="decimal"
                     placeholder="0.00"
@@ -459,7 +491,6 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     className="bg-transparent text-5xl font-black text-foreground outline-none flex-1 min-w-0 text-center placeholder:text-muted"
-                    autoFocus
                   />
                 </div>
 

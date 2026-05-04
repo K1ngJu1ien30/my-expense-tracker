@@ -6,9 +6,41 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
-## [1.1.6] — Velocity Sanity, Log Modal Redesign & Weather-Blend — 2026-05-04
+## [1.4.1] — History Row Density & Modal Focus Hotfix — 2026-05-04
 
-Substantial quality-of-life release surfaced after a month of daily use. Zero breaking schema changes — one additive nullable column, everything else is pure UX / code-quality polish.
+Two small but worth-it fixes surfaced within hours of the 1.4 release.
+
+## 🐛 Transaction modal no longer randomly springs the keyboard on the wrong field
+
+Opening the "New Transaction" modal was inconsistent — sometimes the Android keyboard would pop up on the Amount field, sometimes on the Sub-category / Note field (the *wrong* one), sometimes not at all.
+
+**Root cause:** the modal is kept mounted across opens by `AppLayout` (only `isOpen` toggles). `autoFocus` only fires on first mount, so on second-and-onward opens Android WebView's "restore focus to the last-focused form field" heuristic kicked in — which, after you'd just saved a transaction with a note, was the note input.
+
+**Fix:** the modal now does *nothing* on open — no auto-focus, no keyboard. `document.activeElement.blur()` runs on every fresh open to actively kick the WebView's focus-restore behaviour, so the modal just appears and waits for you to tap what you actually want to edit. Predictable every time.
+
+## ✨ History rows ~40% shorter
+
+Following user feedback ("too much wasted space per row"):
+
+- Card padding trimmed `p-5` → `p-4`.
+- Category title `text-lg` → `text-base` with tighter line-height.
+- Meta line + header pill dropped to `text-[10px]`.
+- Amount `text-xl` → `text-lg` (still the visual anchor; just proportional to the rest).
+- **Desktop-only action row (edit/delete fallback buttons) is now `hidden md:flex`** — previously it was `opacity-0` on mobile, which made it invisible but still consumed ~55px of vertical space per row. Mobile users swipe-left to reveal actions anyway, so the hidden desktop fallback was pure waste.
+- Row gap `pb-4` → `pb-2.5`.
+
+**Net result:** ~83px shorter per row. On a 720p phone you now see ~3.5 rows at a time where before you saw 2. Swipe-left behaviour on mobile and hover-reveal on desktop are both unchanged.
+
+## 🧹 Internal
+
+- Version bumped to `1.4.1`.
+- `tsc --noEmit` → 0 errors. `eslint .` → 0/0. Still clean.
+
+---
+
+## [1.4] — Velocity Sanity, Log Modal Redesign & Weather-Blend — 2026-05-04
+
+Substantial quality-of-life release surfaced after a month of daily use. Zero breaking schema changes — one additive nullable column, everything else is pure UX / code-quality polish. Version bump reflects the scope: this is not a patch release.
 
 ## ✨ Spending Velocity now ignores fixed bills
 
@@ -63,7 +95,7 @@ Alongside the user-facing fixes, a full re-audit addressed several latent code-q
 ## 🧹 Internal
 
 - `lib/types.ts` — `Transaction` gains an optional `exclude_from_velocity?: boolean | null` field with three-state storage semantics (`null/undefined` = defer to category rule, `true`/`false` = explicit override).
-- Version bumped to `1.1.6`.
+- Version bumped to `1.4`.
 - `tsc --noEmit` → 0 errors. `eslint .` → 0/0. `next build` → clean.
 
 ---

@@ -99,7 +99,7 @@ function SwipeableTransactionRow({
         style={{ x }}
         onDragEnd={handleDragEnd}
         onClick={() => { if (isOpen) { animate(x, 0); onClose(); } }}
-        className="relative bg-card p-5 rounded-3xl shadow-soft border border-border/40 space-y-3 group hover:border-primary/20 transition-colors touch-pan-y w-full max-w-full"
+        className="relative bg-card p-4 rounded-3xl shadow-soft border border-border/40 group hover:border-primary/20 transition-colors touch-pan-y w-full max-w-full"
       >
         <div
           className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-l-3xl ${
@@ -112,20 +112,20 @@ function SwipeableTransactionRow({
           aria-hidden="true"
         />
 
-        <div className="flex justify-between items-start gap-3 pl-2 min-w-0">
+        <div className="flex justify-between items-center gap-3 pl-2 min-w-0">
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-bold text-muted-foreground tracking-wider uppercase mb-0.5 truncate">
+            <p className="text-[10px] font-bold text-muted-foreground tracking-wider uppercase mb-0.5 truncate">
               {tx.type} • {tx.account}
             </p>
-            <h3 className="font-bold text-lg text-foreground truncate">
+            <h3 className="font-bold text-base text-foreground truncate leading-tight">
               {tx.category || (tx.type === "Income" ? "Income" : tx.type === "Transfer" ? "Transfer" : "General")}
             </h3>
-            <p className="text-xs text-muted-foreground/70 font-medium mt-0.5 truncate">
+            <p className="text-[10px] text-muted-foreground/70 font-medium mt-0.5 truncate">
               {new Date(tx.date).toLocaleDateString()} {tx.note ? `- ${tx.note}` : ""}
             </p>
           </div>
           <h3
-            className={`font-black text-xl tracking-tight shrink-0 ${
+            className={`font-black text-lg tracking-tight shrink-0 ${
               tx.type === "Income"
                 ? "text-emerald-500"
                 : tx.type === "Expense"
@@ -139,8 +139,13 @@ function SwipeableTransactionRow({
           </h3>
         </div>
 
-        {/* Keyboard / mouse fallback controls */}
-        <div className="flex justify-end gap-2 pl-2 border-t border-border/30 pt-3 opacity-0 group-hover:opacity-80 group-focus-within:opacity-80 transition-opacity">
+        {/* Keyboard / mouse fallback controls — desktop only.
+            On mobile users swipe-left to reveal edit/delete, so rendering
+            this row on a touch device just wastes ~55px of vertical space
+            per row (it was `opacity-0` but still consumed layout). Hidden
+            on mobile, visible on ≥md viewports where hover / focus-within
+            actually reveal it. */}
+        <div className="hidden md:flex justify-end gap-2 pl-2 mt-3 border-t border-border/30 pt-3 opacity-0 group-hover:opacity-80 group-focus-within:opacity-80 transition-opacity">
           <button
             type="button"
             aria-label={`Edit ${tx.type.toLowerCase()} of ${formatCurrency(Number(tx.amount))}`}
@@ -436,7 +441,7 @@ export default function HistoryPage() {
             data={filteredTransactions}
             increaseViewportBy={{ top: 200, bottom: 600 }}
             itemContent={(_index, tx) => (
-              <div className="pb-4 w-full">
+              <div className="pb-2.5 w-full">
                 <SwipeableTransactionRow
                   tx={tx}
                   formatCurrency={formatCurrency}
