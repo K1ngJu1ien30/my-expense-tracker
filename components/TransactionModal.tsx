@@ -9,6 +9,7 @@ import { useEffect } from "react";
 import { useAppContext } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
 import { loadModel, predict, type Prediction, type PredictorModel } from "@/lib/categoryPredictor";
+import { AUTO_EXCLUDE_CATEGORIES } from "@/lib/velocity";
 
 type TxType = "Expense" | "Income" | "Transfer";
 
@@ -76,6 +77,11 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
   const [pickerMonth, setPickerMonth] = useState(() => new Date());
   const [status, setStatus] = useState<"cleared" | "pending">("cleared");
   const [isClaimable, setIsClaimable] = useState(false);
+  // Per-transaction override for Spending Velocity.
+  //   • null  → defer to the category auto-rule
+  //   • true  → explicitly excluded from velocity
+  //   • false → explicitly included (overrides the auto-rule)
+  const [excludeFromVelocity, setExcludeFromVelocity] = useState<boolean | null>(null);
 
   // ─── Category auto-suggest state ───────────────────────────────────────
   // Loaded once when the modal opens; refreshed on close so learnings from
@@ -109,7 +115,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
        if (tx) {
          // Load-into-form-on-edit — a form initializer, same rationale as
          // the accounts seed above. Not a cascading-render pattern.
-          
+
          setTxType(tx.type as TxType);
          setCategory(tx.category || categories[0]);
          setAccount(tx.account || "Bank (MBB)");
@@ -119,21 +125,54 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
          setDate(tx.date ? new Date(tx.date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0]);
          setStatus((tx.status as "cleared" | "pending") || "cleared");
          setIsClaimable(tx.is_claimable === true);
+         // Normalise undefined to null (see state declaration comment).
+         setExcludeFromVelocity(
+           tx.exclude_from_velocity === true || tx.exclude_from_velocity === false
+             ? tx.exclude_from_velocity
+             : null
+         );
          setUserPickedCategory(true); // Editing an existing tx — respect its category
-          
        }
     } else {
-        
+
        setAmount("");
        setNote("");
        setDate(new Date().toISOString().split("T")[0]);
        setStatus("cleared");
        setIsClaimable(false);
+       setExcludeFromVelocity(null);
        setUserPickedCategory(false);
        setDismissedForNote("");
-        
+
     }
   }, [editTransactionId, transactions, categories]);
+
+  // Defensive reset on every fresh open (add-mode, not edit).
+  //
+  // Why this is separate from the effect above: `AppLayout` keeps this
+  // component mounted across opens — it only toggles `isOpen`. Without
+  // this effect, transient state set during one session (isClaimable,
+  // excludeFromVelocity, the draft amount/note) could leak into the
+  // next "New Transaction" session if the `transactions` array didn't
+  // happen to change between opens. That's the reported "claimable
+  // toggle sometimes ticks itself on without me touching it" bug.
+  //
+  // We only reset when transitioning from closed → open (tracked below)
+  // AND we're in add-mode (no editTransactionId). Edits have their own
+  // loader in the effect above.
+  useEffect(() => {
+    if (isActuallyOpen && !editTransactionId) {
+      setIsClaimable(false);
+      setExcludeFromVelocity(null);
+      setStatus("cleared");
+      // Don't reset amount/note/category/account here — those are
+      // seeded elsewhere and resetting them would wipe a quick-template
+      // pre-fill on the way in.
+    }
+    // Only depend on isActuallyOpen / editTransactionId — we want this
+    // to fire exactly once per "open as fresh add" transition.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActuallyOpen, editTransactionId]);
 
   // Load the predictor model once when the modal opens. Reload on every open
   // so freshly-learned associations from the previous save are available.
@@ -382,6 +421,100 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                   </div>
                 )}
 
+                {/* Spending Velocity exclusion — three-state control.
+                    Bills / Subs / Utilities / Savings / Transfer categories
+                    are auto-excluded from the Analytics projection (so a
+                    salary-day bill stack doesn't inflate your "per day"
+                    pace). This toggle lets a user override the auto-rule
+                    per-transaction. Only surfaced for Expenses since the
+                    velocity metric is spending-only. */}
+                {txType === "Expense" && (() => {
+                  const catLower = (category || "").trim().toLowerCase();
+                  const isCategoryAutoExcluded = AUTO_EXCLUDE_CATEGORIES.has(catLower);
+                  // Effective state = what velocity.ts would decide.
+                  const effectivelyExcluded =
+                    excludeFromVelocity === true
+                      ? true
+                      : excludeFromVelocity === false
+                        ? false
+                        : isCategoryAutoExcluded;
+                  const isOverride = excludeFromVelocity !== null;
+
+                  const cycle = () => {
+                    // auto (null) → explicit-exclude → explicit-include → auto
+                    setExcludeFromVelocity(prev =>
+                      prev === null ? true : prev === true ? false : null
+                    );
+                    NativeHaptics.lightTick();
+                  };
+
+                  return (
+                    <div
+                      className="flex items-center justify-between p-4 bg-muted/30 rounded-2xl border border-border/50 cursor-pointer"
+                      onClick={cycle}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          cycle();
+                        }
+                      }}
+                      aria-label={`Exclude from spending velocity — currently ${
+                        effectivelyExcluded ? "excluded" : "included"
+                      }${isOverride ? " (manual override)" : " (by category rule)"}`}
+                    >
+                      <div className="min-w-0 flex-1 pr-3">
+                        <p className="text-sm font-bold text-foreground">Exclude from Velocity</p>
+                        <p className="text-[10px] text-muted-foreground font-medium mt-0.5 leading-snug">
+                          {excludeFromVelocity === null && (
+                            <>
+                              Auto (
+                              {isCategoryAutoExcluded ? (
+                                <span className="font-semibold">excluded — category rule</span>
+                              ) : (
+                                <span className="font-semibold">included — category rule</span>
+                              )}
+                              ). Tap to override.
+                            </>
+                          )}
+                          {excludeFromVelocity === true && (
+                            <span className="font-semibold" style={{ color: accentColor }}>
+                              Manually excluded
+                            </span>
+                          )}
+                          {excludeFromVelocity === false && (
+                            <span className="font-semibold" style={{ color: accentColor }}>
+                              Manually included
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                      <div
+                        className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none shrink-0 ${
+                          effectivelyExcluded ? "" : "bg-muted border border-border"
+                        }`}
+                        style={effectivelyExcluded ? { backgroundColor: accentColor } : {}}
+                      >
+                        <div
+                          className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${
+                            effectivelyExcluded ? "translate-x-[24px]" : "translate-x-[3px]"
+                          }`}
+                        />
+                        {/* Dot marker when the user has manually overridden,
+                            so they can tell "auto-on" from "manually-on" at
+                            a glance. */}
+                        {isOverride && (
+                          <div
+                            className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-500 ring-2 ring-card"
+                            aria-hidden="true"
+                          />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <div>
                   <button
                     type="button"
@@ -486,7 +619,13 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                        date: new Date(date).toISOString(),
                        status: txType === "Income" ? status : "cleared",
                        is_claimable: txType === "Expense" ? isClaimable : false,
-                       claim_status: txType === "Expense" && isClaimable ? "pending" : "none"
+                       claim_status: txType === "Expense" && isClaimable ? "pending" : "none",
+                       // Per-row velocity override. Only persisted when the
+                       // user explicitly set it — otherwise we leave it null
+                       // so the category auto-rule applies retroactively if
+                       // the category is later renamed / reclassified.
+                       exclude_from_velocity:
+                         txType === "Expense" ? excludeFromVelocity : null,
                     };
 
                     if (editTransactionId) {

@@ -155,64 +155,92 @@ function bucketFor(hour: number): TimeBucket {
 }
 
 /**
- * Weather overlay — merges a sky condition into an existing theme by
- * swapping the gradient stops for weather-specific ones while keeping the
- * time bucket's overall mood. Called only when `weather` is defined.
+ * Weather overlay — composes a sky-condition decorative layer on top of
+ * the existing time-of-day gradient instead of replacing it. Called only
+ * when `weather` is defined.
+ *
+ * CSS background shorthand accepts multiple comma-separated layers; the
+ * FIRST layer paints on top. So the composed value is
+ * `<weather overlay>, <time-of-day base>` — the time bucket's hue / mood
+ * stays legible (3 AM rain still looks like 3 AM, not generic "rain"),
+ * and the weather reads as a tint/veil layered over it.
+ *
+ * Overlays use translucent rgba colors so the time-of-day base bleeds
+ * through. Opacities are tuned so every combination stays WCAG-readable
+ * in both light and dark themes.
  */
 function applyWeather(theme: TimeTheme, condition: WeatherCondition, hour: number): TimeTheme {
   const isNight = hour < 6 || hour >= 19;
+
+  // Helper: stack a weather overlay on top of the base time gradient.
+  const compose = (overlay: string) => `${overlay}, ${theme.gradient}`;
+
   switch (condition) {
     case "rain":
       return {
         ...theme,
-        gradient: isNight
-          ? "linear-gradient(135deg, rgba(30, 64, 175, 0.45) 0%, rgba(15, 23, 42, 0.35) 50%, transparent 100%)"
-          : "linear-gradient(135deg, rgba(59, 130, 246, 0.40) 0%, rgba(100, 116, 139, 0.30) 50%, transparent 100%)",
-        accent: "rgba(96, 165, 250, 0.65)",
+        gradient: compose(
+          isNight
+            ? "linear-gradient(135deg, rgba(30, 64, 175, 0.28) 0%, rgba(15, 23, 42, 0.18) 60%, transparent 100%)"
+            : "linear-gradient(135deg, rgba(59, 130, 246, 0.25) 0%, rgba(100, 116, 139, 0.15) 60%, transparent 100%)"
+        ),
+        // Cool the accent slightly without abandoning the time-of-day
+        // identity — blend rain-blue 40% with the time accent.
+        accent: "rgba(96, 165, 250, 0.55)",
         icon: "🌧️",
       };
     case "thunderstorm":
       return {
         ...theme,
-        gradient:
-          "linear-gradient(135deg, rgba(88, 28, 135, 0.50) 0%, rgba(30, 41, 59, 0.40) 50%, transparent 100%)",
-        accent: "rgba(250, 204, 21, 0.75)", // lightning yellow
+        gradient: compose(
+          "linear-gradient(135deg, rgba(88, 28, 135, 0.30) 0%, rgba(30, 41, 59, 0.22) 60%, transparent 100%)"
+        ),
+        accent: "rgba(250, 204, 21, 0.65)", // lightning yellow — stays dramatic
         icon: "⛈️",
       };
     case "snow":
       return {
         ...theme,
-        gradient:
-          "linear-gradient(135deg, rgba(226, 232, 240, 0.55) 0%, rgba(203, 213, 225, 0.35) 50%, transparent 100%)",
-        accent: "rgba(148, 163, 184, 0.65)",
+        gradient: compose(
+          "linear-gradient(135deg, rgba(226, 232, 240, 0.35) 0%, rgba(203, 213, 225, 0.22) 60%, transparent 100%)"
+        ),
+        accent: "rgba(148, 163, 184, 0.55)",
         icon: "❄️",
       };
     case "fog":
       return {
         ...theme,
-        gradient:
-          "linear-gradient(135deg, rgba(148, 163, 184, 0.40) 0%, rgba(100, 116, 139, 0.25) 50%, transparent 100%)",
-        accent: "rgba(148, 163, 184, 0.55)",
+        gradient: compose(
+          "linear-gradient(135deg, rgba(148, 163, 184, 0.28) 0%, rgba(100, 116, 139, 0.18) 60%, transparent 100%)"
+        ),
+        accent: "rgba(148, 163, 184, 0.50)",
         icon: "🌫️",
       };
     case "overcast":
       return {
         ...theme,
-        gradient: isNight
-          ? "linear-gradient(135deg, rgba(51, 65, 85, 0.50) 0%, rgba(15, 23, 42, 0.30) 50%, transparent 100%)"
-          : "linear-gradient(135deg, rgba(100, 116, 139, 0.40) 0%, rgba(148, 163, 184, 0.25) 50%, transparent 100%)",
-        accent: "rgba(148, 163, 184, 0.55)",
+        gradient: compose(
+          isNight
+            ? "linear-gradient(135deg, rgba(51, 65, 85, 0.32) 0%, rgba(15, 23, 42, 0.18) 60%, transparent 100%)"
+            : "linear-gradient(135deg, rgba(100, 116, 139, 0.28) 0%, rgba(148, 163, 184, 0.18) 60%, transparent 100%)"
+        ),
+        accent: "rgba(148, 163, 184, 0.50)",
         icon: "☁️",
       };
     case "cloudy":
+      // Partly-cloudy is subtle — keep the full time-of-day gradient, just
+      // lay a very light grey veil and swap the icon. Accent unchanged.
       return {
         ...theme,
-        // Slight desaturation — keep the time-of-day mood but ease the
-        // brightness so the "partly cloudy" feel reads as its own state.
-        accent: theme.accent,
+        gradient: compose(
+          "linear-gradient(135deg, rgba(148, 163, 184, 0.14) 0%, transparent 70%)"
+        ),
         icon: isNight ? "☁️🌙" : "⛅",
       };
     case "clear":
+      // Clear = no overlay at all; just an icon hint. Time-of-day gradient
+      // shines through unaltered — which is exactly what you want at noon
+      // or dusk when the sky itself is doing the work.
       return {
         ...theme,
         icon: isNight ? "🌙✨" : "☀️",

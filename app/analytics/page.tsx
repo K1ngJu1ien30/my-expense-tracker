@@ -6,6 +6,7 @@ import { Sparkles, Receipt } from "lucide-react";
 import { useState, useMemo } from "react";
 import MonthlyReceiptModal from "@/components/MonthlyReceiptModal";
 import type { ReceiptMonth } from "@/lib/receiptData";
+import { countsTowardVelocity, velocityFilterExplainer } from "@/lib/velocity";
 
 // Minimal shape Recharts hands to custom tooltip components. Fields like `dataKey`,
 // `fill`, `stroke`, and `payload` are always present at runtime, but Recharts' own
@@ -235,19 +236,32 @@ export default function AnalyticsPage() {
   }, [timeFilter]);
 
   // Velocity Projection (current month only)
+  //
+  // Uses `countsTowardVelocity` so bills / subs / utilities / savings
+  // (and transfers, income) don't inflate the per-day pace. On salary
+  // day this is the difference between a realistic RM 30/day projection
+  // and a nonsensical RM 180/day projection inflated by a one-shot
+  // RM 550 bill stack.
   const velocityData = useMemo(() => {
     const now = new Date();
     const currentDay = now.getDate();
     const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
 
-    // Build cumulative actual spend by day
+    // Build cumulative actual spend by day — velocity-eligible only.
     const dailySpend: Record<number, number> = {};
+    let excludedTotal = 0;
+    let excludedCount = 0;
     transactions.forEach(t => {
-      if (t.type !== "Expense") return;
       const d = new Date(t.date);
       if (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear()) return;
-      const day = d.getDate();
-      dailySpend[day] = (dailySpend[day] || 0) + Number(t.amount);
+      if (t.type !== "Expense" || t.deleted_at) return;
+      if (countsTowardVelocity(t)) {
+        const day = d.getDate();
+        dailySpend[day] = (dailySpend[day] || 0) + Number(t.amount);
+      } else {
+        excludedTotal += Number(t.amount);
+        excludedCount += 1;
+      }
     });
 
     let cumulative = 0;
@@ -277,7 +291,16 @@ export default function AnalyticsPage() {
 
     const projectedTotal = Math.round(dailyAvg * daysInMonth * 100) / 100;
 
-    return { data, projectedTotal, dailyAvg, currentDay, daysInMonth, totalSoFar: cumulative };
+    return {
+      data,
+      projectedTotal,
+      dailyAvg,
+      currentDay,
+      daysInMonth,
+      totalSoFar: cumulative,
+      excludedTotal,
+      excludedCount,
+    };
   }, [transactions]);
 
   // Income by Account — grouped bar chart data respecting time filter
@@ -509,6 +532,19 @@ export default function AnalyticsPage() {
               {formatCurrency(velocityData.projectedTotal)}
             </p>
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mt-0.5">end-of-month projection</p>
+            {/* Transparency line — tells the user what's being left out of
+                the velocity calc and why. Without this the number looks
+                arbitrary; with it, the rule is legible. */}
+            <p className="text-[10px] font-medium text-muted-foreground/80 mt-3 leading-snug">
+              {velocityData.excludedCount > 0 ? (
+                <>
+                  <span className="font-bold text-foreground/70">{formatCurrency(velocityData.excludedTotal)}</span>{" "}
+                  ({velocityData.excludedCount} tx) excluded this month. {velocityFilterExplainer()}
+                </>
+              ) : (
+                velocityFilterExplainer()
+              )}
+            </p>
           </div>
 
           <div className="h-[200px] w-full">

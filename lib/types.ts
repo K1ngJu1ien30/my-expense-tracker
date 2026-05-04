@@ -49,6 +49,19 @@ export type Transaction = {
   is_claimable?: boolean;
   claim_status?: string;
   deleted_at?: string | null;
+  /**
+   * Per-transaction override for the Spending Velocity calculation.
+   *
+   * Three-state:
+   *   • `undefined` / `null` — defer to the category auto-rule (Bills,
+   *     Subs, Utilities, Savings are auto-excluded from velocity).
+   *   • `true` — explicitly excluded (overrides the category rule).
+   *   • `false` — explicitly INCLUDED (forces this row to count even if
+   *     its category would normally be auto-excluded).
+   *
+   * See `lib/velocity.ts` for the resolution logic.
+   */
+  exclude_from_velocity?: boolean | null;
 };
 
 export type ToastType = { message: string; id: number } | null;
