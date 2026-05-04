@@ -2,7 +2,7 @@
 
 Welcome. This guide walks you through every feature of the app, from first launch to power-user tricks. No jargon, no fluff.
 
-> **What's new in v1.1.6 (May 2026):** Three quality-of-life fixes — (1) **Spending Velocity** no longer counts your fixed bills on salary day, so the end-of-month projection finally matches reality. It auto-ignores transactions tagged Bills, Subs, Utilities, Savings, or Transfer; a new per-transaction toggle in the add/edit modal lets you override either direction. (2) Fixed a bug where the **Claimable/Split** toggle could silently stay ON between sessions after you'd previously edited a claimable expense. (3) **Weather theming** now layers on top of time-of-day instead of replacing it — 3 AM rain still looks like 3 AM night with a rain veil, not generic "rain mode".
+> **What's new in v1.1.6 (May 2026):** Big quality-of-life release. (1) **Spending Velocity** no longer counts your fixed bills on salary day, so the end-of-month projection finally matches reality. It auto-ignores transactions tagged Bills, Subs, Utilities, Savings, or Transfer; a compact per-transaction toggle (behind "More" in the add modal) lets you override either direction. (2) **Log-transaction modal is ~40% shorter** — horizontal-scroll category/account rows, a collapsed currency picker, and tighter spacing. Categories follow your Settings order exactly. (3) Fixed a bug where the **Claimable/Split** toggle could silently stay ON between sessions. (4) Fixed scroll rows touching the screen edges on Expense / Income / Transfer. (5) **Weather theming** now layers on top of time-of-day instead of replacing it — 3 AM rain still looks like 3 AM night with a rain veil, not generic "rain mode".
 
 ---
 

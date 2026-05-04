@@ -97,12 +97,16 @@ export function RawDataModal({
                 <th className="p-3 border-b border-border/50">Account</th>
                 <th className="p-3 border-b border-border/50">To Account</th>
                 <th className="p-3 border-b border-border/50">Note</th>
+                {/* Velocity column — shows the per-row override state so
+                    power users can audit what the Analytics filter is
+                    doing. Blank = defer to category rule. */}
+                <th className="p-3 border-b border-border/50">Velocity</th>
               </tr>
             </thead>
             <tbody>
               {txDisplayed.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="p-8 text-center text-muted-foreground font-medium">
+                  <td colSpan={10} className="p-8 text-center text-muted-foreground font-medium">
                     No transaction records found.
                   </td>
                 </tr>
@@ -118,12 +122,19 @@ export function RawDataModal({
                     <td className="p-3 border-b border-border/30 text-muted-foreground max-w-[90px] truncate">{tx.account || "-"}</td>
                     <td className="p-3 border-b border-border/30 text-muted-foreground max-w-[90px] truncate">{tx.to_account || "-"}</td>
                     <td className="p-3 border-b border-border/30 text-muted-foreground max-w-[120px] truncate">{tx.note || "-"}</td>
+                    <td className="p-3 border-b border-border/30 text-xs font-mono">
+                      {tx.exclude_from_velocity === true
+                        ? <span className="text-amber-500 font-bold">EXCL</span>
+                        : tx.exclude_from_velocity === false
+                          ? <span className="text-sky-500 font-bold">INCL</span>
+                          : <span className="text-muted-foreground/50">auto</span>}
+                    </td>
                   </tr>
                 ))
               )}
               {truncated && (
                 <tr>
-                  <td colSpan={9} className="p-3 text-center text-xs font-medium text-muted-foreground bg-muted/40">
+                  <td colSpan={10} className="p-3 text-center text-xs font-medium text-muted-foreground bg-muted/40">
                     Showing first {TX_DISPLAY_CAP} of {transactions.length} transactions. Use Export for the full set.
                   </td>
                 </tr>

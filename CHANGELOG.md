@@ -6,33 +6,63 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
-## [1.1.6] — Velocity Sanity, Modal Hygiene & Weather-Blend — 2026-05-04
+## [1.1.6] — Velocity Sanity, Log Modal Redesign & Weather-Blend — 2026-05-04
 
-Three real-world UX fixes surfaced after a month of daily use. No schema-breaking changes; one additive column.
+Substantial quality-of-life release surfaced after a month of daily use. Zero breaking schema changes — one additive nullable column, everything else is pure UX / code-quality polish.
 
 ## ✨ Spending Velocity now ignores fixed bills
 
-The Analytics page's end-of-month projection used to read your salary-day bill stack (water, electricity, subscriptions, transport pass, savings reserve) as typical daily spending, inflating the projection from ~RM 900/month to nonsensical values like RM 5,500/month. Fixed with a two-layer rule:
+The Analytics page's end-of-month projection used to read your salary-day bill stack (water, electricity, subscriptions, transport pass, savings reserve) as typical daily spending, inflating the projection from a realistic ~RM 900/month to nonsensical values like RM 5,500/month. Fixed with a two-layer rule:
 
-- **Category auto-rule (default, retroactive):** transactions tagged `Bills`, `Subs`, `Subscription(s)`, `Utility/Utilities`, `Savings`, or `Transfer` are auto-excluded from the velocity calc. Works on existing transactions — no re-tagging needed.
-- **Per-transaction override:** a new three-state toggle in the add/edit modal lets you force-include or force-exclude any single row. Tap cycles `auto → manually excluded → manually included → auto`. An amber dot marks rows with a manual override so they're distinguishable at a glance from the auto-rule state.
-- **Transparency line** under the velocity projection now shows how much was excluded this month and why (`"RM 553.57 (7 tx) excluded this month. Excludes Bills, Subs, Utilities, Savings, and Transfers by default."`).
+- **Category auto-rule (default, retroactive).** Transactions tagged `Bills`, `Subs`, `Subscription(s)`, `Utility/Utilities`, `Savings`, or `Transfer` are auto-excluded from the velocity calc. Works on existing transactions — no re-tagging needed.
+- **Per-transaction override.** A compact toggle in the add/edit modal's new *More* disclosure flips the row against the category rule. An amber dot marks rows where the user has overridden the auto-rule. The toggle is a clean two-state flip — earlier drafts of this feature shipped with a three-state cycle that proved confusing (toggle off + dot still visible) and was simplified before release.
+- **Transparency line** under the velocity projection shows exactly how much was excluded and why: `"RM 553.57 (7 tx) excluded this month. Excludes Bills, Subs, Utilities, Savings, and Transfers by default."`
 
-New files: `lib/velocity.ts` (pure filter logic + the canonical category allow-list), `supabase/migrations/003_exclude_from_velocity.sql` (additive nullable column — old clients keep working).
+New files: `lib/velocity.ts` (pure filter logic + canonical category allow-list), `supabase/migrations/003_exclude_from_velocity.sql` (additive nullable column — old clients keep working).
+
+## ✨ Log-Transaction modal redesigned for a cleaner, shorter form
+
+For users with 8-10+ categories the modal had grown fat — category chips wrapping across 4 rows, two full-width toggle cards stacking 180px of vertical space, a 4-pill always-visible currency picker. Rebuilt as a compact, single-view form:
+
+- **Horizontal-scroll pill selectors** for Account and Category (replaces `flex-wrap` grids). Categories follow your Settings → Manage Categories order **verbatim** — no usage-based reordering that fights muscle memory.
+- **Collapsed currency picker.** RM/SGD/USD/JPY pills replaced by a single `RM ▼` chip next to the amount input. Tapping it reveals the 4-way picker only when needed. Matches the real 99%-of-the-time use case.
+- **Options row with More disclosure.** Claimable/Split chip is always visible; Exclude-from-Velocity lives behind a tap on *More* (auto-expands on edit if the row has a manual override so nothing ever hides unexpectedly).
+- **Tighter spacing.** Amount box padding dropped from `py-6` to `py-4`; section gap reduced from `space-y-6` to `space-y-5`.
+- **Selected-chip centring.** When you pick a category that was off-screen, the row smooth-scrolls to confirm the selection — prevents the "did my tap register?" uncertainty.
+
+**Total vertical savings: ~380px on a typical Expense save.** The whole form now fits on a 720p phone without scrolling.
 
 ## 🐛 Claimable / Split toggle no longer ghost-ticks itself
 
-Root cause: `TransactionModal` stays mounted across opens (owned by `AppLayout`), so local state like `isClaimable` persisted across sessions in edge cases where the reset effect's deps (`editTransactionId` / `transactions` / `categories`) didn't happen to change between a close and the next fresh open. If you'd previously edited a claimable transaction, the toggle could silently re-appear ON for the next fresh add.
+Root cause: `TransactionModal` stays mounted across opens (owned by `AppLayout`), so local state like `isClaimable` persisted across sessions in edge cases where the reset effect's deps didn't happen to change between closing and reopening. If you'd previously edited a claimable transaction, the toggle could silently re-appear ON for the next fresh add.
 
-Fix: a defensive reset effect now fires every time the modal transitions closed → open in add-mode, clearing `isClaimable`, `excludeFromVelocity`, and `status` to their defaults. Edit-mode is untouched (its own loader still seeds the form from the saved row). Amount / note / category / account are intentionally NOT reset here so long-press FAB template pre-fills still survive the open transition.
+Fix: a defensive reset effect fires every time the modal transitions closed → open in add-mode, clearing `isClaimable`, `excludeFromVelocity`, `showMoreOptions`, `showCurrencyPicker`, and `status` to their defaults. Edit-mode is untouched (its own loader still seeds the form from the saved row). Amount / note / category / account are intentionally NOT reset here so long-press FAB template pre-fills still survive the open transition.
+
+## 🐛 Scroll-pill rows no longer touch the screen edges
+
+The Account and Category rows were using a classic `-mx-6 px-6` bleed-to-edge trick that fails on Android WebView — the engine silently drops `padding-right` on horizontally-scrollable flex containers, which made the last chip flush against the viewport while every other field sat on the proper 24px inset. On the Transfer view it was worse: chips leaked out of the parent's bordered card. Dropped the bleed hack and added a 2px trailing spacer instead — predictable alignment across all three transaction types.
 
 ## ✨ Weather theming no longer overrides time-of-day
 
 Previously, enabling Weather Locations would REPLACE the dashboard's time-of-day gradient with a weather-specific one, erasing the "3 AM looks different to 2 PM" identity you'd get from time theming alone. Reworked `lib/timeTheme.ts`'s `applyWeather` to *compose* instead of replace — the time-of-day gradient stays as the base layer and weather paints as a translucent overlay on top using CSS multi-background stacking. Net effect: `3 AM + rain` still reads as deep purple night with rain tones layered over it, not generic "rain mode". `clear` sky now adds no overlay at all — time-of-day shines through untouched.
 
+## 🧹 Code-quality audit pass (hygiene + defensive hardening)
+
+Alongside the user-facing fixes, a full re-audit addressed several latent code-quality items:
+
+- **Line endings pinned to LF.** New `.editorconfig` + tightened `.gitattributes` force every source file to LF. Kills the perpetual whitespace-only diff noise caused by Windows `core.autocrlf=true`.
+- **Offline queue race eliminated.** Two rapid saves while offline could race on read-modify-write of IndexedDB; now serialised through a single-flight promise chain (`lib/hooks/useMoneyState.ts`).
+- **Non-mutating input objects.** `addSubscription` / `addUtility` / `addGoal` / `addPlannerItem` / `addAsset` no longer mutate their caller's `Partial<T>` input with `delete x.id` — replaced with non-mutating destructure.
+- **Shark-undo closure hardening.** `triggerSharkUndo` wrapped in `useCallback` with a `triggerSharkUndoRef` mirror so the mount-once accelerometer listener always invokes the latest closure without re-subscribing on every render.
+- **Dead code removal.** Unreachable env-fallback branch in `AuthScreen.tsx` (superseded by `lib/supabase.ts` throw-on-missing-env in v1.1.0).
+- **God Mode timer cleanup.** `handleAvatarTap` now nulls out `godTapTimer.current` after clearing.
+- **RawDataModal exposes velocity state.** New "Velocity" column in the Database View so power users can audit `auto` / `EXCL` / `INCL` per-row without exporting.
+- **Production-only console stripping.** `next.config.ts` adds `compiler.removeConsole` for production builds (keeps `error` / `warn`). Slightly smaller bundle, quieter release logcat.
+- **Capacitor hardening.** `server.androidScheme: 'https'` (unlocks larger IndexedDB quota tier + full Service Worker support); `android.webContentsDebuggingEnabled: false` (blocks Chrome DevTools inspection of release APKs).
+
 ## 🧹 Internal
 
-- `lib/types.ts` — `Transaction` gains an optional `exclude_from_velocity?: boolean | null` field with three-state semantics (`null/undefined` = defer to category rule, `true`/`false` = explicit override).
+- `lib/types.ts` — `Transaction` gains an optional `exclude_from_velocity?: boolean | null` field with three-state storage semantics (`null/undefined` = defer to category rule, `true`/`false` = explicit override).
 - Version bumped to `1.1.6`.
 - `tsc --noEmit` → 0 errors. `eslint .` → 0/0. `next build` → clean.
 

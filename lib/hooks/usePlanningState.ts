@@ -48,8 +48,11 @@ export function usePlanningState(deps: PlanningStateDeps) {
 
   const addGoal = useCallback(
     async (goal: Partial<Goal>) => {
-      delete goal.id;
-      const { title, current, target, isPinned } = goal;
+      // Strip id without mutating the caller's object — matches the
+      // non-mutating pattern used by addSubscription / addUtility /
+      // addPlannerItem / addAsset.
+      const { id: _id, ...rest } = goal;
+      const { title, current, target, isPinned } = rest;
       const payload = {
         title,
         current_amount: current || 0,
@@ -59,7 +62,7 @@ export function usePlanningState(deps: PlanningStateDeps) {
       };
       const { data, error } = await supabase.from("goals").insert(payload).select().single();
       if (!error && data) {
-        setGoals(prev => [{ ...goal, id: data.id } as Goal, ...prev]);
+        setGoals(prev => [{ ...rest, id: data.id } as Goal, ...prev]);
         NativeHaptics.successMedium();
       }
     },
