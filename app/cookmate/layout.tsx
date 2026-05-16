@@ -16,12 +16,11 @@ const tabs = [
 
 export default function CookMateLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  // Hide CookMate nav on recipe detail pages (they have their own back nav)
   const isRecipeDetail = pathname.startsWith("/cookmate/recipe/");
 
   return (
     <CookMateProvider>
-      <div className="flex flex-col min-h-0 h-full">
+      <div className="flex flex-col h-full">
         {/* Header */}
         {!isRecipeDetail && (
           <div className="px-6 pt-6 pb-2 flex items-center gap-3 shrink-0">
@@ -35,28 +34,26 @@ export default function CookMateLayout({ children }: { children: React.ReactNode
           </div>
         )}
 
-        {/* Content — extra bottom padding to clear the fixed nav */}
-        <div className="flex-1 overflow-y-auto hide-scrollbar pb-16">
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto hide-scrollbar">
           {children}
         </div>
 
-        {/* Fixed bottom nav — sits above the app's main bottom nav */}
+        {/* Bottom nav — replaces the app's main nav (hidden by AppLayout) */}
         {!isRecipeDetail && (
-          <div className="fixed bottom-[72px] left-0 right-0 z-40 max-w-md mx-auto">
-            <div className="mx-4 bg-card/95 backdrop-blur-xl border border-border/50 rounded-2xl shadow-heavy px-2 py-1.5 flex justify-around">
-              {tabs.map(tab => {
-                const isActive = pathname === tab.href || (tab.href !== "/cookmate" && pathname.startsWith(tab.href));
-                const isExactCook = tab.href === "/cookmate" && pathname === "/cookmate";
-                const active = isActive || isExactCook;
-                return (
-                  <Link key={tab.href} href={tab.href} className="flex flex-col items-center gap-0.5 py-1.5 px-3 rounded-xl transition-colors" style={active ? { backgroundColor: `${ACCENT}15` } : {}}>
-                    <span className="text-base">{tab.icon}</span>
-                    <span className="text-[9px] font-bold" style={{ color: active ? ACCENT : "var(--color-muted-foreground)" }}>{tab.label}</span>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
+          <nav className="border-t border-border/40 bg-white dark:bg-zinc-950 bg-opacity-90 dark:bg-opacity-90 backdrop-blur-xl px-6 py-3 flex justify-around pb-safe shrink-0">
+            {tabs.map(tab => {
+              const isActive = pathname === tab.href || (tab.href !== "/cookmate" && pathname.startsWith(tab.href));
+              const isExactCook = tab.href === "/cookmate" && pathname === "/cookmate";
+              const active = isActive || isExactCook;
+              return (
+                <Link key={tab.href} href={tab.href} className="flex flex-col items-center gap-1 transition-colors">
+                  <span className={`text-lg ${active ? "" : "grayscale opacity-60"}`}>{tab.icon}</span>
+                  <span className="text-[10px] font-semibold" style={{ color: active ? ACCENT : "var(--color-muted-foreground)" }}>{tab.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
         )}
       </div>
     </CookMateProvider>
