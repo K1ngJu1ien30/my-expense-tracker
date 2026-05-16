@@ -48,6 +48,7 @@ export function useUserPreferences(session: Session | null) {
   const [isTradingEnabled, setIsTradingEnabledRaw] = useState(false);
   const [isWanderPlanEnabled, setIsWanderPlanEnabledRaw] = useState(false);
   const [isArcadeEnabled, setIsArcadeEnabledRaw] = useState(false);
+  const [isCookMateEnabled, setIsCookMateEnabledRaw] = useState(true);
 
   // ─── Easter-egg flags ───────────────────────────────────────────────────
   // Greeting-line swap at different hours (2 AM owl, 5 AM early-bird, etc.).
@@ -198,6 +199,14 @@ export function useUserPreferences(session: Session | null) {
     [persist]
   );
 
+  const toggleCookMate = useCallback(
+    async (val: boolean) => {
+      setIsCookMateEnabledRaw(val);
+      await persist({ cookmate_enabled: val });
+    },
+    [persist]
+  );
+
   const toggleTimeBasedGreeting = useCallback(
     async (val: boolean) => {
       setEnableTimeBasedGreetingRaw(val);
@@ -258,6 +267,7 @@ export function useUserPreferences(session: Session | null) {
       setIsTradingEnabledRaw(meta.trading_enabled === true);
       setIsWanderPlanEnabledRaw(meta.wanderplan_enabled === true);
       setIsArcadeEnabledRaw(meta.arcade_enabled === true);
+      setIsCookMateEnabledRaw(meta.cookmate_enabled !== false);
       // Greeting is ON by default unless user explicitly opted out.
       setEnableTimeBasedGreetingRaw(
         meta.enable_time_based_greeting === false ? false : true
@@ -287,6 +297,7 @@ export function useUserPreferences(session: Session | null) {
     setIsTradingEnabledRaw(false);
     setIsWanderPlanEnabledRaw(false);
     setIsArcadeEnabledRaw(false);
+    setIsCookMateEnabledRaw(true);
     setEnableTimeBasedGreetingRaw(true);
     setEnableFridayThe13thRaw(false);
     setPrimaryLocationRaw("");
@@ -336,6 +347,8 @@ export function useUserPreferences(session: Session | null) {
     toggleWanderPlan,
     isArcadeEnabled,
     toggleArcade,
+    isCookMateEnabled,
+    toggleCookMate,
     // Easter-egg flags
     enableTimeBasedGreeting,
     toggleTimeBasedGreeting,

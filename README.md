@@ -1,10 +1,10 @@
 # Expense Tracker Pro
 
-### Native Multi-Currency Financial Engine — v1.6.0
+### Native Multi-Currency Financial Engine — v1.7.0
 
 A production-grade, offline-first personal finance application built with Next.js and compiled to a native Android binary via Capacitor. Designed from the ground up to feel indistinguishable from a first-party iOS app, with zero native HTML controls, integer-cents precision math, and a resilient sync architecture backed by Supabase and IndexedDB.
 
-> **Quality baseline (v1.6.0):** `tsc --noEmit` → 0 errors. `eslint .` → 0 errors / 0 warnings. `next build` → 35/35 static pages. Every exception is carefully justified inline.
+> **Quality baseline (v1.7.0):** `tsc --noEmit` → 0 errors. `eslint .` → 0 errors / 0 warnings. `next build` → 42 pages (static + SSG). Every exception is carefully justified inline.
 
 ---
 

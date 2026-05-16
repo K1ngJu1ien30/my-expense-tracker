@@ -143,6 +143,8 @@ type AppContextType = {
   toggleWanderPlan: (val: boolean) => void;
   isArcadeEnabled: boolean;
   toggleArcade: (val: boolean) => void;
+  isCookMateEnabled: boolean;
+  toggleCookMate: (val: boolean) => void;
   // WanderPlan state + CRUD
   wpTrips: WPTrip[];
   wpTripDays: WPTripDay[];
@@ -228,6 +230,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     isTradingEnabled, toggleTrading,
     isWanderPlanEnabled, toggleWanderPlan,
     isArcadeEnabled, toggleArcade,
+    isCookMateEnabled, toggleCookMate,
     enableTimeBasedGreeting, toggleTimeBasedGreeting,
     enableFridayThe13th, toggleFridayThe13th,
     primaryLocation, setPrimaryLocation,
@@ -706,6 +709,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       isTradingEnabled, toggleTrading,
       isWanderPlanEnabled, toggleWanderPlan,
       isArcadeEnabled, toggleArcade,
+      isCookMateEnabled, toggleCookMate,
       ...wanderPlan,
       enableTimeBasedGreeting, toggleTimeBasedGreeting,
       enableFridayThe13th, toggleFridayThe13th,

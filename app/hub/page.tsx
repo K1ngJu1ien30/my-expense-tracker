@@ -7,7 +7,7 @@ import { useAppContext } from "@/lib/context";
 import { supabase } from "@/lib/supabase";
 
 export default function HubPage() {
-  const { accentColor, enableFoodBudget, enableSalaryPlanner, isVaultEnabled, isRadarEnabled, isClaimsEnabled, isTradingEnabled, isWanderPlanEnabled, isArcadeEnabled, transactions, subscriptions, utilities, session, setShowTransactionModal, formatCurrency } = useAppContext();
+  const { accentColor, enableFoodBudget, enableSalaryPlanner, isVaultEnabled, isRadarEnabled, isClaimsEnabled, isTradingEnabled, isWanderPlanEnabled, isArcadeEnabled, isCookMateEnabled, transactions, subscriptions, utilities, session, setShowTransactionModal, formatCurrency } = useAppContext();
 
   const [radarCount, setRadarCount] = useState(0);
 
@@ -147,6 +147,15 @@ export default function HubPage() {
       description: "Mini-games, idle clicker & daily slack timer",
       color: "bg-indigo-500/10",
       enabled: isArcadeEnabled,
+      sub: [],
+    },
+    {
+      href: "/cookmate",
+      icon: "🍳",
+      title: "CookMate",
+      description: "Smart kitchen — pantry, recipes & AI chef",
+      color: "bg-orange-500/10",
+      enabled: isCookMateEnabled,
       sub: [],
     },
   ];
@@ -306,6 +315,18 @@ export default function HubPage() {
               <div className="bg-muted p-4 rounded-2xl text-3xl">🎮</div>
               <div className="flex-1">
                 <p className="font-bold text-foreground text-lg leading-tight">Slack Arcade</p>
+                <p className="text-xs text-muted-foreground font-medium mt-0.5">Enable in Profile → Modules</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!isCookMateEnabled && (
+          <div className="bg-card p-5 rounded-3xl shadow-soft border border-border/40 opacity-50">
+            <div className="flex items-center gap-4">
+              <div className="bg-muted p-4 rounded-2xl text-3xl">🍳</div>
+              <div className="flex-1">
+                <p className="font-bold text-foreground text-lg leading-tight">CookMate</p>
                 <p className="text-xs text-muted-foreground font-medium mt-0.5">Enable in Profile → Modules</p>
               </div>
             </div>

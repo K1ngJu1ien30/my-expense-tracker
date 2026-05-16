@@ -6,6 +6,68 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [1.7.0] — CookMate Smart Kitchen Module — 2026-05-17
+
+A new toggleable module that turns the app into a kitchen companion. Pantry tracking, recipe discovery with ingredient matching, Gemini AI-powered cooking assistant, shopping lists, and cooking history — all running 100% client-side with localStorage (zero Supabase cost).
+
+## 🍳 CookMate — 7 sub-features
+
+Toggle on in **Profile → Modules → CookMate** (on by default). Has its own bottom nav within the module.
+
+### Cook Page
+- 24 curated local recipes (5 breakfasts, 12 weekday dinners, 5 weekend meals, 2 snacks) with Unsplash thumbnails, step-by-step instructions, prep times, difficulty ratings.
+- **Pantry match scoring** — each recipe shows a % bar of how many ingredients you already have (green ≥70%, yellow ≥40%, red <40%).
+- Filter by occasion (Breakfast, Lunch, Dinner, Weekend, Meal Prep, Snack), cuisine (Chinese, Japanese, Korean, SE Asian, Western), and difficulty.
+- Sorted by match score — recipes you can make NOW appear first.
+
+### Ask AI (Gemini)
+- Conversational chat with 4 quick-prompt buttons.
+- System prompt auto-includes your pantry contents, expiring items, and recent cooking history — so the AI knows what you have.
+- Supports 4 Gemini models (2.5-flash, 2.0-flash, 2.0-flash-lite, 1.5-flash).
+- Graceful fallback if no API key configured.
+- Typing indicator with bouncing dots.
+
+### Pantry
+- Ingredient inventory grouped by category (Protein, Vegetables, Dairy, Grains, Condiments, Frozen, Other) with emoji labels.
+- Expiry tracking with color coding (yellow = 3 days, red = expired).
+- +/- quantity buttons with auto-remove at zero.
+- Add modal with category picker, unit selector, expiry date.
+- "Always in stock" items (salt, pepper, oil, garlic, etc.) automatically count as matched in recipes.
+
+### Recipe Detail (`/cookmate/recipe/[id]`)
+- Hero image, ingredient checklist (green = have, red = missing with +Shop button).
+- "Add all missing to shopping list" one-tap button.
+- Numbered step-by-step instructions.
+- YouTube link if available.
+- **"I Cooked This!"** button → adds to cooking history.
+- Pre-generated via `generateStaticParams` for all 24 local recipes — works with `output: "export"`.
+
+### Shopping List
+- Quick-add input with Enter key support.
+- Check/uncheck items, "Clear bought" button.
+- Auto-populated from recipe missing ingredients.
+
+### Settings / More
+- Stats cards (pantry count, cooked count, shopping count).
+- Collapsible AI Settings: API key input (with show/hide toggle), model selector with 4 Gemini options.
+- Link to Google AI Studio for free API key.
+- Cooking history with favorites + recent, relative timestamps.
+
+### Architecture
+- **Zero Supabase cost** — entire module uses localStorage with `cookmate_` prefix.
+- SSR-safe: all localStorage reads wrapped in `typeof window` + try-catch.
+- CookMateProvider context wraps only `/cookmate/*` routes (via layout.tsx) — zero impact on the rest of the app.
+- TheMealDB API wrapper for future online recipe search (free, no key).
+
+## 🧹 Internal
+
+- 12 new files: 4 lib modules (types, context, localRecipes, recipeApi, gemini), 1 layout, 6 pages, 1 client component.
+- 6 modified files for wiring (preferences, context, hub, profile, bottom nav).
+- Version bumped to `1.7.0`.
+- `tsc --noEmit` → 0 errors. `next build` → 42 pages (static + SSG). Clean.
+
+---
+
 ## [1.6.0] — Slack Arcade Module — 2026-05-17
 
 A full mini-game hub with 11 games, a daily slack timer, and a Boss Key panic screen. All built with pure React state + Canvas + Framer Motion — zero external game libraries.
