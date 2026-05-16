@@ -121,8 +121,26 @@ export default function ItineraryPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <input value={startTime} onChange={e => setStartTime(e.target.value)} type="time" className="bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" />
-                <input value={endTime} onChange={e => setEndTime(e.target.value)} type="time" className="bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" />
+                <div>
+                  <p className="text-[10px] font-bold text-muted-foreground mb-1">Start Time</p>
+                  <input
+                    value={startTime}
+                    onChange={e => setStartTime(e.target.value)}
+                    placeholder="09:00"
+                    maxLength={5}
+                    className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground text-center placeholder:text-muted-foreground tracking-wider"
+                  />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-muted-foreground mb-1">End Time</p>
+                  <input
+                    value={endTime}
+                    onChange={e => setEndTime(e.target.value)}
+                    placeholder="10:30"
+                    maxLength={5}
+                    className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground text-center placeholder:text-muted-foreground tracking-wider"
+                  />
+                </div>
               </div>
 
               <input value={cost} onChange={e => setCost(e.target.value)} placeholder="Cost (cents)" type="number" inputMode="numeric" className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground placeholder:text-muted-foreground" />

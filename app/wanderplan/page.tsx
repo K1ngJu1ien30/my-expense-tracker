@@ -227,10 +227,23 @@ export default function WanderPlanDashboard() {
               </div>
 
               <div>
-                <p className="text-xs font-bold text-muted-foreground mb-1">Currency</p>
-                <select value={currencyCode} onChange={e => setCurrencyCode(e.target.value)} className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground">
-                  {["RM","USD","EUR","GBP","JPY","CNY","KRW","THB","SGD","AUD","IDR","VND"].map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
+                <p className="text-xs font-bold text-muted-foreground mb-1.5">Currency</p>
+                <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
+                  {["RM","USD","EUR","GBP","JPY","CNY","KRW","THB","SGD","AUD","IDR","VND"].map(c => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setCurrencyCode(c)}
+                      className="whitespace-nowrap px-4 py-2 rounded-full text-sm font-bold transition-all shrink-0"
+                      style={currencyCode === c
+                        ? { backgroundColor: accentColor, color: "#fff" }
+                        : { backgroundColor: "var(--color-muted)", color: "var(--color-muted-foreground)" }
+                      }
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <button onClick={handleCreate} disabled={!name.trim() || !destination.trim()} style={{ backgroundColor: accentColor }} className="w-full py-4 rounded-2xl text-white font-bold text-sm active:scale-[0.97] transition-all disabled:opacity-40">
