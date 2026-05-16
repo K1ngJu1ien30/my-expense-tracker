@@ -7,7 +7,7 @@ import { useAppContext } from "@/lib/context";
 import { supabase } from "@/lib/supabase";
 
 export default function HubPage() {
-  const { accentColor, enableFoodBudget, enableSalaryPlanner, isVaultEnabled, isRadarEnabled, isClaimsEnabled, isTradingEnabled, transactions, subscriptions, utilities, session, setShowTransactionModal, formatCurrency } = useAppContext();
+  const { accentColor, enableFoodBudget, enableSalaryPlanner, isVaultEnabled, isRadarEnabled, isClaimsEnabled, isTradingEnabled, isWanderPlanEnabled, transactions, subscriptions, utilities, session, setShowTransactionModal, formatCurrency } = useAppContext();
 
   const [radarCount, setRadarCount] = useState(0);
 
@@ -129,6 +129,15 @@ export default function HubPage() {
       description: "Buy low, sell high — track inventory & profits",
       color: "bg-rose-500/10",
       enabled: isTradingEnabled,
+      sub: [],
+    },
+    {
+      href: "/wanderplan",
+      icon: "✈️",
+      title: "WanderPlan",
+      description: "Trip planner, itinerary, budget & on-trip companion",
+      color: "bg-sky-500/10",
+      enabled: isWanderPlanEnabled,
       sub: [],
     },
   ];
@@ -264,6 +273,18 @@ export default function HubPage() {
               <div className="bg-muted p-4 rounded-2xl text-3xl">💱</div>
               <div className="flex-1">
                 <p className="font-bold text-foreground text-lg leading-tight">Trading / Flipping</p>
+                <p className="text-xs text-muted-foreground font-medium mt-0.5">Enable in Profile → Modules</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!isWanderPlanEnabled && (
+          <div className="bg-card p-5 rounded-3xl shadow-soft border border-border/40 opacity-50">
+            <div className="flex items-center gap-4">
+              <div className="bg-muted p-4 rounded-2xl text-3xl">✈️</div>
+              <div className="flex-1">
+                <p className="font-bold text-foreground text-lg leading-tight">WanderPlan</p>
                 <p className="text-xs text-muted-foreground font-medium mt-0.5">Enable in Profile → Modules</p>
               </div>
             </div>

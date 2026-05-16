@@ -54,6 +54,7 @@ export default function ProfilePage() {
     isPinEnabled, togglePin, isBiometricEnabled, toggleBiometric,
     isClaimsEnabled, toggleClaims,
     isTradingEnabled, toggleTrading,
+    isWanderPlanEnabled, toggleWanderPlan,
     enableTimeBasedGreeting, toggleTimeBasedGreeting,
     enableFridayThe13th, toggleFridayThe13th,
     primaryLocation, setPrimaryLocation,
@@ -621,6 +622,19 @@ export default function ProfilePage() {
             </div>
             <button aria-hidden="true" tabIndex={-1} className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${isTradingEnabled ? 'border-transparent' : 'bg-muted border border-border'}`} style={isTradingEnabled ? { backgroundColor: accentColor } : {}}>
               <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${isTradingEnabled ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
+            </button>
+          </div>
+
+          <div role="switch" aria-checked={isWanderPlanEnabled} aria-label="WanderPlan travel planner" tabIndex={0} onKeyDown={switchKey(() => toggleWanderPlan(!isWanderPlanEnabled))} className="w-full flex items-center justify-between p-4 active:bg-muted/50 transition-colors cursor-pointer" onClick={() => toggleWanderPlan(!isWanderPlanEnabled)}>
+            <div className="flex items-center gap-3">
+              <div className="bg-sky-500/10 p-2 rounded-xl text-sky-500"><span className="text-lg" aria-hidden="true">✈️</span></div>
+              <div>
+                <span className="font-semibold text-foreground text-sm block">WanderPlan</span>
+                <p className="text-[10px] text-muted-foreground leading-none mt-0.5">Trip planner, itinerary & on-trip companion</p>
+              </div>
+            </div>
+            <button aria-hidden="true" tabIndex={-1} className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${isWanderPlanEnabled ? 'border-transparent' : 'bg-muted border border-border'}`} style={isWanderPlanEnabled ? { backgroundColor: accentColor } : {}}>
+              <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${isWanderPlanEnabled ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
             </button>
           </div>
         </div>

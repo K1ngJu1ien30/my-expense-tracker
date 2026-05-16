@@ -15,6 +15,9 @@ import type {
   AssetLog,
   TradeItem,
   Account,
+  WPTrip, WPTripDay, WPActivity, WPBudgetAllocation,
+  WPTripExpense, WPSavedPlace, WPDocument, WPPackingItem,
+  WPTripStatus, WPBudgetCategory,
 } from "./types";
 import { useEasterEggsUI } from "./hooks/useEasterEggsUI";
 import { useUIState } from "./hooks/useUIState";
@@ -24,6 +27,7 @@ import { useSyncState } from "./hooks/useSyncState";
 import { useMoneyState } from "./hooks/useMoneyState";
 import { usePlanningState } from "./hooks/usePlanningState";
 import { useModulesData } from "./hooks/useModulesData";
+import { useWanderPlanState } from "./hooks/useWanderPlanState";
 
 // Re-export for backward compatibility — existing pages import from "@/lib/context".
 // Keeping this until we move everything to direct type imports from "@/lib/types".
@@ -135,6 +139,42 @@ type AppContextType = {
   toggleClaims: (val: boolean) => void;
   isTradingEnabled: boolean;
   toggleTrading: (val: boolean) => void;
+  isWanderPlanEnabled: boolean;
+  toggleWanderPlan: (val: boolean) => void;
+  // WanderPlan state + CRUD
+  wpTrips: WPTrip[];
+  wpTripDays: WPTripDay[];
+  wpActivities: WPActivity[];
+  wpAllocations: WPBudgetAllocation[];
+  wpExpenses: WPTripExpense[];
+  wpPlaces: WPSavedPlace[];
+  wpDocuments: WPDocument[];
+  wpPackingItems: WPPackingItem[];
+  wpActiveTripId: string | null;
+  setWPActiveTripId: (id: string | null) => void;
+  loadWanderPlanData: (userId: string) => Promise<void>;
+  createWPTrip: (data: Partial<WPTrip>) => Promise<string | null>;
+  updateWPTrip: (id: string, data: Partial<WPTrip>) => Promise<void>;
+  deleteWPTrip: (id: string) => Promise<void>;
+  setWPTripStatus: (id: string, status: WPTripStatus) => Promise<void>;
+  getWPTripDays: (tripId: string) => WPTripDay[];
+  createWPActivity: (dayId: string, data: Partial<WPActivity>) => Promise<void>;
+  updateWPActivity: (id: string, data: Partial<WPActivity>) => Promise<void>;
+  deleteWPActivity: (id: string) => Promise<void>;
+  toggleWPActivityCompleted: (id: string) => Promise<void>;
+  reorderWPActivities: (dayId: string, orderedIds: string[]) => Promise<void>;
+  setWPAllocation: (tripId: string, category: WPBudgetCategory, cents: number) => Promise<void>;
+  addWPExpense: (tripId: string, data: Partial<WPTripExpense>) => Promise<void>;
+  deleteWPExpense: (id: string) => Promise<void>;
+  createWPPlace: (tripId: string, data: Partial<WPSavedPlace>) => Promise<void>;
+  deleteWPPlace: (id: string) => Promise<void>;
+  toggleWPPlaceVisited: (id: string) => Promise<void>;
+  createWPDocument: (tripId: string, data: Partial<WPDocument>) => Promise<void>;
+  deleteWPDocument: (id: string) => Promise<void>;
+  addWPPackingItem: (tripId: string, data: Partial<WPPackingItem>) => Promise<void>;
+  addWPPackingItems: (tripId: string, items: { category: string; item_name: string; quantity: number }[]) => Promise<void>;
+  toggleWPPacked: (id: string) => Promise<void>;
+  deleteWPPackingItem: (id: string) => Promise<void>;
   tradeItems: TradeItem[];
   addTradeItem: (item: Partial<TradeItem>) => Promise<void>;
   updateTradeItem: (id: string, patch: Partial<TradeItem>) => Promise<void>;
@@ -184,6 +224,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     isRadarEnabled, toggleRadar,
     isClaimsEnabled, toggleClaims,
     isTradingEnabled, toggleTrading,
+    isWanderPlanEnabled, toggleWanderPlan,
     enableTimeBasedGreeting, toggleTimeBasedGreeting,
     enableFridayThe13th, toggleFridayThe13th,
     primaryLocation, setPrimaryLocation,
@@ -382,6 +423,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     updateTradeItem,
     deleteTradeItem,
   } = useModulesData({ session, triggerWhaleAlert, cacheDeletedItem });
+
+  // ─── WanderPlan state (trips, itinerary, budget, places, docs, packing) ─
+  const wanderPlan = useWanderPlanState({ session });
 
   // ─── Money state (transactions, subscriptions, utilities + their CRUD) ──
   const {
@@ -586,6 +630,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // Hydrate every user preference / feature flag from user_metadata.
       prefs.hydrateFromMetadata(session.user.user_metadata, session.user.email);
       refreshData(session.user).finally(() => setIsHydrating(false));
+      // WanderPlan data loads only when the module is enabled — avoids
+      // 8 wasted Supabase queries for users who never toggle it on.
+      if (session.user.user_metadata?.wanderplan_enabled) {
+        wanderPlan.loadWanderPlanData(session.user.id).catch(() => {});
+      }
     } else {
        prefs.resetPreferences();
        setTransactions([]);
@@ -652,6 +701,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       isRadarEnabled, toggleRadar,
       isClaimsEnabled, toggleClaims,
       isTradingEnabled, toggleTrading,
+      isWanderPlanEnabled, toggleWanderPlan,
+      ...wanderPlan,
       enableTimeBasedGreeting, toggleTimeBasedGreeting,
       enableFridayThe13th, toggleFridayThe13th,
       primaryLocation, setPrimaryLocation,

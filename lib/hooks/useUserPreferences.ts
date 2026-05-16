@@ -46,6 +46,7 @@ export function useUserPreferences(session: Session | null) {
   const [isRadarEnabled, setIsRadarEnabledRaw] = useState(false);
   const [isClaimsEnabled, setIsClaimsEnabledRaw] = useState(false);
   const [isTradingEnabled, setIsTradingEnabledRaw] = useState(false);
+  const [isWanderPlanEnabled, setIsWanderPlanEnabledRaw] = useState(false);
 
   // ─── Easter-egg flags ───────────────────────────────────────────────────
   // Greeting-line swap at different hours (2 AM owl, 5 AM early-bird, etc.).
@@ -180,6 +181,14 @@ export function useUserPreferences(session: Session | null) {
     [persist]
   );
 
+  const toggleWanderPlan = useCallback(
+    async (val: boolean) => {
+      setIsWanderPlanEnabledRaw(val);
+      await persist({ wanderplan_enabled: val });
+    },
+    [persist]
+  );
+
   const toggleTimeBasedGreeting = useCallback(
     async (val: boolean) => {
       setEnableTimeBasedGreetingRaw(val);
@@ -238,6 +247,7 @@ export function useUserPreferences(session: Session | null) {
       setIsRadarEnabledRaw(meta.radar_enabled === true);
       setIsClaimsEnabledRaw(meta.claims_enabled === true);
       setIsTradingEnabledRaw(meta.trading_enabled === true);
+      setIsWanderPlanEnabledRaw(meta.wanderplan_enabled === true);
       // Greeting is ON by default unless user explicitly opted out.
       setEnableTimeBasedGreetingRaw(
         meta.enable_time_based_greeting === false ? false : true
@@ -265,6 +275,7 @@ export function useUserPreferences(session: Session | null) {
     setIsRadarEnabledRaw(false);
     setIsClaimsEnabledRaw(false);
     setIsTradingEnabledRaw(false);
+    setIsWanderPlanEnabledRaw(false);
     setEnableTimeBasedGreetingRaw(true);
     setEnableFridayThe13thRaw(false);
     setPrimaryLocationRaw("");
@@ -310,6 +321,8 @@ export function useUserPreferences(session: Session | null) {
     toggleClaims,
     isTradingEnabled,
     toggleTrading,
+    isWanderPlanEnabled,
+    toggleWanderPlan,
     // Easter-egg flags
     enableTimeBasedGreeting,
     toggleTimeBasedGreeting,

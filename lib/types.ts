@@ -170,3 +170,132 @@ export type DeletedItemCache = {
   item: unknown;
   timeout: ReturnType<typeof setTimeout>;
 };
+
+// ═══════════════════════════════════════════════════════════════
+// WanderPlan Types
+// ═══════════════════════════════════════════════════════════════
+
+export type WPTripStatus = 'planning' | 'active' | 'completed';
+export type WPActivityCategory = 'transport' | 'food' | 'activity' | 'shopping' | 'rest' | 'accommodation' | 'sightseeing';
+export type WPBudgetCategory = 'flights' | 'accommodation' | 'food' | 'transport' | 'activities' | 'shopping' | 'insurance' | 'visas' | 'misc';
+export type WPPlaceCategory = 'eat' | 'stay' | 'do' | 'shop' | 'transport';
+export type WPDocumentType = 'flight' | 'hotel' | 'train' | 'insurance' | 'visa' | 'other';
+export type WPPackingCategory = 'clothing' | 'toiletries' | 'electronics' | 'documents' | 'medicine' | 'misc';
+
+export type WPTrip = {
+  id: string;
+  user_id: string;
+  name: string;
+  destination: string;
+  start_date: string;
+  end_date: string;
+  cover_image_url: string | null;
+  currency_code: string;
+  status: WPTripStatus;
+  settings: Record<string, unknown>;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WPTripDay = {
+  id: string;
+  trip_id: string;
+  date: string;
+  day_number: number;
+  notes: string | null;
+  deleted_at: string | null;
+};
+
+export type WPActivity = {
+  id: string;
+  trip_day_id: string;
+  title: string;
+  category: WPActivityCategory;
+  start_time: string | null;
+  end_time: string | null;
+  duration_minutes: number | null;
+  place_id: string | null;
+  location: { lat: number; lng: number; name?: string; address?: string } | null;
+  cost_amount: number | null;
+  cost_currency: string | null;
+  notes: string | null;
+  booking_ref: string | null;
+  links: { title: string; url: string }[];
+  order_index: number;
+  is_completed: boolean;
+  deleted_at: string | null;
+};
+
+export type WPBudgetAllocation = {
+  id: string;
+  trip_id: string;
+  category: WPBudgetCategory;
+  allocated_cents: number;
+  spent_cents: number;
+  deleted_at: string | null;
+};
+
+export type WPTripExpense = {
+  id: string;
+  trip_id: string;
+  activity_id: string | null;
+  budget_category: WPBudgetCategory;
+  amount_cents: number;
+  currency_code: string;
+  note: string | null;
+  date: string;
+  transaction_id: string | null;
+  deleted_at: string | null;
+};
+
+export type WPSavedPlace = {
+  id: string;
+  trip_id: string;
+  name: string;
+  category: WPPlaceCategory;
+  sub_category: string | null;
+  location: { lat: number; lng: number; address?: string } | null;
+  google_maps_url: string | null;
+  website_url: string | null;
+  rating: number | null;
+  price_level: number | null;
+  notes: string | null;
+  tags: string[];
+  opening_hours: Record<string, string> | null;
+  is_visited: boolean;
+  deleted_at: string | null;
+};
+
+export type WPDocument = {
+  id: string;
+  trip_id: string;
+  type: WPDocumentType;
+  title: string;
+  file_url: string | null;
+  file_type: 'pdf' | 'image' | 'link' | null;
+  external_url: string | null;
+  booking_ref: string | null;
+  valid_from: string | null;
+  valid_until: string | null;
+  notes: string | null;
+  deleted_at: string | null;
+};
+
+export type WPPackingItem = {
+  id: string;
+  trip_id: string;
+  category: WPPackingCategory;
+  item_name: string;
+  quantity: number;
+  is_packed: boolean;
+  deleted_at: string | null;
+};
+
+export type WPWeatherData = {
+  temperature: number;
+  description: string;
+  icon: string;
+  humidity: number;
+  wind_speed: number;
+};
