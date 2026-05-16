@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useCookMate } from "@/lib/cookmate/context";
 import { INGREDIENT_CATEGORIES, COMMON_UNITS } from "@/lib/cookmate/types";
 import type { IngredientCategory } from "@/lib/cookmate/types";
+import CustomDatePicker from "@/components/CustomDatePicker";
 
 export default function PantryPage() {
   const { pantry, addPantryItem, removePantryItem, updatePantryQuantity } = useCookMate();
@@ -103,7 +104,10 @@ export default function PantryPage() {
                   <button key={c.value} onClick={() => setCat(c.value)} className={`px-3 py-1.5 rounded-full text-xs font-bold shrink-0 ${cat === c.value ? "text-white" : "bg-muted text-muted-foreground"}`} style={cat === c.value ? { backgroundColor: "#f97316" } : {}}>{c.emoji} {c.label}</button>
                 ))}
               </div>
-              <input value={expiry} onChange={e => setExpiry(e.target.value)} type="date" className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" />
+              <div>
+                <p className="text-[10px] font-bold text-muted-foreground mb-1">Expiry Date (optional)</p>
+                <CustomDatePicker value={expiry} onChange={setExpiry} accentColor="#f97316" />
+              </div>
               <button onClick={handleAdd} disabled={!name.trim()} className="w-full py-4 rounded-2xl text-white font-bold text-sm active:scale-[0.97] transition-all disabled:opacity-40" style={{ backgroundColor: "#f97316" }}>Add to Pantry</button>
             </motion.div>
           </div>
