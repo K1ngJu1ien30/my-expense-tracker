@@ -47,6 +47,7 @@ export function useUserPreferences(session: Session | null) {
   const [isClaimsEnabled, setIsClaimsEnabledRaw] = useState(false);
   const [isTradingEnabled, setIsTradingEnabledRaw] = useState(false);
   const [isWanderPlanEnabled, setIsWanderPlanEnabledRaw] = useState(false);
+  const [isArcadeEnabled, setIsArcadeEnabledRaw] = useState(false);
 
   // ─── Easter-egg flags ───────────────────────────────────────────────────
   // Greeting-line swap at different hours (2 AM owl, 5 AM early-bird, etc.).
@@ -189,6 +190,14 @@ export function useUserPreferences(session: Session | null) {
     [persist]
   );
 
+  const toggleArcade = useCallback(
+    async (val: boolean) => {
+      setIsArcadeEnabledRaw(val);
+      await persist({ arcade_enabled: val });
+    },
+    [persist]
+  );
+
   const toggleTimeBasedGreeting = useCallback(
     async (val: boolean) => {
       setEnableTimeBasedGreetingRaw(val);
@@ -248,6 +257,7 @@ export function useUserPreferences(session: Session | null) {
       setIsClaimsEnabledRaw(meta.claims_enabled === true);
       setIsTradingEnabledRaw(meta.trading_enabled === true);
       setIsWanderPlanEnabledRaw(meta.wanderplan_enabled === true);
+      setIsArcadeEnabledRaw(meta.arcade_enabled === true);
       // Greeting is ON by default unless user explicitly opted out.
       setEnableTimeBasedGreetingRaw(
         meta.enable_time_based_greeting === false ? false : true
@@ -276,6 +286,7 @@ export function useUserPreferences(session: Session | null) {
     setIsClaimsEnabledRaw(false);
     setIsTradingEnabledRaw(false);
     setIsWanderPlanEnabledRaw(false);
+    setIsArcadeEnabledRaw(false);
     setEnableTimeBasedGreetingRaw(true);
     setEnableFridayThe13thRaw(false);
     setPrimaryLocationRaw("");
@@ -323,6 +334,8 @@ export function useUserPreferences(session: Session | null) {
     toggleTrading,
     isWanderPlanEnabled,
     toggleWanderPlan,
+    isArcadeEnabled,
+    toggleArcade,
     // Easter-egg flags
     enableTimeBasedGreeting,
     toggleTimeBasedGreeting,

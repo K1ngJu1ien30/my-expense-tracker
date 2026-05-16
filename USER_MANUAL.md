@@ -2,6 +2,8 @@
 
 Welcome. This guide walks you through every feature of the app, from first launch to power-user tricks. No jargon, no fluff.
 
+> **What's new in v1.6.0 (May 2026):** **Slack Arcade** — 11 mini-games (2048, Snake, Minesweeper, Wordle, Tetris, Flappy Fish, Tower Defense, Rhythm Tap, Memory Match, Color Reaction, Idle Fisher), daily slack timer with achievement badges, and a Boss Key panic screen (fake Windows Update). Enable in Profile → Modules. All games work offline, support touch controls, and persist high scores.
+>
 > **What's new in v1.5.0 (May 2026):** Massive new module — **WanderPlan Travel Planner**. Enable in Profile → Modules. Plan trips with itineraries, interactive maps (Leaflet + fullscreen mode), per-category budget tracking with expense-to-main-tracker bridge, saved places with Nominatim geocoding, travel document vault, packing checklists with templates, live weather on active trips, daily spending meter, and trip countdown widgets. 7 sub-features, 15 new files, zero impact on app performance when disabled.
 >
 > **What's new in v1.4.1 (May 2026 — hotfix):** Two quick polish fixes on top of v1.4 — (1) **History rows are ~40% shorter** so you see more transactions per screen without scrolling. (2) **Transaction modal no longer randomly pops up the keyboard on the wrong field** — it now does nothing on open so you tap what you want to edit; predictable every time.

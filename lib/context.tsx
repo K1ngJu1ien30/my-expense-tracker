@@ -141,6 +141,8 @@ type AppContextType = {
   toggleTrading: (val: boolean) => void;
   isWanderPlanEnabled: boolean;
   toggleWanderPlan: (val: boolean) => void;
+  isArcadeEnabled: boolean;
+  toggleArcade: (val: boolean) => void;
   // WanderPlan state + CRUD
   wpTrips: WPTrip[];
   wpTripDays: WPTripDay[];
@@ -225,6 +227,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     isClaimsEnabled, toggleClaims,
     isTradingEnabled, toggleTrading,
     isWanderPlanEnabled, toggleWanderPlan,
+    isArcadeEnabled, toggleArcade,
     enableTimeBasedGreeting, toggleTimeBasedGreeting,
     enableFridayThe13th, toggleFridayThe13th,
     primaryLocation, setPrimaryLocation,
@@ -702,6 +705,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       isClaimsEnabled, toggleClaims,
       isTradingEnabled, toggleTrading,
       isWanderPlanEnabled, toggleWanderPlan,
+      isArcadeEnabled, toggleArcade,
       ...wanderPlan,
       enableTimeBasedGreeting, toggleTimeBasedGreeting,
       enableFridayThe13th, toggleFridayThe13th,

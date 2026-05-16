@@ -6,6 +6,52 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [1.6.0] — Slack Arcade Module — 2026-05-17
+
+A full mini-game hub with 11 games, a daily slack timer, and a Boss Key panic screen. All built with pure React state + Canvas + Framer Motion — zero external game libraries.
+
+## 🎮 Slack Arcade — 11 games + Boss Key
+
+Toggle on in **Profile → Modules → Slack Arcade**. Accessible from the Hub tab.
+
+### Game Hub (`/arcade`)
+- **Daily Slack Timer** — counts up every second, persists per-day to localStorage. Achievement badges: 10m Bronze, 30m Silver, 1h Gold, 2h Trophy.
+- **Boss Key** — red panic button in the header. Opens a fake Windows Update screen (blue, spinning loader, crawling progress bar, "Don't turn off your device"). Tap anywhere to go back.
+
+### 11 Games
+All games persist high scores to localStorage, support mobile touch controls, and dark mode.
+
+| Game | Type | Controls |
+|---|---|---|
+| **Color Reaction** | Reflex test — 10 rounds, ms timing | Tap color buttons |
+| **2048** | Tile merger — slide & merge to 2048 | Swipe + arrow keys |
+| **Memory Match** | 4×4 pair matching with flip animation | Tap to flip |
+| **Snake** | Classic 15×15 grid | Swipe + arrow keys |
+| **Minesweeper** | 10×8 grid, 10 mines, reveal/flag modes | Tap cells |
+| **Idle Fisher** | Incremental clicker — 7 upgrades, offline earnings | Tap + buy |
+| **Flappy Fish** | Canvas pipe-dodging | Tap to jump |
+| **Tower Defense** | 4 tower types, 10 waves, path enemies | Tap to place |
+| **Rhythm Tap** | 4-lane rhythm game with combo system | Tap lane buttons |
+| **Wordle** | Daily 5-letter word guess with streaks | On-screen keyboard |
+| **Block Drop** | Full Tetris — rotation, ghost piece, levels | Swipe + on-screen buttons |
+
+### Quality & Performance audit fixes
+- **Reaction game** — `startRef` was a plain `let` (reset on re-render, producing garbage timing). Fixed to `useRef`.
+- **All 11 games** — `localStorage` reads in `useState` initializers caused SSR crashes during pre-render. All wrapped in `typeof window` guards + try-catch.
+- **Minesweeper** — timer `setInterval` stored in state (unnecessary re-renders) and never cleaned up on unmount (memory leak). Converted to `useRef` + cleanup effect.
+- **Tower Defense** — enemy spawn interval not nulled after clearing (premature wave-end detection) and not cleaned on unmount. Fixed both.
+- **Idle Fisher** — offline earnings could overflow to `Infinity` for long-absent players. Capped at 24 hours. Save function wrapped in try-catch.
+- **Wordle** — localStorage reads for guesses/won/streak all SSR-guarded.
+
+## 🧹 Internal
+
+- 14 new files (hub + boss key + 11 games + 1 helper).
+- 6 modified files (context, preferences, hub, profile, bottom nav, package.json).
+- Version bumped to `1.6.0`.
+- `tsc --noEmit` → 0 errors. `next build` → 35/35 static pages. Clean.
+
+---
+
 ## [1.5.0] — WanderPlan Travel Planner Module — 2026-05-16
 
 The biggest feature release since launch — a full travel planner integrated as a toggleable Hub module. Plan trips, build itineraries, track budgets, save places, manage documents, and pack — all without leaving the app.
