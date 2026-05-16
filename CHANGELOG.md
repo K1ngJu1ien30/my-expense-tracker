@@ -6,6 +6,97 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [1.5.0] — WanderPlan Travel Planner Module — 2026-05-16
+
+The biggest feature release since launch — a full travel planner integrated as a toggleable Hub module. Plan trips, build itineraries, track budgets, save places, manage documents, and pack — all without leaving the app.
+
+## ✈️ WanderPlan — 7 sub-features in one module
+
+Toggle it on in **Profile → Modules → WanderPlan**. Everything lives under the Hub tab.
+
+### Trip Dashboard
+- Create trips with name, destination, date range, and trip currency (scroll-pill selector with 12 currencies).
+- Trip cards show gradient headers with destination initials, status badges (Planning / Active / On Trip / Completed), date range, and day count.
+- **Active Trip summary card** (blue gradient) — days, activities count, budget remaining at a glance.
+- **Trip Countdown widget** — planning trips show days-until-departure with a color-coded progress bar (blue → orange as it gets close). Active trips show a day-progress bar (Day 3/7).
+- **Daily Spending Meter** — real-time today's spending vs daily budget (total ÷ days). Bar changes green → orange → red as you approach/exceed the limit.
+- **Upcoming Trips section** — all planning trips sorted by start date with individual countdowns.
+- Start Trip / Mark Completed status transitions.
+
+### Itinerary Builder
+- Day-by-day cards auto-generated from trip date range (via Supabase trigger on `wp_trip_days`).
+- Add activities per day: title, category (7 types: Transport, Food, Accommodation, Activity, Sightseeing, Shopping, Rest), start/end time, cost, booking reference, notes.
+- Color-coded category bars on each activity card.
+- Completion checkboxes with optimistic toggle + rollback on failure.
+- Delete activities inline.
+
+### Map View (Leaflet)
+- Full interactive OpenStreetMap map via `react-leaflet` (dynamic import, SSR-safe).
+- Color-coded pins for saved places by category (Eat=orange, Stay=blue, Do=green, Shop=purple, Transport=red).
+- Popup on pin click with place name, category, and Google Maps deep link.
+- **Default height 60vh** — fills most of the screen.
+- **Fullscreen expand mode** — tap the expand button for an edge-to-edge map overlay with a floating translucent legend pill. Minimize button to return.
+
+### Budget Tracker
+- Overview cards: total budget, spent, remaining.
+- Per-category progress bars (9 categories: Flights, Accommodation, Food, Transport, Activities, Shopping, Insurance, Visas, Misc).
+- Tap a category to edit its allocation amount.
+- Add expense modal: amount, category (scroll pills), note.
+- **Expense → Main Tracker Bridge** — toggle "Sync to Expense Tracker" (on by default) to also create a mirror `Transaction` row in your main expense history. Auto-maps WP budget categories to your app categories (Food→Food, Flights→Transport, etc.). Account selector included.
+- Recent expenses list with delete.
+
+### Saved Places
+- Place cards with category color coding, star rating (1-5), price level ($-$$$$).
+- Category filter pills (All, Eat, Stay, Do, Shop, Transport) + Visited/Unvisited toggle.
+- **Nominatim address search** — debounced (500ms), shows 5 results as you type. On select: auto-fills lat/lng and generates Google Maps URL.
+- Toggle visited, delete place.
+
+### Documents Vault
+- Travel documents grouped by type (Flight, Hotel, Train, Insurance, Visa, Other) with type-specific emoji icons.
+- Each card shows title, booking reference, validity dates, notes.
+- External URL link button for online booking confirmations.
+- Add document modal: type, title, booking URL, reference, valid from/until, notes.
+
+### Packing Checklist
+- Progress bar showing % packed.
+- Items grouped by category (Clothing, Toiletries, Electronics, Documents, Medicine, Misc).
+- Checkbox toggle with optimistic update + rollback.
+- **Template system** — 3 presets: "City Break" (21 items), "Beach Vacation" (14 items), "Winter Trip" (13 items). One tap adds the full list.
+- Add individual items: name, category, quantity.
+
+### Today Timeline (active trips)
+- Appears on the dashboard when a trip is active and today falls within the trip dates.
+- Shows "Day X" with date, completion count (e.g. 3/8 done).
+- **Weather widget** at top — pulls from Open-Meteo API (free, no key) using the first saved place's coordinates. Shows temperature, condition, humidity, wind speed.
+- **"Happening Now" card** (green border, pulsing dot) — activity whose time range includes the current time.
+- **"Next Up" card** (blue border) — next uncompleted activity with countdown ("in 45 min").
+- Full activity list with completion checkboxes.
+
+### WanderPlan sub-navigation
+- Horizontal scrollable tab bar: Trips, Itinerary, Map, Budget, Places, Docs, Packing.
+- Back button to Hub.
+- Active tab highlighted with accent color.
+
+## 🔧 Architecture & Performance
+
+- **Lazy data loading** — WanderPlan's 8 Supabase queries only fire when `wanderplan_enabled` is true in user_metadata. Users who never toggle the module on pay zero network cost.
+- **Stable callback identities** — all toggle/find operations use the setter-callback pattern (`setState(prev => ...)`) instead of capturing state arrays in `useCallback` deps. Zero unnecessary re-renders downstream.
+- **Optimistic toggles with rollback** — packing checkboxes, activity completion, place visited status update UI instantly and revert if Supabase fails.
+- **Parallel batch writes** — `reorderWPActivities` uses `Promise.all()` instead of sequential awaits.
+- **Defense-in-depth on queries** — child table queries include explicit user_id filters via Supabase inner joins, not just RLS.
+- **Trip deletion cascades local state** — removes days, allocations, expenses, places, docs, packing from memory.
+- **Leaflet CSS imported properly** — `import("leaflet/dist/leaflet.css")` in useEffect, not a `<link>` tag in the body.
+
+## 🧹 Internal
+
+- New dependencies: `leaflet`, `react-leaflet`, `date-fns`, `@types/leaflet`.
+- 15 new files: 7 pages, 5 components, 1 hook, 1 constants file, 1 layout.
+- 8 modified files: types, context, preferences, hub, profile, bottom nav, package.json.
+- Version bumped to `1.5.0`.
+- `tsc --noEmit` → 0 errors. `next build` → 23/23 static pages, 0 errors.
+
+---
+
 ## [1.4.1] — History Row Density & Modal Focus Hotfix — 2026-05-04
 
 Two small but worth-it fixes surfaced within hours of the 1.4 release.

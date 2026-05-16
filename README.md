@@ -1,10 +1,10 @@
 # Expense Tracker Pro
 
-### Native Multi-Currency Financial Engine — v1.4.1
+### Native Multi-Currency Financial Engine — v1.5.0
 
 A production-grade, offline-first personal finance application built with Next.js and compiled to a native Android binary via Capacitor. Designed from the ground up to feel indistinguishable from a first-party iOS app, with zero native HTML controls, integer-cents precision math, and a resilient sync architecture backed by Supabase and IndexedDB.
 
-> **Quality baseline (v1.4.1):** `tsc --noEmit` → 0 errors. `eslint .` → 0 errors / 0 warnings. `next build` → 9 s, 16/16 static pages. Every exception is carefully justified inline.
+> **Quality baseline (v1.5.0):** `tsc --noEmit` → 0 errors. `eslint .` → 0 errors / 0 warnings. `next build` → 23/23 static pages. Every exception is carefully justified inline.
 
 ---
 
@@ -13,6 +13,8 @@ A production-grade, offline-first personal finance application built with Next.j
 - **Next.js 16** — App Router, React 19, TypeScript (strict), static export
 - **Tailwind CSS v4** — Utility-first styling with custom design tokens
 - **Supabase** — PostgreSQL backend, Row Level Security, real-time auth
+- **Leaflet / react-leaflet** — Interactive map for WanderPlan travel planner
+- **date-fns** — Lightweight date manipulation for itinerary & countdowns
 - **LocalForage** — IndexedDB-backed offline cache with localStorage fallback
 - **Capacitor 8** — Native Android shell (App, Haptics, Filesystem, Share, Biometric Auth, Motion, Network, Preferences)
 - **Framer Motion 12** — Physics-based animations and page transitions
