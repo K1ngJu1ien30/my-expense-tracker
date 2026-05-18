@@ -1,17 +1,18 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { Plus, Trash2, Link2 } from "lucide-react";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { Plus, Trash2, Link2, ArrowLeftRight, ChevronDown, ChevronUp } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAppContext } from "@/lib/context";
 import { BUDGET_CATEGORIES, BUDGET_CATEGORY_LABELS, BUDGET_CATEGORY_COLORS, mapWPCategoryToMainCategory } from "@/lib/wanderplanConstants";
+import { format, parseISO } from "date-fns";
 import type { WPBudgetCategory } from "@/lib/types";
 
 export default function BudgetPage() {
   const {
     accentColor, wpTrips, wpActiveTripId, wpAllocations, wpExpenses,
     setWPAllocation, addWPExpense, deleteWPExpense, triggerToast,
-    addTransaction, accounts,
+    addTransaction, accounts, getWPTripDays,
   } = useAppContext();
 
   const trip = wpTrips.find(t => t.id === wpActiveTripId) || wpTrips[0];
@@ -30,6 +31,53 @@ export default function BudgetPage() {
   const [expNote, setExpNote] = useState("");
   const [bridgeToTracker, setBridgeToTracker] = useState(true);
   const [bridgeAccount, setBridgeAccount] = useState(accounts[0] || "Cash");
+
+  // Currency converter state
+  const [converterOpen, setConverterOpen] = useState(false);
+  const [convertFrom, setConvertFrom] = useState("");
+  const [convertRate, setConvertRate] = useState<number | null>(null);
+  const [rateLoading, setRateLoading] = useState(false);
+  const homeCurrency = "MYR"; // User's home currency
+
+  // Day-by-day breakdown toggle
+  const [showDayBreakdown, setShowDayBreakdown] = useState(false);
+
+  const days = useMemo(() => trip ? getWPTripDays(trip.id) : [], [trip, getWPTripDays]);
+
+  const dayBreakdown = useMemo(() => {
+    if (!trip || days.length === 0) return [];
+    return days.map(day => {
+      const dayExpenses = expenses.filter(e => {
+        try { return format(parseISO(e.date), "yyyy-MM-dd") === day.date; } catch { return false; }
+      });
+      const total = dayExpenses.reduce((s, e) => s + e.amount_cents, 0);
+      return { day, total, count: dayExpenses.length };
+    });
+  }, [trip, days, expenses]);
+
+  const fetchRate = useCallback(async () => {
+    if (!trip || !convertFrom || isNaN(Number(convertFrom))) return;
+    setRateLoading(true);
+    try {
+      // Map currency codes to ISO for the API
+      const codeMap: Record<string, string> = { RM: "MYR", USD: "USD", EUR: "EUR", GBP: "GBP", JPY: "JPY", CNY: "CNY", KRW: "KRW", THB: "THB", SGD: "SGD", AUD: "AUD", IDR: "IDR", VND: "VND", PHP: "PHP", TWD: "TWD", INR: "INR", HKD: "HKD", NZD: "NZD", CAD: "CAD", CHF: "CHF", AED: "AED" };
+      const from = codeMap[trip.currency_code] || trip.currency_code;
+      const to = codeMap[homeCurrency] || homeCurrency;
+      if (from === to) { setConvertRate(Number(convertFrom)); setRateLoading(false); return; }
+      const res = await fetch(`https://api.exchangerate.host/convert?from=${from}&to=${to}&amount=${convertFrom}`);
+      const data = await res.json();
+      setConvertRate(data.result ?? null);
+    } catch {
+      setConvertRate(null);
+    }
+    setRateLoading(false);
+  }, [convertFrom, trip, homeCurrency]);
+
+  useEffect(() => {
+    if (!convertFrom) { setConvertRate(null); return; }
+    const t = setTimeout(fetchRate, 600);
+    return () => clearTimeout(t);
+  }, [convertFrom, fetchRate]);
 
   const handleSetAllocation = async () => {
     if (!trip || !editCat) return;
@@ -50,7 +98,6 @@ export default function BudgetPage() {
       activity_id: null,
       transaction_id: null,
     } as never);
-    // Bridge to main expense tracker — creates a mirror transaction
     if (bridgeToTracker) {
       await addTransaction({
         type: "Expense",
@@ -91,6 +138,37 @@ export default function BudgetPage() {
         </div>
       </div>
 
+      {/* Quick Currency Converter */}
+      <button onClick={() => setConverterOpen(!converterOpen)} className="w-full flex items-center justify-between bg-card rounded-2xl shadow-soft border border-border/40 p-3">
+        <div className="flex items-center gap-2">
+          <ArrowLeftRight className="w-4 h-4 text-sky-500" />
+          <span className="text-xs font-bold text-foreground">Quick Currency Convert</span>
+        </div>
+        {converterOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+      </button>
+      <AnimatePresence>
+        {converterOpen && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+            <div className="bg-card rounded-2xl shadow-soft border border-border/40 p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
+                  <p className="text-[10px] font-bold text-muted-foreground mb-1">{trip.currency_code}</p>
+                  <input value={convertFrom} onChange={e => setConvertFrom(e.target.value)} type="number" inputMode="decimal" placeholder="0.00" className="w-full bg-muted/60 rounded-xl px-3 py-2 text-sm font-black outline-none border border-border text-foreground text-center" />
+                </div>
+                <ArrowLeftRight className="w-5 h-5 text-muted-foreground shrink-0" />
+                <div className="flex-1">
+                  <p className="text-[10px] font-bold text-muted-foreground mb-1">MYR</p>
+                  <div className="w-full bg-muted/60 rounded-xl px-3 py-2 text-sm font-black text-center text-foreground border border-border">
+                    {rateLoading ? "..." : convertRate !== null ? convertRate.toFixed(2) : "—"}
+                  </div>
+                </div>
+              </div>
+              <p className="text-[10px] text-muted-foreground text-center font-medium">Live rate via exchangerate.host (may be delayed)</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Category bars */}
       <div className="bg-card rounded-3xl shadow-soft border border-border/40 p-4 space-y-3">
         {BUDGET_CATEGORIES.map(cat => {
@@ -111,6 +189,40 @@ export default function BudgetPage() {
           );
         })}
       </div>
+
+      {/* Day-by-Day Breakdown */}
+      {dayBreakdown.length > 0 && (
+        <>
+          <button onClick={() => setShowDayBreakdown(!showDayBreakdown)} className="w-full flex items-center justify-between bg-card rounded-2xl shadow-soft border border-border/40 p-3">
+            <span className="text-xs font-bold text-foreground">📅 Day-by-Day Spending</span>
+            {showDayBreakdown ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+          </button>
+          <AnimatePresence>
+            {showDayBreakdown && (
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                <div className="bg-card rounded-2xl shadow-soft border border-border/40 p-3 space-y-1.5">
+                  {dayBreakdown.map(({ day, total, count }) => {
+                    const maxSpent = Math.max(...dayBreakdown.map(d => d.total), 1);
+                    const barPct = (total / maxSpent) * 100;
+                    return (
+                      <div key={day.id} className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-muted-foreground w-10 shrink-0">D{day.day_number}</span>
+                        <div className="flex-1 h-4 bg-muted rounded-full overflow-hidden relative">
+                          <div className="h-full rounded-full transition-all" style={{ width: `${barPct}%`, backgroundColor: accentColor }} />
+                        </div>
+                        <span className="text-[10px] font-bold text-foreground w-16 text-right shrink-0">
+                          {total > 0 ? `${trip.currency_code} ${(total / 100).toFixed(0)}` : "—"}
+                        </span>
+                        {count > 0 && <span className="text-[10px] text-muted-foreground font-medium w-6 text-right shrink-0">{count}×</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </>
+      )}
 
       {/* Add Expense */}
       <button onClick={() => setShowAddExpense(true)} style={{ backgroundColor: accentColor, boxShadow: `0 4px 20px ${accentColor}40` }} className="w-full py-3 rounded-2xl text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.97] transition-all">

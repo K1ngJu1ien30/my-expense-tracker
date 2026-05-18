@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Plus, Trash2, Clock, Check } from "lucide-react";
+import { Plus, Trash2, Clock, Check, Edit3 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAppContext } from "@/lib/context";
 import { format, parseISO } from "date-fns";
@@ -11,7 +11,7 @@ import type { WPActivityCategory } from "@/lib/types";
 export default function ItineraryPage() {
   const {
     accentColor, wpTrips, wpActiveTripId, wpActivities,
-    getWPTripDays, createWPActivity, deleteWPActivity, toggleWPActivityCompleted,
+    getWPTripDays, createWPActivity, updateWPActivity, deleteWPActivity, toggleWPActivityCompleted,
     triggerToast,
   } = useAppContext();
 
@@ -27,6 +27,14 @@ export default function ItineraryPage() {
   const [cost, setCost] = useState("");
   const [notes, setNotes] = useState("");
   const [bookingRef, setBookingRef] = useState("");
+
+  // Edit state
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editCategory, setEditCategory] = useState<WPActivityCategory>("activity");
+  const [editStartTime, setEditStartTime] = useState("");
+  const [editEndTime, setEditEndTime] = useState("");
+  const [editNotes, setEditNotes] = useState("");
 
   const openAdd = (dayId: string) => { setAddDayId(dayId); setShowAdd(true); setTitle(""); setCategory("activity"); setStartTime(""); setEndTime(""); setCost(""); setNotes(""); setBookingRef(""); };
 
@@ -49,6 +57,28 @@ export default function ItineraryPage() {
     } as never);
     setShowAdd(false);
     triggerToast("Activity added!");
+  };
+
+  const openEdit = (act: typeof wpActivities[0]) => {
+    setEditId(act.id);
+    setEditTitle(act.title);
+    setEditCategory(act.category);
+    setEditStartTime(act.start_time || "");
+    setEditEndTime(act.end_time || "");
+    setEditNotes(act.notes || "");
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editId || !editTitle.trim()) return;
+    await updateWPActivity(editId, {
+      title: editTitle.trim(),
+      category: editCategory,
+      start_time: editStartTime || null,
+      end_time: editEndTime || null,
+      notes: editNotes || null,
+    } as never);
+    setEditId(null);
+    triggerToast("Activity updated!");
   };
 
   if (!trip) return <div className="p-6 text-center text-muted-foreground font-medium">Create a trip first to build your itinerary.</div>;
@@ -92,6 +122,7 @@ export default function ItineraryPage() {
                     <button onClick={() => toggleWPActivityCompleted(act.id)} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${act.is_completed ? "bg-emerald-500 border-emerald-500" : "border-border hover:border-emerald-500"} transition-colors`}>
                       {act.is_completed && <Check className="w-3.5 h-3.5 text-white" />}
                     </button>
+                    <button onClick={() => openEdit(act)} className="p-1 rounded-lg text-muted-foreground hover:text-sky-500 transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
                     <button onClick={() => deleteWPActivity(act.id)} className="p-1 rounded-lg text-muted-foreground hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
                   </div>
                 </div>
@@ -123,23 +154,11 @@ export default function ItineraryPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <p className="text-[10px] font-bold text-muted-foreground mb-1">Start Time</p>
-                  <input
-                    value={startTime}
-                    onChange={e => setStartTime(e.target.value)}
-                    placeholder="09:00"
-                    maxLength={5}
-                    className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground text-center placeholder:text-muted-foreground tracking-wider"
-                  />
+                  <input value={startTime} onChange={e => setStartTime(e.target.value)} placeholder="09:00" maxLength={5} className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground text-center placeholder:text-muted-foreground tracking-wider" />
                 </div>
                 <div>
                   <p className="text-[10px] font-bold text-muted-foreground mb-1">End Time</p>
-                  <input
-                    value={endTime}
-                    onChange={e => setEndTime(e.target.value)}
-                    placeholder="10:30"
-                    maxLength={5}
-                    className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground text-center placeholder:text-muted-foreground tracking-wider"
-                  />
+                  <input value={endTime} onChange={e => setEndTime(e.target.value)} placeholder="10:30" maxLength={5} className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground text-center placeholder:text-muted-foreground tracking-wider" />
                 </div>
               </div>
 
@@ -150,6 +169,38 @@ export default function ItineraryPage() {
               <button onClick={handleAdd} disabled={!title.trim()} style={{ backgroundColor: accentColor }} className="w-full py-4 rounded-2xl text-white font-bold text-sm active:scale-[0.97] transition-all disabled:opacity-40">
                 Add Activity
               </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Activity Modal */}
+      <AnimatePresence>
+        {editId && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setEditId(null)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative w-full max-w-sm bg-card rounded-3xl p-6 shadow-heavy space-y-3 border border-border/50">
+              <h3 className="font-bold text-foreground text-lg">Edit Activity</h3>
+              <input value={editTitle} onChange={e => setEditTitle(e.target.value)} placeholder="Title" className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground placeholder:text-muted-foreground" />
+              <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
+                {ACTIVITY_CATEGORIES.map(c => (
+                  <button key={c} onClick={() => setEditCategory(c)} className="whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0" style={editCategory === c ? { backgroundColor: ACTIVITY_CATEGORY_COLORS[c], color: "#fff" } : { backgroundColor: `${ACTIVITY_CATEGORY_COLORS[c]}1A`, color: ACTIVITY_CATEGORY_COLORS[c] }}>
+                    {ACTIVITY_CATEGORY_LABELS[c]}
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-[10px] font-bold text-muted-foreground mb-1">Start</p>
+                  <input value={editStartTime} onChange={e => setEditStartTime(e.target.value)} placeholder="09:00" maxLength={5} className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground text-center placeholder:text-muted-foreground tracking-wider" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-muted-foreground mb-1">End</p>
+                  <input value={editEndTime} onChange={e => setEditEndTime(e.target.value)} placeholder="10:30" maxLength={5} className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground text-center placeholder:text-muted-foreground tracking-wider" />
+                </div>
+              </div>
+              <textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} placeholder="Notes" rows={2} className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground placeholder:text-muted-foreground resize-none" />
+              <button onClick={handleSaveEdit} disabled={!editTitle.trim()} style={{ backgroundColor: accentColor }} className="w-full py-3 rounded-2xl text-white font-bold text-sm active:scale-[0.97] transition-all disabled:opacity-40">Save Changes</button>
             </motion.div>
           </div>
         )}

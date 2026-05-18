@@ -1,10 +1,10 @@
 # Expense Tracker Pro
 
-### Native Multi-Currency Financial Engine — v1.7.0
+### Native Multi-Currency Financial Engine — v1.7.1
 
 A production-grade, offline-first personal finance application built with Next.js and compiled to a native Android binary via Capacitor. Designed from the ground up to feel indistinguishable from a first-party iOS app, with zero native HTML controls, integer-cents precision math, and a resilient sync architecture backed by Supabase and IndexedDB.
 
-> **Quality baseline (v1.7.0):** `tsc --noEmit` → 0 errors. `eslint .` → 0 errors / 0 warnings. `next build` → 42 pages (static + SSG). Every exception is carefully justified inline.
+> **Quality baseline (v1.7.1):** `tsc --noEmit` → 0 errors. `eslint .` → 0 errors / 0 warnings. `next build` → 42 pages (static + SSG). Every exception is carefully justified inline.
 
 ---
 
@@ -233,24 +233,27 @@ npx cap run android
 app/                   Next.js App Router pages
   ├─ page.tsx          Dashboard / Hub
   ├─ analytics/        Charts + velocity + smart insights
+  ├─ arcade/           Slack Arcade (11 games + boss key)
+  ├─ cookmate/         CookMate (recipes, AI, pantry, shopping)
   ├─ goals/            Financial Planning (goals, subs, utilities)
   ├─ history/          Transaction log with filters
   ├─ hub/              Module grid (radar, claims, trading, vault)
   ├─ profile/          Settings, security, data export
   ├─ trading/          Buy-low / sell-high ledger
   ├─ vault/            Asset + maintenance log tracker
+  ├─ wanderplan/       WanderPlan travel planner (7 tabs)
   └─ reset-password/   Supabase password recovery
 components/            Reusable UI (TransactionModal, CustomDatePicker,
                        MonthlyReceipt, MonthlyReceiptModal, etc.)
-  └─ profile/          Extracted Profile-page modals (ClearData, Export,
-                       Categories, ManageAccounts, RawData, BillingCycle,
-                       TimePicker, PinSetup) — each is a focused
-                       presentational component owning its transient state.
+  ├─ profile/          Extracted Profile-page modals
+  └─ wanderplan/       WanderPlan widgets (countdown, weather, etc.)
 lib/
   ├─ context.tsx       App-wide context facade
   ├─ types.ts          Shared TypeScript types
   ├─ supabase.ts       Supabase client singleton
   ├─ haptics.ts        Capacitor haptics wrapper
+  ├─ wanderplanConstants.ts  WanderPlan categories, currencies, templates
+  ├─ cookmate/         CookMate module (context, recipes, AI)
   ├─ exportUtils.ts    CSV generation + Filesystem handoff
   ├─ receiptData.ts    Monthly-recap data deriver
   ├─ receiptShare.ts   html-to-image + Capacitor Share for receipt PNG
@@ -258,7 +261,7 @@ lib/
   ├─ quickTemplates.ts Long-press FAB template deriver
   ├─ categoryPredictor.ts  Client-side category auto-suggest model
   ├─ utils.ts          `cn()` helper (tailwind-merge)
-  └─ hooks/            Eight domain hooks (see Architecture)
+  └─ hooks/            Domain hooks (money, sync, preferences, WanderPlan, etc.)
 supabase/migrations/   Ordered SQL migration files
 android/               Capacitor native project (gitignored)
 public/                Manifest + app icon

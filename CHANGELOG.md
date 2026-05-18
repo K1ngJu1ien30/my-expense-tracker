@@ -6,6 +6,55 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [1.7.1] — WanderPlan Polish + CookMate Nav Redesign — 2026-05-17
+
+A detailed audit and feature pass on WanderPlan, plus a CookMate bottom-nav redesign for visual consistency.
+
+## 🐛 Fullscreen Map Fix
+
+- **Map was stuck in fullscreen on Android.** The fullscreen overlay used `fixed inset-0` but was rendered inside AppLayout's `overflow-hidden` container, trapping CSS `fixed` positioning within the stacking context. Fixed by portalling the fullscreen overlay to `document.body` via `createPortal`. Also locks body scroll while expanded, bumps z-index to `9999`, and adds `pb-safe` to the legend.
+
+## 🎨 CookMate Bottom Nav Redesign
+
+- CookMate's bottom bar now **mirrors the app's native BottomNav exactly** — `fixed bottom-0`, `rounded-t-3xl`, `shadow-up`, `backdrop-blur-xl`, same `px-6 py-4` spacing.
+- Replaced emoji icons with **Lucide icons** (`ChefHat`, `Bot`, `Refrigerator`, `ShoppingCart`, `Settings`) — same `w-6 h-6` size as the main nav, bold stroke on active tab.
+- Active state uses the CookMate orange accent with `strokeWidth: 2.5`.
+- Content area gets `pb-24` to clear the fixed nav.
+
+## ✈️ WanderPlan — New Features
+
+### Trip Editing
+- Trip cards now have an **Edit button** (pencil icon) that opens a modal to modify name, destination, and dates.
+
+### Trip Summary Export
+- **Copy Trip Summary** button (clipboard icon) on each trip card generates a formatted text summary with stats (activities, places, budget, packing progress) and copies it to clipboard for easy sharing.
+
+### Activity Editing
+- Itinerary activities now have an **Edit button** that opens a modal to modify title, category, times, and notes. Previously activities could only be created or deleted.
+
+### Currency Converter Widget
+- Budget page gains a **Quick Currency Convert** collapsible section — type an amount in the trip currency and see the live MYR equivalent via exchangerate.host (debounced 600ms).
+
+### Day-by-Day Spending Breakdown
+- Budget page gains a **Day-by-Day Spending** collapsible bar chart showing per-day expense totals with relative-width bars and transaction counts.
+
+### Documents — Custom Date Picker
+- Documents page's validity date inputs replaced with the app's **CustomDatePicker** component (was using native `type="date"` which looks ugly on Android WebView).
+
+## 🔧 Code Quality Fixes
+
+- **Currency constant unified** — Trip creation modal's currency list was a hardcoded inline array of 12 currencies. Now uses `WP_CURRENCIES` constant (20 currencies) from `wanderplanConstants.ts`.
+- **Default currency** uses `WP_CURRENCIES[0].code` instead of hardcoded `"RM"`.
+- **CRUD error feedback** — `createWPTrip` now checks the return value and shows an error toast on failure instead of always saying "Trip created!".
+
+## 🧹 Internal
+
+- 7 modified files: 5 WanderPlan pages, CookMate layout, package.json.
+- Version bumped to `1.7.1`.
+- `tsc --noEmit` → 0 errors. 0 lint errors.
+
+---
+
 ## [1.7.0] — CookMate Smart Kitchen Module — 2026-05-17
 
 A new toggleable module that turns the app into a kitchen companion. Pantry tracking, recipe discovery with ingredient matching, Gemini AI-powered cooking assistant, shopping lists, and cooking history — all running 100% client-side with localStorage (zero Supabase cost).

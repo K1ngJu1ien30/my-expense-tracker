@@ -5,6 +5,7 @@ import { Plus, Trash2, ExternalLink } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAppContext } from "@/lib/context";
 import { DOCUMENT_TYPES, DOCUMENT_TYPE_LABELS, DOCUMENT_TYPE_ICONS } from "@/lib/wanderplanConstants";
+import CustomDatePicker from "@/components/CustomDatePicker";
 import type { WPDocumentType } from "@/lib/types";
 
 export default function DocumentsPage() {
@@ -118,8 +119,14 @@ export default function DocumentsPage() {
               <input value={externalUrl} onChange={e => setExternalUrl(e.target.value)} placeholder="Booking URL (optional)" className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground placeholder:text-muted-foreground" />
               <input value={bookingRef} onChange={e => setBookingRef(e.target.value)} placeholder="Booking reference" className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground placeholder:text-muted-foreground" />
               <div className="grid grid-cols-2 gap-3">
-                <input value={validFrom} onChange={e => setValidFrom(e.target.value)} type="date" placeholder="Valid from" className="bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" />
-                <input value={validUntil} onChange={e => setValidUntil(e.target.value)} type="date" placeholder="Valid until" className="bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" />
+                <div>
+                  <p className="text-[10px] font-bold text-muted-foreground mb-1">Valid from</p>
+                  <CustomDatePicker value={validFrom} onChange={setValidFrom} accentColor={accentColor} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-muted-foreground mb-1">Valid until</p>
+                  <CustomDatePicker value={validUntil} onChange={setValidUntil} accentColor={accentColor} />
+                </div>
               </div>
               <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes" rows={2} className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground placeholder:text-muted-foreground resize-none" />
 

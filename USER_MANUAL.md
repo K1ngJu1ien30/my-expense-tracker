@@ -2,6 +2,8 @@
 
 Welcome. This guide walks you through every feature of the app, from first launch to power-user tricks. No jargon, no fluff.
 
+> **What's new in v1.7.1 (May 2026):** WanderPlan audit + polish: fullscreen map bug fixed (was stuck on Android), trip editing, activity editing, trip summary copy-to-clipboard, currency converter widget on budget page, day-by-day spending breakdown, documents now use custom date picker. CookMate's bottom nav redesigned to match the app's native nav bar exactly (Lucide icons, rounded-t-3xl, fixed positioning).
+>
 > **What's new in v1.7.0 (May 2026):** **CookMate Smart Kitchen** — 24 curated recipes with pantry match scoring, Gemini AI cooking assistant, ingredient pantry with expiry tracking, shopping list, and cooking history. All offline via localStorage, zero backend cost. Enable in Profile → Modules (on by default).
 >
 > **What's new in v1.6.0 (May 2026):** **Slack Arcade** — 11 mini-games (2048, Snake, Minesweeper, Wordle, Tetris, Flappy Fish, Tower Defense, Rhythm Tap, Memory Match, Color Reaction, Idle Fisher), daily slack timer with achievement badges, and a Boss Key panic screen (fake Windows Update). Enable in Profile → Modules. All games work offline, support touch controls, and persist high scores.
@@ -230,7 +232,57 @@ You can also generate a receipt manually any time:
 
 ---
 
-## 7. Tips for Daily Use
+## 7. WanderPlan Travel Planner
+
+Enable in **Profile → Modules → WanderPlan**. The entire module lives under the Hub tab with its own 7-tab navigation.
+
+### Creating & Managing Trips
+1. Open **Hub → WanderPlan** (or tap the WanderPlan tile).
+2. Tap **New Trip** — enter name, destination, date range, and trip currency (20 currencies available).
+3. Trip cards show status badges (Planning / Active / On Trip / Completed).
+4. **Edit** a trip by tapping the pencil icon — change name, destination, or dates.
+5. **Copy summary** by tapping the clipboard icon — generates a formatted text summary with all your trip stats and copies it to clipboard.
+6. **Start Trip** to mark it active. **Complete** when you're done.
+
+### Itinerary Builder
+- Days are auto-generated from your trip date range.
+- Add activities per day: title, category, times, cost, booking reference, notes.
+- **Edit activities** by tapping the pencil icon — modify title, category, times, and notes.
+- Tap the circle to mark activities complete (optimistic toggle — instant feedback).
+
+### Map View
+- Interactive map showing all your saved places as color-coded pins.
+- Tap the expand button for **fullscreen mode** — edge-to-edge map with a floating legend.
+- Tap the minimize button to return to normal view.
+
+### Budget Tracker
+- Set budget allocations per category (9 categories: Flights, Accommodation, Food, etc.).
+- Add expenses — optionally bridge them to your main expense tracker.
+- **Quick Currency Convert** — collapsible widget converts amounts between trip currency and MYR.
+- **Day-by-Day Spending** — collapsible bar chart showing how much you spent each day of the trip.
+
+### Saved Places
+- Save restaurants, hotels, attractions with Nominatim address search (auto-geocoding).
+- Rate places (1-5 stars), set price level ($-$$$$), add notes.
+- Filter by category or visited/unvisited status.
+
+### Documents Vault
+- Store travel documents grouped by type (Flight, Hotel, Train, Insurance, Visa).
+- Add booking references, validity dates (using the custom date picker), and external URLs.
+
+### Packing Checklist
+- Track what you've packed with a progress bar.
+- Use **Templates** (City Break, Beach Vacation, Winter Trip) for quick-start lists.
+- Add individual items with category and quantity.
+
+### Dashboard Widgets (Active Trips)
+- **Trip Countdown** — days-until-departure or day-progress bar.
+- **Daily Spending Meter** — today's spending vs daily budget limit.
+- **Today Timeline** — current activity, next up, weather widget, and completion tracker.
+
+---
+
+## 8. Tips for Daily Use
 
 - **Long-press** the + FAB for instant one-tap repeats of your most common expenses
 - **Swipe left** on any row in History to edit or delete without tapping the card first

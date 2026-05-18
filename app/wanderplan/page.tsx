@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Plus, Trash2, Play, CheckCircle2, MapPin, Calendar } from "lucide-react";
+import { Plus, Trash2, Play, CheckCircle2, MapPin, Calendar, Edit3, Share2, Copy } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAppContext } from "@/lib/context";
 import { format, differenceInDays, isWithinInterval, parseISO } from "date-fns";
+import { WP_CURRENCIES } from "@/lib/wanderplanConstants";
 import CustomDatePicker from "@/components/CustomDatePicker";
 import TodayTimeline from "@/components/wanderplan/TodayTimeline";
 import TripCountdown from "@/components/wanderplan/TripCountdown";
@@ -13,8 +14,9 @@ import DailySpendingMeter from "@/components/wanderplan/DailySpendingMeter";
 export default function WanderPlanDashboard() {
   const {
     accentColor, wpTrips, wpActivities, wpAllocations, wpExpenses,
-    wpActiveTripId, createWPTrip, deleteWPTrip, setWPTripStatus,
-    getWPTripDays, confirmAction, triggerToast,
+    wpActiveTripId, createWPTrip, updateWPTrip, deleteWPTrip, setWPTripStatus,
+    getWPTripDays, wpPlaces, wpPackingItems,
+    confirmAction, triggerToast,
   } = useAppContext();
 
   const [showCreate, setShowCreate] = useState(false);
@@ -22,7 +24,17 @@ export default function WanderPlanDashboard() {
   const [destination, setDestination] = useState("");
   const [startDate, setStartDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [endDate, setEndDate] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [currencyCode, setCurrencyCode] = useState("RM");
+  const [currencyCode, setCurrencyCode] = useState(WP_CURRENCIES[0].code);
+
+  // Edit trip state
+  const [editTrip, setEditTrip] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDest, setEditDest] = useState("");
+  const [editStart, setEditStart] = useState("");
+  const [editEnd, setEditEnd] = useState("");
+
+  // Share trip state
+  const [shareTrip, setShareTrip] = useState<string | null>(null);
 
   const activeTrip = useMemo(
     () => wpTrips.find(t => t.id === wpActiveTripId) || wpTrips.find(t => t.status === "active"),
@@ -39,7 +51,7 @@ export default function WanderPlanDashboard() {
 
   const handleCreate = async () => {
     if (!name.trim() || !destination.trim()) return;
-    await createWPTrip({
+    const result = await createWPTrip({
       name: name.trim(),
       destination: destination.trim(),
       start_date: startDate,
@@ -48,13 +60,63 @@ export default function WanderPlanDashboard() {
       status: "planning",
       settings: {},
     } as never);
-    setShowCreate(false);
-    setName(""); setDestination("");
-    triggerToast("Trip created!");
+    if (result) {
+      setShowCreate(false);
+      setName(""); setDestination("");
+      triggerToast("Trip created!");
+    } else {
+      triggerToast("Failed to create trip. Try again.");
+    }
   };
 
   const handleDelete = (id: string, tripName: string) => {
     confirmAction("Delete Trip", `Delete "${tripName}" and all its data?`, () => deleteWPTrip(id));
+  };
+
+  const openEdit = (trip: typeof wpTrips[0]) => {
+    setEditTrip(trip.id);
+    setEditName(trip.name);
+    setEditDest(trip.destination);
+    setEditStart(trip.start_date);
+    setEditEnd(trip.end_date);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editTrip || !editName.trim() || !editDest.trim()) return;
+    await updateWPTrip(editTrip, { name: editName.trim(), destination: editDest.trim(), start_date: editStart, end_date: editEnd } as never);
+    setEditTrip(null);
+    triggerToast("Trip updated!");
+  };
+
+  const generateTripSummary = (tripId: string) => {
+    const trip = wpTrips.find(t => t.id === tripId);
+    if (!trip) return;
+    const days = getWPTripDays(trip.id);
+    const acts = wpActivities.filter(a => days.some(d => d.id === a.trip_day_id));
+    const places = wpPlaces.filter(p => p.trip_id === trip.id);
+    const packing = wpPackingItems.filter(i => i.trip_id === trip.id);
+    const totalBudget = wpAllocations.filter(a => a.trip_id === trip.id).reduce((s, a) => s + a.allocated_cents, 0);
+    const totalSpent = wpExpenses.filter(e => e.trip_id === trip.id).reduce((s, e) => s + e.amount_cents, 0);
+    const daysCount = differenceInDays(parseISO(trip.end_date), parseISO(trip.start_date)) + 1;
+
+    const lines = [
+      `✈️ ${trip.name}`,
+      `📍 ${trip.destination}`,
+      `📅 ${format(parseISO(trip.start_date), "MMM d")} — ${format(parseISO(trip.end_date), "MMM d, yyyy")} (${daysCount} days)`,
+      ``,
+      `📊 Stats:`,
+      `  ${acts.length} activities planned`,
+      `  ${places.length} places saved`,
+      totalBudget > 0 ? `  💰 Budget: ${trip.currency_code} ${(totalBudget / 100).toFixed(0)} | Spent: ${trip.currency_code} ${(totalSpent / 100).toFixed(0)}` : "",
+      packing.length > 0 ? `  🎒 ${packing.filter(i => i.is_packed).length}/${packing.length} packed` : "",
+      ``,
+      `— Generated by Expense Tracker Pro`,
+    ].filter(Boolean).join("\n");
+
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(lines).then(() => triggerToast("Trip summary copied!"));
+    }
+    setShareTrip(null);
   };
 
   return (
@@ -181,6 +243,12 @@ export default function WanderPlanDashboard() {
                       <Play className="w-3.5 h-3.5" /> Start Trip
                     </button>
                   )}
+                  <button onClick={() => openEdit(trip)} className="p-2 rounded-xl bg-muted text-muted-foreground hover:text-foreground active:scale-95 transition-all">
+                    <Edit3 className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => { setShareTrip(trip.id); generateTripSummary(trip.id); }} className="p-2 rounded-xl bg-sky-500/10 text-sky-500 active:scale-95 transition-transform">
+                    <Copy className="w-4 h-4" />
+                  </button>
                   <button onClick={() => handleDelete(trip.id, trip.name)} className="p-2 rounded-xl bg-red-500/10 text-red-500 active:scale-95 transition-transform">
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -229,18 +297,18 @@ export default function WanderPlanDashboard() {
               <div>
                 <p className="text-xs font-bold text-muted-foreground mb-1.5">Currency</p>
                 <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
-                  {["RM","USD","EUR","GBP","JPY","CNY","KRW","THB","SGD","AUD","IDR","VND"].map(c => (
+                  {WP_CURRENCIES.map(c => (
                     <button
-                      key={c}
+                      key={c.code}
                       type="button"
-                      onClick={() => setCurrencyCode(c)}
+                      onClick={() => setCurrencyCode(c.code)}
                       className="whitespace-nowrap px-4 py-2 rounded-full text-sm font-bold transition-all shrink-0"
-                      style={currencyCode === c
+                      style={currencyCode === c.code
                         ? { backgroundColor: accentColor, color: "#fff" }
                         : { backgroundColor: "var(--color-muted)", color: "var(--color-muted-foreground)" }
                       }
                     >
-                      {c}
+                      {c.code}
                     </button>
                   ))}
                 </div>
@@ -248,6 +316,33 @@ export default function WanderPlanDashboard() {
 
               <button onClick={handleCreate} disabled={!name.trim() || !destination.trim()} style={{ backgroundColor: accentColor }} className="w-full py-4 rounded-2xl text-white font-bold text-sm active:scale-[0.97] transition-all disabled:opacity-40">
                 Create Trip
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Trip Modal */}
+      <AnimatePresence>
+        {editTrip && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setEditTrip(null)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative w-full max-w-sm bg-card rounded-3xl p-6 shadow-heavy space-y-4 border border-border/50">
+              <h3 className="font-bold text-foreground text-lg">Edit Trip</h3>
+              <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Trip name" className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground placeholder:text-muted-foreground" />
+              <input value={editDest} onChange={e => setEditDest(e.target.value)} placeholder="Destination" className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground placeholder:text-muted-foreground" />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs font-bold text-muted-foreground mb-1">Start</p>
+                  <CustomDatePicker value={editStart} onChange={setEditStart} accentColor={accentColor} />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-muted-foreground mb-1">End</p>
+                  <CustomDatePicker value={editEnd} onChange={setEditEnd} accentColor={accentColor} />
+                </div>
+              </div>
+              <button onClick={handleSaveEdit} disabled={!editName.trim() || !editDest.trim()} style={{ backgroundColor: accentColor }} className="w-full py-3 rounded-2xl text-white font-bold text-sm active:scale-[0.97] transition-all disabled:opacity-40">
+                Save Changes
               </button>
             </motion.div>
           </div>

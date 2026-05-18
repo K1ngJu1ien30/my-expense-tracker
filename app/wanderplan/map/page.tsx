@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import { Maximize2, Minimize2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -55,6 +56,61 @@ function MapInner({ places, height }: { places: WPSavedPlace[]; height: string }
   );
 }
 
+/** Fullscreen overlay portalled to document.body so it escapes overflow:hidden ancestors */
+function FullscreenMapPortal({ places, tripName, placeCount, onClose }: {
+  places: WPSavedPlace[];
+  tripName: string;
+  placeCount: number;
+  onClose: () => void;
+}) {
+  // Lock body scroll while fullscreen
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
+
+  return createPortal(
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[9999] bg-background flex flex-col"
+    >
+      {/* Fullscreen header */}
+      <div className="flex items-center justify-between px-4 py-3 bg-card border-b border-border/40 shrink-0 safe-top">
+        <div>
+          <p className="font-bold text-sm text-foreground">{tripName}</p>
+          <p className="text-[10px] text-muted-foreground font-medium">{placeCount} places</p>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-2 rounded-xl bg-muted active:scale-95 transition-transform"
+        >
+          <Minimize2 className="w-4 h-4 text-foreground" />
+        </button>
+      </div>
+
+      {/* Full map */}
+      <div className="flex-1 relative">
+        <MapInner places={places} height="100%" />
+      </div>
+
+      {/* Floating legend */}
+      <div className="absolute bottom-6 left-4 right-4 flex justify-center pb-safe">
+        <div className="bg-card/95 backdrop-blur-xl border border-border/50 rounded-full px-4 py-2 shadow-heavy flex gap-3">
+          {(Object.keys(PLACE_CATEGORY_COLORS) as (keyof typeof PLACE_CATEGORY_COLORS)[]).map(cat => (
+            <div key={cat} className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground">
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: PLACE_CATEGORY_COLORS[cat] }} />
+              {PLACE_CATEGORY_LABELS[cat]}
+            </div>
+          ))}
+        </div>
+      </div>
+    </motion.div>,
+    document.body
+  );
+}
+
 export default function MapPage() {
   const { accentColor, wpTrips, wpActiveTripId, wpPlaces } = useAppContext();
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -104,46 +160,15 @@ export default function MapPage() {
         </div>
       </div>
 
-      {/* Fullscreen map overlay */}
+      {/* Fullscreen map overlay — portalled to body to escape overflow:hidden */}
       <AnimatePresence>
         {isFullscreen && hasCoords && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[300] bg-background flex flex-col"
-          >
-            {/* Fullscreen header */}
-            <div className="flex items-center justify-between px-4 py-3 bg-card border-b border-border/40 shrink-0">
-              <div>
-                <p className="font-bold text-sm text-foreground">{trip.name}</p>
-                <p className="text-[10px] text-muted-foreground font-medium">{places.filter(p => p.location).length} places</p>
-              </div>
-              <button
-                onClick={() => setIsFullscreen(false)}
-                className="p-2 rounded-xl bg-muted active:scale-95 transition-transform"
-              >
-                <Minimize2 className="w-4 h-4 text-foreground" />
-              </button>
-            </div>
-
-            {/* Full map */}
-            <div className="flex-1">
-              <MapInner places={places} height="100%" />
-            </div>
-
-            {/* Floating legend */}
-            <div className="absolute bottom-6 left-4 right-4 flex justify-center">
-              <div className="bg-card/95 backdrop-blur-xl border border-border/50 rounded-full px-4 py-2 shadow-heavy flex gap-3">
-                {(Object.keys(PLACE_CATEGORY_COLORS) as (keyof typeof PLACE_CATEGORY_COLORS)[]).map(cat => (
-                  <div key={cat} className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground">
-                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: PLACE_CATEGORY_COLORS[cat] }} />
-                    {PLACE_CATEGORY_LABELS[cat]}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </motion.div>
+          <FullscreenMapPortal
+            places={places}
+            tripName={trip.name}
+            placeCount={places.filter(p => p.location).length}
+            onClose={() => setIsFullscreen(false)}
+          />
         )}
       </AnimatePresence>
     </>

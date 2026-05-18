@@ -2,16 +2,18 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, ChefHat, Bot, Refrigerator, ShoppingCart, Settings } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { CookMateProvider } from "@/lib/cookmate/context";
 
 const ACCENT = "#f97316";
+
 const tabs = [
-  { href: "/cookmate", label: "Cook", icon: "🍳" },
-  { href: "/cookmate/ask", label: "Ask AI", icon: "🤖" },
-  { href: "/cookmate/pantry", label: "Pantry", icon: "🧊" },
-  { href: "/cookmate/shopping", label: "Shop", icon: "🛒" },
-  { href: "/cookmate/settings", label: "More", icon: "⚙️" },
+  { href: "/cookmate", label: "Cook", Icon: ChefHat },
+  { href: "/cookmate/ask", label: "Ask AI", Icon: Bot },
+  { href: "/cookmate/pantry", label: "Pantry", Icon: Refrigerator },
+  { href: "/cookmate/shopping", label: "Shop", Icon: ShoppingCart },
+  { href: "/cookmate/settings", label: "More", Icon: Settings },
 ];
 
 export default function CookMateLayout({ children }: { children: React.ReactNode }) {
@@ -34,22 +36,35 @@ export default function CookMateLayout({ children }: { children: React.ReactNode
           </div>
         )}
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto hide-scrollbar">
+        {/* Content — extra bottom padding to clear the fixed nav */}
+        <div className={cn("flex-1 overflow-y-auto hide-scrollbar", !isRecipeDetail && "pb-24")}>
           {children}
         </div>
 
-        {/* Bottom nav — replaces the app's main nav (hidden by AppLayout) */}
+        {/* Bottom nav — mirrors the app's native BottomNav design exactly */}
         {!isRecipeDetail && (
-          <nav className="border-t border-border/40 bg-white dark:bg-zinc-950 bg-opacity-90 dark:bg-opacity-90 backdrop-blur-xl px-6 py-3 flex justify-around pb-safe shrink-0">
+          <nav
+            aria-label="CookMate navigation"
+            className="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-zinc-950 pb-safe border-t border-border shadow-up rounded-t-3xl px-6 py-4 flex justify-between items-center bg-opacity-90 dark:bg-opacity-90 backdrop-blur-xl max-w-md mx-auto"
+          >
             {tabs.map(tab => {
               const isActive = pathname === tab.href || (tab.href !== "/cookmate" && pathname.startsWith(tab.href));
               const isExactCook = tab.href === "/cookmate" && pathname === "/cookmate";
               const active = isActive || isExactCook;
               return (
-                <Link key={tab.href} href={tab.href} className="flex flex-col items-center gap-1 transition-colors">
-                  <span className={`text-lg ${active ? "" : "grayscale opacity-60"}`}>{tab.icon}</span>
-                  <span className="text-[10px] font-semibold" style={{ color: active ? ACCENT : "var(--color-muted-foreground)" }}>{tab.label}</span>
+                <Link
+                  key={tab.href}
+                  href={tab.href}
+                  aria-label={tab.label}
+                  aria-current={active ? "page" : undefined}
+                  style={active ? { color: ACCENT } : {}}
+                  className={cn(
+                    "flex flex-col items-center gap-1 transition-colors",
+                    !active && "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <tab.Icon className="w-6 h-6" strokeWidth={active ? 2.5 : 2} aria-hidden="true" />
+                  <span className="text-[10px] font-semibold">{tab.label}</span>
                 </Link>
               );
             })}
