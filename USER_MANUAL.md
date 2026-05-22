@@ -2,13 +2,13 @@
 
 Welcome. This guide walks you through every feature of the app, from first launch to power-user tricks. No jargon, no fluff.
 
+> **What's new in v1.8.0 (May 2026):** **AI Assistant** — a new tile in the Hub powered by Google Gemini that has read access to all your data (transactions, goals, assets, trades, trips, subscriptions, pantry). Ask anything: *"how am I doing this month?"*, *"which subscription should I cancel first?"*, *"plan a budget trip to Penang in July"*. Free tier (50 calls/day) by default. Plus: **AI-powered greetings** on the Home screen replace the old "Good morning" + insights card with one cohesive AI line that doubles as a smart insight ("📉 Down 70% this week — killing it!"). **CookMate is now fully AI-driven** — recipes are generated to your taste preferences, no more 24-recipe pool. **History page** now groups transactions under date headers (Today / Yesterday / etc). **Removed for focus:** Slack Arcade (11 games), Weather Theming, Daily Reminders, Billing Cycle Day, MealDB. The app feels *lighter* now.
+>
 > **What's new in v1.7.1 (May 2026):** WanderPlan audit + polish: fullscreen map bug fixed (was stuck on Android), trip editing, activity editing, trip summary copy-to-clipboard, currency converter widget on budget page, day-by-day spending breakdown, documents now use custom date picker. CookMate's bottom nav redesigned to match the app's native nav bar exactly (Lucide icons, rounded-t-3xl, fixed positioning).
 >
-> **What's new in v1.7.0 (May 2026):** **CookMate Smart Kitchen** — 24 curated recipes with pantry match scoring, Gemini AI cooking assistant, ingredient pantry with expiry tracking, shopping list, and cooking history. All offline via localStorage, zero backend cost. Enable in Profile → Modules (on by default).
+> **What's new in v1.7.0 (May 2026):** **CookMate Smart Kitchen** — recipe discovery, Gemini AI cooking assistant, ingredient pantry with expiry tracking, shopping list, and cooking history. Enable in Profile → Modules (on by default). *(Recipe pool was overhauled to AI-only in v1.8.)*
 >
-> **What's new in v1.6.0 (May 2026):** **Slack Arcade** — 11 mini-games (2048, Snake, Minesweeper, Wordle, Tetris, Flappy Fish, Tower Defense, Rhythm Tap, Memory Match, Color Reaction, Idle Fisher), daily slack timer with achievement badges, and a Boss Key panic screen (fake Windows Update). Enable in Profile → Modules. All games work offline, support touch controls, and persist high scores.
->
-> **What's new in v1.5.0 (May 2026):** Massive new module — **WanderPlan Travel Planner**. Enable in Profile → Modules. Plan trips with itineraries, interactive maps (Leaflet + fullscreen mode), per-category budget tracking with expense-to-main-tracker bridge, saved places with Nominatim geocoding, travel document vault, packing checklists with templates, live weather on active trips, daily spending meter, and trip countdown widgets. 7 sub-features, 15 new files, zero impact on app performance when disabled.
+> **What's new in v1.5.0 (May 2026):** Massive new module — **WanderPlan Travel Planner**. Enable in Profile → Modules. Plan trips with itineraries, interactive maps (Leaflet + fullscreen mode), per-category budget tracking with expense-to-main-tracker bridge, saved places with Nominatim geocoding, travel document vault, packing checklists with templates, daily spending meter, and trip countdown widgets.
 >
 > **What's new in v1.4.1 (May 2026 — hotfix):** Two quick polish fixes on top of v1.4 — (1) **History rows are ~40% shorter** so you see more transactions per screen without scrolling. (2) **Transaction modal no longer randomly pops up the keyboard on the wrong field** — it now does nothing on open so you tap what you want to edit; predictable every time.
 >
@@ -151,19 +151,12 @@ The app reacts to unusual money moves with themed animations:
 - 🔥 **Phoenix** — rises when you shake your phone to undo a just-deleted transaction
 - 🦈 **Shark** — swims across on every successful undo
 
-### Time-Based Greetings
-If you open the app between 02:00–05:00 you'll get a 🦉 instead of "Good morning." Burning the midnight oil at 23:00–02:00 gets you a 🌙. Want the classic "Good morning / afternoon / evening" every time? Turn it off under **Profile → Personality & Fun → Time-Based Greetings**.
+### Time-Based Greetings + AI Greetings
+The Home screen greeting is now AI-generated from your real spending data when you have a Gemini key set up — *"📉 Down 70% this week — killing it!"* or *"🌙 Day 21, RM 132 spent this month, sleep tight"*. It refreshes on every cold app open (or when you've been away for 5+ minutes), and auto-busts whenever your spending changes meaningfully.
+
+If no API key is configured (or you've hit your daily quota), it falls back to time-based greetings: 🦉 owl at 2–5 AM, 🌙 moon at 23:00–02:00, ☀️ early-bird sun at 05:00, etc. Want the classic "Good morning / afternoon / evening" every time? Turn it off under **Profile → Personality & Fun → Time-Based Greetings**.
 
 Independent of the greeting text, the home screen carries a **bold color gradient** that shifts gently across the day — warm orange at dawn, sky blue at noon, rose at dusk, deep indigo at night. This runs regardless of the greetings toggle (it's background mood, not a loud theme change). Respects your dark-mode setting.
-
-### Weather-Aware Theming (opt-in)
-Want the dashboard to react to what it's actually doing outside? Go to **Profile → Personalization → Weather Locations** and type in a primary city (e.g. "Kuala Lumpur") and optionally a secondary city. The app will:
-
-- Show a **weather chip** on the Home greeting with current temperature and a 3-letter city code
-- Decorate the gradient with weather-specific overlays: 🌧️ rain goes cooler/darker, ❄️ snow whitens, ⛈️ thunderstorms pump up the contrast, 🌫️ fog mutes everything
-- Refresh quietly every hour while the app is open
-
-**Privacy note:** we never ask for GPS permission. Cities are resolved on-device via Open-Meteo's free API; coordinates are cached forever so repeated lookups are instant. If you leave the location blank, weather theming is simply off.
 
 ### Broke & Rich Moods
 - If your Net Total dips below zero, the number **subtly glitches** — a gentle reminder. It stops the moment you're back in the black.
@@ -232,7 +225,49 @@ You can also generate a receipt manually any time:
 
 ---
 
-## 7. WanderPlan Travel Planner
+## 7. AI Assistant (v1.8+)
+
+The **AI Assistant** is a Gemini-powered chat that has read access to *all* your app data — transactions, goals, assets, trades, trips, subscriptions, pantry. It lives as a tile in the Hub (✨ icon).
+
+### Setup (one-time, ~30 seconds)
+1. Get a free API key from [Google AI Studio](https://aistudio.google.com/apikey) — no credit card required.
+2. In the app: **Profile → AI Assistant → Gemini API Key** → paste the key.
+3. Pick a model. Default is `gemini-2.0-flash-lite` (free tier, fast, plenty smart for this use case).
+4. Daily call limit defaults to **50/day** — protects you from accidentally blowing the free quota. Bump it if you have a paid key.
+
+### What you can ask
+The assistant has the full context of your finances built into its system prompt — recent transactions, all your goals and progress, subscription totals, trip budgets, what's in your pantry. So you can just ask naturally:
+
+- *"How am I doing this month?"*
+- *"Which subscription should I cancel first?"*
+- *"What's my biggest spending category and what should I cut?"*
+- *"Plan a budget trip to Penang in July under RM 800"*
+- *"What can I cook tonight with what I have?"*
+- *"Did I overspend on food last week?"*
+- *"How much closer am I to my laptop goal?"*
+
+### Features
+- **Persistent chat history** — your conversation survives app restarts.
+- **Markdown rendering** — code blocks, bullet lists, bold, headings render properly.
+- **Haptic feedback** on send + receive.
+- **Auto-retry on rate limit** — if Gemini is briefly overloaded (503), the app retries with exponential backoff. You'll never see a raw error message.
+- **Daily call counter** in Profile → AI Assistant so you can see usage at a glance.
+
+### Personalised Greetings
+The greeting line at the top of your Home screen ("Good morning, Jerry") is also AI-generated when you have a key set up — but it pulls from your real spending data and produces things like:
+
+> 📉 Down 70% this week — killing it!
+> 🌙 Day 21, RM 132 spent this month, sleep tight  
+> 🍜 Food's 60% of your month, btw
+
+It refreshes on every cold app open or when you've been away for 5+ minutes. If no key is configured, falls back gracefully to static time-based greetings.
+
+### CookMate AI Recipes
+CookMate is fully AI-driven in v1.8 — recipes are generated to match your food preferences (cuisine prefs, spice tolerance, dietary flags, allergens, dislikes, budget per meal) and what's currently in your pantry. Set your preferences once in **CookMate → Settings → Food Preferences**, then tap **Cook** for fresh recipe suggestions. Cached for 2 hours so refreshing the page doesn't burn quota.
+
+---
+
+## 8. WanderPlan Travel Planner
 
 Enable in **Profile → Modules → WanderPlan**. The entire module lives under the Hub tab with its own 7-tab navigation.
 
@@ -282,7 +317,7 @@ Enable in **Profile → Modules → WanderPlan**. The entire module lives under 
 
 ---
 
-## 8. Tips for Daily Use
+## 9. Tips for Daily Use
 
 - **Long-press** the + FAB for instant one-tap repeats of your most common expenses
 - **Swipe left** on any row in History to edit or delete without tapping the card first

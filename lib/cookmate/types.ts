@@ -1,14 +1,12 @@
-export type IngredientCategory = 'protein' | 'vegetables' | 'dairy' | 'grains' | 'condiments' | 'frozen' | 'other';
-export type Difficulty = 'easy' | 'medium' | 'hard';
-export type MealOccasion = 'quick-breakfast' | 'work-lunch' | 'weekday-dinner' | 'weekend-cooking' | 'snack' | 'meal-prep';
+// CookMate Types — fully AI-driven kitchen companion
 
 export interface PantryItem {
   id: string;
   name: string;
+  category: "protein" | "vegetables" | "dairy" | "grains" | "condiments" | "frozen" | "fruits" | "snacks" | "other";
   quantity: number;
   unit: string;
-  category: IngredientCategory;
-  expiry_date: string | null;
+  expiry_date?: string | null;
   added_at: string;
 }
 
@@ -17,51 +15,102 @@ export interface ShoppingItem {
   name: string;
   quantity: string;
   checked: boolean;
-}
-
-export interface Recipe {
-  id: string;
-  name: string;
-  thumbnail: string;
-  cuisine: string;
-  category: string;
-  instructions: string;
-  ingredients: { name: string; measure: string }[];
-  source: string | null;
-  youtube: string | null;
-  prep_minutes?: number;
-  difficulty?: Difficulty;
-  occasion?: MealOccasion[];
-}
-
-export interface RecipeMatch extends Recipe {
-  matchScore: number;
-  matchedIngredients: string[];
-  missingIngredients: string[];
+  category?: string;
 }
 
 export interface CookingHistoryEntry {
   id: string;
-  recipe_id: string;
   recipe_name: string;
   thumbnail: string;
   cooked_at: string;
   is_favorite: boolean;
+  recipe_id: string;
 }
 
+export interface FoodPreferences {
+  cuisines: string[]; // e.g. ["Malaysian", "Chinese", "Japanese", "Korean"]
+  dietary: string[]; // e.g. ["halal", "no-pork", "low-carb"]
+  spiceLevel: "mild" | "medium" | "spicy" | "extra-spicy";
+  cookingSkill: "beginner" | "intermediate" | "advanced";
+  dislikedIngredients: string[];
+  householdSize: number;
+  mealPrepPreference: boolean; // likes batch cooking
+}
+
+export interface AIRecipe {
+  id: string;
+  name: string;
+  description: string;
+  ingredients: string[];
+  steps: string[];
+  prep_minutes: number;
+  cook_minutes: number;
+  difficulty: "easy" | "medium" | "hard";
+  cuisine: string;
+  meal_type: "breakfast" | "lunch" | "dinner" | "snack";
+  servings: number;
+  estimated_cost?: string;
+  uses_pantry: string[]; // which pantry items it uses
+}
+
+export interface MealPlan {
+  id: string;
+  created_at: string;
+  days: MealPlanDay[];
+  budget?: number;
+  notes?: string;
+}
+
+export interface MealPlanDay {
+  date: string;
+  meals: { type: "breakfast" | "lunch" | "dinner" | "snack"; recipe_name: string; description?: string }[];
+}
+
+export const PANTRY_CATEGORIES = [
+  { key: "protein", label: "Protein", emoji: "🥩" },
+  { key: "vegetables", label: "Vegetables", emoji: "🥬" },
+  { key: "fruits", label: "Fruits", emoji: "🍎" },
+  { key: "dairy", label: "Dairy", emoji: "🥛" },
+  { key: "grains", label: "Grains", emoji: "🌾" },
+  { key: "condiments", label: "Condiments", emoji: "🧂" },
+  { key: "frozen", label: "Frozen", emoji: "🧊" },
+  { key: "snacks", label: "Snacks", emoji: "🍿" },
+  { key: "other", label: "Other", emoji: "📦" },
+] as const;
+
+export const CUISINE_OPTIONS = [
+  "Malaysian", "Chinese", "Japanese", "Korean", "Thai",
+  "Vietnamese", "Indian", "Indonesian", "Western", "Mediterranean",
+  "Middle Eastern", "Fusion",
+];
+
+export const DIETARY_OPTIONS = [
+  "Halal", "No Pork", "No Beef", "Vegetarian", "Vegan",
+  "Low Carb", "Keto", "Gluten Free", "Dairy Free", "No Shellfish",
+];
+
+export const DEFAULT_PREFERENCES: FoodPreferences = {
+  cuisines: ["Malaysian", "Chinese", "Japanese"],
+  dietary: [],
+  spiceLevel: "medium",
+  cookingSkill: "intermediate",
+  dislikedIngredients: [],
+  householdSize: 1,
+  mealPrepPreference: false,
+};
+
+// Items that are always assumed to be available
 export const ALWAYS_IN_STOCK = [
-  'salt', 'pepper', 'oil', 'cooking oil', 'vegetable oil', 'olive oil',
-  'garlic', 'onion', 'onions', 'soy sauce', 'sugar', 'water',
+  "salt", "pepper", "oil", "cooking oil", "garlic", "water", "sugar",
+  "soy sauce", "sesame oil", "rice", "butter",
 ];
 
-export const INGREDIENT_CATEGORIES: { value: IngredientCategory; label: string; emoji: string }[] = [
-  { value: 'protein', label: 'Protein', emoji: '🥩' },
-  { value: 'vegetables', label: 'Vegetables', emoji: '🥬' },
-  { value: 'dairy', label: 'Dairy', emoji: '🧀' },
-  { value: 'grains', label: 'Grains & Carbs', emoji: '🍚' },
-  { value: 'condiments', label: 'Condiments', emoji: '🧂' },
-  { value: 'frozen', label: 'Frozen', emoji: '🧊' },
-  { value: 'other', label: 'Other', emoji: '📦' },
-];
+// ─── Legacy exports for pantry page compatibility ───────────────────────────
 
-export const COMMON_UNITS = ['g', 'kg', 'ml', 'L', 'pcs', 'tbsp', 'tsp', 'cup', 'pack', 'can', 'bottle', 'bunch'];
+export type IngredientCategory = PantryItem["category"];
+
+export const INGREDIENT_CATEGORIES = PANTRY_CATEGORIES.map(c => ({ value: c.key, label: c.label, emoji: c.emoji }));
+
+export const COMMON_UNITS = [
+  "pcs", "g", "kg", "ml", "L", "cups", "tbsp", "tsp", "slices", "bunch", "pack", "can", "bottle",
+];

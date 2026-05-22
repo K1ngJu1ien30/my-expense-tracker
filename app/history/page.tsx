@@ -440,20 +440,40 @@ export default function HistoryPage() {
             className="w-full"
             data={filteredTransactions}
             increaseViewportBy={{ top: 200, bottom: 600 }}
-            itemContent={(_index, tx) => (
-              <div className="pb-2.5 w-full">
-                <SwipeableTransactionRow
-                  tx={tx}
-                  formatCurrency={formatCurrency}
-                  accentColor={accentColor}
-                  isOpen={openRowId === tx.id}
-                  onOpen={() => setOpenRowId(tx.id)}
-                  onClose={() => setOpenRowId((prev) => (prev === tx.id ? null : prev))}
-                  onEdit={() => handleEdit(tx.id)}
-                  onDelete={() => handleDelete(tx.id)}
-                />
-              </div>
-            )}
+            itemContent={(index, tx) => {
+              // Date separator: show a header when the date changes between items
+              const txDate = new Date(tx.date).toDateString();
+              const prevTx = index > 0 ? filteredTransactions[index - 1] : null;
+              const prevDate = prevTx ? new Date(prevTx.date).toDateString() : null;
+              const showDateHeader = index === 0 || txDate !== prevDate;
+
+              const isToday = txDate === new Date().toDateString();
+              const isYesterday = txDate === new Date(Date.now() - 86400000).toDateString();
+              const dateLabel = isToday ? "Today" : isYesterday ? "Yesterday" : new Date(tx.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+
+              return (
+                <div className="w-full">
+                  {showDateHeader && (
+                    <div className="flex items-center gap-3 pt-3 pb-2">
+                      <span className="text-xs font-black text-muted-foreground uppercase tracking-wider">{dateLabel}</span>
+                      <div className="flex-1 h-px bg-border/50" />
+                    </div>
+                  )}
+                  <div className="pb-2.5">
+                    <SwipeableTransactionRow
+                      tx={tx}
+                      formatCurrency={formatCurrency}
+                      accentColor={accentColor}
+                      isOpen={openRowId === tx.id}
+                      onOpen={() => setOpenRowId(tx.id)}
+                      onClose={() => setOpenRowId((prev) => (prev === tx.id ? null : prev))}
+                      onEdit={() => handleEdit(tx.id)}
+                      onDelete={() => handleDelete(tx.id)}
+                    />
+                  </div>
+                </div>
+              );
+            }}
             computeItemKey={(_index, tx) => tx.id}
           />
         </div>

@@ -8,7 +8,7 @@ import Link from "next/link";
 import { useAppContext } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
 import { getTimeTheme } from "@/lib/timeTheme";
-import { useWeather } from "@/lib/hooks/useWeather";
+import { generateAIGreeting } from "@/lib/ai/greeting";
 import MonthlyReceiptModal from "@/components/MonthlyReceiptModal";
 
 /**
@@ -82,8 +82,6 @@ export default function Dashboard() {
     derryActive,
     isClaimsEnabled,
     enableTimeBasedGreeting,
-    primaryLocation,
-    secondaryLocation,
   } = useAppContext();
   const pinnedGoals = isGodMode ? goals.map(g => ({ ...g, current: g.target })) : goals.filter(g => g.isPinned);
 
@@ -172,25 +170,64 @@ export default function Dashboard() {
     }
   }, []);
 
-  // Weather — drives a decorated theme via getTimeTheme's `weather` arg.
-  // Disabled entirely when the user hasn't configured any locations.
-  const weather = useWeather(
-    primaryLocation,
-    secondaryLocation,
-    Boolean(primaryLocation.trim()),
-  );
-
-  // Greeting + time-theme: returns a bucket (deep-night / dawn / morning /
-  // noon / afternoon / dusk / evening / late-night) with a playful greeting
-  // and a BOLD color gradient we layer behind the header. Noticeable by
-  // design — users should feel the shift between morning / noon / dusk
-  // immediately. When weather data is available we additionally decorate
-  // with rain/snow/thunderstorm overlays.
+  // Time-theme: gradient + greeting based on time of day
   const timeTheme = useMemo(() => {
     const hour = new Date().getHours();
-    return getTimeTheme(hour, enableTimeBasedGreeting, weather.primary?.condition);
-  }, [enableTimeBasedGreeting, weather.primary?.condition]);
+    return getTimeTheme(hour, enableTimeBasedGreeting);
+  }, [enableTimeBasedGreeting]);
   const greeting = timeTheme.greeting;
+
+  // AI-powered personalized greeting (merged with insight — cached 4h, non-blocking)
+  const [aiGreeting, setAiGreeting] = useState<string | null>(null);
+  useEffect(() => {
+    if (!enableTimeBasedGreeting || typeof window === "undefined") return;
+    // Don't fire while transactions are still loading from Supabase —
+    // otherwise we'd cache a bogus "RM 0 spent this month" greeting.
+    if (transactions.length === 0) return;
+    const hour = new Date().getHours();
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const weekStart = startOfToday - ((now.getDay() || 7) - 1) * 86400000;
+    const lastWeekStart = weekStart - 7 * 86400000;
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
+
+    const todayExp = transactions.filter(t => t.type === "Expense" && new Date(t.date).getTime() >= startOfToday);
+    const weekExp = transactions.filter(t => t.type === "Expense" && new Date(t.date).getTime() >= weekStart);
+    const lastWeekExp = transactions.filter(t => t.type === "Expense" && new Date(t.date).getTime() >= lastWeekStart && new Date(t.date).getTime() < weekStart);
+    const monthExp = transactions.filter(t => t.type === "Expense" && new Date(t.date).getTime() >= monthStart);
+    const lastMonthExp = transactions.filter(t => t.type === "Expense" && new Date(t.date).getTime() >= lastMonthStart && new Date(t.date).getTime() < monthStart);
+
+    const catMap: Record<string, number> = {};
+    monthExp.forEach(t => { catMap[t.category] = (catMap[t.category] || 0) + t.amount; });
+    const topCat = Object.entries(catMap).sort(([,a],[,b]) => b - a)[0];
+
+    const lastExpDate = transactions.find(t => t.type === "Expense")?.date;
+    const streakDays = lastExpDate ? Math.floor((Date.now() - new Date(lastExpDate).getTime()) / 86400000) : 0;
+
+    const topGoal = goals[0] as unknown as { title: string; current: number; target: number } | undefined;
+
+    generateAIGreeting(timeTheme.bucket, {
+      userName,
+      hour,
+      currency,
+      spentToday: todayExp.reduce((s, t) => s + t.amount, 0),
+      spentThisWeek: weekExp.reduce((s, t) => s + t.amount, 0),
+      spentLastWeek: lastWeekExp.reduce((s, t) => s + t.amount, 0),
+      spentThisMonth: monthExp.reduce((s, t) => s + t.amount, 0),
+      spentLastMonth: lastMonthExp.reduce((s, t) => s + t.amount, 0),
+      topCategory: topCat?.[0] || "",
+      topCategoryAmount: topCat?.[1] || 0,
+      transactionCount: transactions.length,
+      streakDays,
+      savingsGoalName: topGoal?.title || "",
+      savingsGoalPct: topGoal ? Math.round((topGoal.current / topGoal.target) * 100) : 0,
+      dayOfMonth: now.getDate(),
+    }).then(result => { if (result) setAiGreeting(result); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeTheme.bucket, enableTimeBasedGreeting, transactions.length]);
+
+  const displayGreeting = aiGreeting || greeting;
 
   // === Single-pass transaction computation (Task 3: performance) ===
   const dashData = useMemo(() => {
@@ -472,47 +509,24 @@ export default function Dashboard() {
 
       {/* Header — wrapped in a bold time-of-day gradient that shifts through
           the 8 buckets (deep-night → dawn → morning → noon → afternoon →
-          dusk → evening → late-night). When the user has configured a
-          weather location, the gradient is also decorated with a sky-
-          condition overlay (rain / snow / thunderstorm / fog / overcast).
-          The gradient is intentionally high-contrast now — you should
-          immediately notice that 3 AM looks different to 2 PM. A weather
-          chip on the right shows temperature + condition when data is
-          available. */}
+          dusk → evening → late-night). The gradient is intentionally high-
+          contrast — you should immediately notice that 3 AM looks different
+          to 2 PM. */}
       <div
         className="relative rounded-3xl px-4 py-4 -mx-2 mt-2 transition-colors duration-700 overflow-hidden"
         style={{
           background: timeTheme.gradient,
         }}
         data-time-bucket={timeTheme.bucket}
-        data-weather={timeTheme.weather || "none"}
       >
         <div className="flex justify-between items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-muted-foreground font-semibold text-sm flex items-center gap-1.5">
               <span aria-hidden="true" className="text-base">{timeTheme.icon}</span>
-              <span className="truncate">{greeting}</span>
+              <span className="truncate">{displayGreeting}</span>
             </p>
             <h1 className="text-2xl font-bold truncate">{userName}</h1>
           </div>
-
-          {/* Weather chip — renders when primary-location weather is loaded.
-              Tapping it does nothing (read-only status) but it doubles as
-              visual confirmation that weather theming is live. */}
-          {weather.primary && (
-            <div
-              className="shrink-0 bg-card/70 backdrop-blur-md border border-border/50 rounded-full px-2.5 py-1 flex items-center gap-1.5 shadow-sm"
-              aria-label={`Weather: ${weather.primary.temperature}° ${weather.primary.condition} in ${weather.primary.location}`}
-            >
-              <span className="text-sm leading-none" aria-hidden="true">{timeTheme.icon}</span>
-              <span className="text-xs font-black tabular-nums text-foreground">
-                {weather.primary.temperature}°
-              </span>
-              <span className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider hidden xs:inline">
-                {weather.primary.location.slice(0, 3)}
-              </span>
-            </div>
-          )}
 
           <button
             type="button"
@@ -525,6 +539,8 @@ export default function Dashboard() {
           </button>
         </div>
       </div>
+
+      {/* AI Smart Insight is now merged into the greeting above */}
 
       {/*
         Monthly-Recap Auto-Prompt — first week of each month only, dismissible

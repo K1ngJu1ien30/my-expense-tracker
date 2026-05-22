@@ -29,7 +29,7 @@ export default function PantryPage() {
     setShowAdd(false); setName(""); setQty("1"); setExpiry("");
   };
 
-  const getExpiryColor = (date: string | null) => {
+  const getExpiryColor = (date: string | null | undefined) => {
     if (!date) return "";
     const days = (new Date(date).getTime() - Date.now()) / 86400000;
     if (days < 0) return "text-red-500";

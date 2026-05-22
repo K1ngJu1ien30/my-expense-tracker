@@ -8,6 +8,7 @@ import AuthScreen from "./AuthScreen";
 import InstallPrompt from "./InstallPrompt";
 import AuthGate from "./AuthGate";
 import { useAppContext } from "@/lib/context";
+import { clearGreetingCache } from "@/lib/ai/greeting";
 import { AnimatePresence, motion } from "framer-motion";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -63,14 +64,33 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('contextmenu', prevent);
   }, []);
 
-  // App-Switcher Privacy Blur
+  // App-Switcher Privacy Blur + greeting refresh on resume.
+  // We also clear the legacy `localStorage` greeting key (pre-v1.8 builds
+  // persisted it across runs) so users upgrading from old APKs don't get
+  // stuck with a stale "RM 0 spent this month" string forever.
   useEffect(() => {
+    try { localStorage.removeItem("ai_greeting_cache"); } catch {}
+
     let cleanup: (() => void) | undefined;
+    let backgroundedAt: number | null = null;
     try {
       import('@capacitor/app').then(({ App }) => {
         App.addListener('appStateChange', ({ isActive }: { isActive: boolean }) => {
           const el = document.getElementById('app-privacy-blur');
           if (el) el.style.display = isActive ? 'none' : 'block';
+
+          if (!isActive) {
+            backgroundedAt = Date.now();
+          } else if (backgroundedAt != null) {
+            // If the app was in the background for > 5 minutes, treat
+            // resume like a cold-open and force a fresh greeting on the
+            // next dashboard render.
+            const awayMs = Date.now() - backgroundedAt;
+            if (awayMs > 5 * 60 * 1000) {
+              clearGreetingCache();
+            }
+            backgroundedAt = null;
+          }
         });
         cleanup = () => {};
       }).catch(() => {});

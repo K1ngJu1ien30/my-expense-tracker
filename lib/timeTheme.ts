@@ -252,9 +252,7 @@ function applyWeather(theme: TimeTheme, condition: WeatherCondition, hour: numbe
 
 /**
  * Main entry. `hour` in 0-23. `enableTimeBased` gates the playful greetings
- * (owl, early-bird, still-up) — the tint itself always shifts. `weather`
- * is optional; when provided we decorate the theme with a sky-condition
- * overlay.
+ * (owl, early-bird, still-up) — the tint itself always shifts.
  */
 export function getTimeTheme(
   hour: number,

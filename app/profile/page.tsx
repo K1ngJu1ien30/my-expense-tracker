@@ -1,6 +1,6 @@
 "use client";
 
-import { Trash2, Tags, Moon, ChevronRight, Edit2, Check, Bell, CircleDollarSign, Calendar, ShieldAlert, Palette, Database, LogOut, Lock, Wallet, PiggyBank, UtensilsCrossed, TrendingUp, Fingerprint, Package, Radio, CreditCard, FileSpreadsheet, Cloud } from "lucide-react";
+import { Trash2, Tags, Moon, ChevronRight, Edit2, Check, CircleDollarSign, ShieldAlert, Palette, Database, LogOut, Lock, Wallet, PiggyBank, UtensilsCrossed, TrendingUp, Fingerprint, Package, Radio, CreditCard, FileSpreadsheet, Sparkles } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useAppContext } from "@/lib/context";
 import { exportDataToCSV } from "@/lib/exportUtils";
@@ -11,11 +11,9 @@ import { ExportModal } from "@/components/profile/ExportModal";
 import { CategoriesModal } from "@/components/profile/CategoriesModal";
 import { ManageAccountsModal } from "@/components/profile/ManageAccountsModal";
 import { RawDataModal } from "@/components/profile/RawDataModal";
-import { BillingCycleSheet } from "@/components/profile/BillingCycleSheet";
-import { TimePickerModal } from "@/components/profile/TimePickerModal";
 import { PinSetupModal } from "@/components/profile/PinSetupModal";
-import { LocationsModal } from "@/components/profile/LocationsModal";
 import { setStoredPin } from "@/components/AuthGate";
+import { getApiKey, setApiKey as saveAIKey, getModel, setModel as saveAIModel, getDailyLimit as getAIDailyLimit, setDailyLimit as saveAIDailyLimit, getUsageToday, AI_MODEL_OPTIONS } from "@/lib/ai/gemini";
 
 const ACCENT_COLORS = [
   { name: 'Blue', hex: '#3b82f6', bg: 'bg-blue-500' },
@@ -37,10 +35,7 @@ const switchKey = (fn: () => void) => (e: React.KeyboardEvent) => {
 export default function ProfilePage() {
   const { 
     userName, setUserName, 
-    currency, setCurrency, 
-    billingCycle, setBillingCycle, 
-    dailyReminder, setDailyReminder,
-    reminderTime, setReminderTime,
+    currency, setCurrency,
     categories, setCategories, addCategory, deleteCategory,
     accounts, accountObjects, reorderAccounts, addAccount, renameAccount, deleteAccount, toggleArchiveAccount,
     accentColor, setAccentColor, confirmAction,
@@ -55,12 +50,9 @@ export default function ProfilePage() {
     isClaimsEnabled, toggleClaims,
     isTradingEnabled, toggleTrading,
     isWanderPlanEnabled, toggleWanderPlan,
-    isArcadeEnabled, toggleArcade,
     isCookMateEnabled, toggleCookMate,
     enableTimeBasedGreeting, toggleTimeBasedGreeting,
     enableFridayThe13th, toggleFridayThe13th,
-    primaryLocation, setPrimaryLocation,
-    secondaryLocation, setSecondaryLocation,
     session
   } = useAppContext();
 
@@ -81,18 +73,26 @@ export default function ProfilePage() {
   const [showCategoriesModal, setShowCategoriesModal] = useState(false);
   const [showAccountsModal, setShowAccountsModal] = useState(false);
   const [showRawDataModal, setShowRawDataModal] = useState(false);
-  const [showBillingSheet, setShowBillingSheet] = useState(false);
-  const [showTimeModal, setShowTimeModal] = useState(false);
   const [showPinSetup, setShowPinSetup] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showClearModal, setShowClearModal] = useState(false);
-  const [showLocationsModal, setShowLocationsModal] = useState(false);
+  const [showFoodLimits, setShowFoodLimits] = useState(false);
 
-  // Time picker temp state — stays here because we need to seed it from
-  // `reminderTime` and write back via `setReminderTime` when the user saves.
-  const [tempHour, setTempHour] = useState("08");
-  const [tempMin, setTempMin] = useState("30");
-  const [tempAmPm, setTempAmPm] = useState("PM");
+  // AI Assistant settings
+  const [aiApiKey, setAiApiKey] = useState("");
+  const [aiModel, setAiModel] = useState("gemini-2.0-flash-lite");
+  const [aiDailyLimit, setAiDailyLimit] = useState(50);
+  const [aiUsageToday, setAiUsageToday] = useState(0);
+  const [showAIKey, setShowAIKey] = useState(false);
+  const aiModelOptions = AI_MODEL_OPTIONS;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setAiApiKey(getApiKey());
+    setAiModel(getModel());
+    setAiDailyLimit(getAIDailyLimit());
+    setAiUsageToday(getUsageToday());
+  }, []);
 
   // Loading / form state for the two modals that need parent-side async.
   const [exportLoading, setExportLoading] = useState(false);
@@ -101,28 +101,12 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (document.documentElement.classList.contains('dark')) setDarkMode(true);
-    
-    if (reminderTime) {
-      const parts = reminderTime.split(" ");
-      if (parts.length === 2) {
-        const [hh, mm] = parts[0].split(":");
-        setTempHour(hh || "08");
-        setTempMin(mm || "30");
-        setTempAmPm(parts[1] || "PM");
-      }
-    }
-  }, [reminderTime]);
+  }, []);
 
   const saveName = () => {
     if (tempName.trim()) setUserName(tempName);
     setIsEditingName(false);
     triggerToast("Profile updated!");
-  };
-
-  const saveTime = () => {
-    setReminderTime(`${tempHour}:${tempMin} ${tempAmPm}`);
-    setShowTimeModal(false);
-    triggerToast(`Reminder time set to ${tempHour}:${tempMin} ${tempAmPm}`);
   };
 
   const handleLogout = async () => {
@@ -263,17 +247,6 @@ export default function ProfilePage() {
       <div>
         <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 px-2">Account Defaults</h3>
         <div className="bg-card rounded-3xl shadow-soft border border-border/40 overflow-hidden relative">
-          <button 
-            onClick={() => setShowBillingSheet(true)}
-            className="w-full flex items-center justify-between p-4 border-b border-border/40 active:bg-muted/50 transition-colors text-left cursor-pointer"
-          >
-            <div className="flex items-center gap-3">
-              <div className="bg-orange-500/10 p-2 rounded-xl text-orange-500"><Calendar className="w-5 h-5" /></div>
-              <span className="font-semibold text-foreground text-sm">Billing Cycle</span>
-            </div>
-            <span style={{ color: accentColor, backgroundColor: `${accentColor}1A`, borderColor: `${accentColor}33` }} className="text-xs font-bold px-3 py-1 rounded-full border transition-colors">Day {billingCycle}</span>
-          </button>
-          
           <div className="w-full flex w-full items-center justify-between p-4 active:bg-muted/50 transition-colors text-left relative">
             <div className="flex items-center gap-3">
               <div className="bg-green-500/10 p-2 rounded-xl text-green-500"><CircleDollarSign className="w-5 h-5" /></div>
@@ -324,29 +297,6 @@ export default function ProfilePage() {
                ))}
             </div>
           </div>
-
-          {/* Weather Locations — opens a modal that lets the user pin a
-              primary + secondary city for weather-aware theming. Shows a
-              summary line when configured. */}
-          <button
-            onClick={() => setShowLocationsModal(true)}
-            className="w-full flex items-center justify-between p-4 border-b border-border/40 active:bg-muted/50 transition-colors text-left cursor-pointer"
-          >
-            <div className="flex items-center gap-3">
-              <div className="bg-sky-500/10 p-2 rounded-xl text-sky-500">
-                <Cloud className="w-5 h-5" aria-hidden="true" />
-              </div>
-              <div>
-                <span className="font-semibold text-foreground text-sm block">Weather Locations</span>
-                <p className="text-[10px] text-muted-foreground leading-none mt-0.5">
-                  {primaryLocation
-                    ? `${primaryLocation}${secondaryLocation ? ` · ${secondaryLocation}` : ""}`
-                    : "Drives the home-screen theme"}
-                </p>
-              </div>
-            </div>
-            <ChevronRight className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
-          </button>
 
           <div className="w-full flex items-center justify-between p-4 border-b border-border/40 active:bg-muted/50 transition-colors text-left relative">
             <div className={`flex items-center gap-3 ${hasSavingsAccount ? '' : 'opacity-50'}`}>
@@ -466,39 +416,51 @@ export default function ProfilePage() {
             </button>
           </div>
 
-          <div>
-            <div role="switch" aria-checked={dailyReminder} aria-label="Daily reminders" tabIndex={0} onKeyDown={switchKey(() => setDailyReminder(!dailyReminder))} className="w-full flex items-center justify-between p-4 active:bg-muted/50 transition-colors cursor-pointer" onClick={() => setDailyReminder(!dailyReminder)}>
-              <div className="flex items-center gap-3">
-                <div className="bg-yellow-500/10 p-2 rounded-xl text-yellow-500"><Bell className="w-5 h-5" aria-hidden="true" /></div>
-                <span className="font-semibold text-foreground text-sm">Daily Reminders</span>
-              </div>
-              <button aria-hidden="true" tabIndex={-1} className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${dailyReminder ? 'border-transparent' : 'bg-muted border border-border'}`} style={dailyReminder ? { backgroundColor: accentColor } : {}}>
-                <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${dailyReminder ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
-              </button>
+        </div>
+      </div>
+
+      {/* AI Assistant */}
+      <div>
+        <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 px-2">AI Assistant</h3>
+        <div className="bg-card rounded-3xl shadow-soft border border-border/40 overflow-hidden relative p-4 space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="bg-violet-500/10 p-2 rounded-xl text-violet-500"><Sparkles className="w-5 h-5" /></div>
+            <div className="flex-1">
+              <p className="font-semibold text-foreground text-sm">Gemini API Key</p>
+              <p className="text-[10px] text-muted-foreground font-medium">Powers AI chat + CookMate Ask AI</p>
             </div>
-            
-            <AnimatePresence>
-              {dailyReminder && (
-                <motion.div 
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="px-4 pb-4 overflow-hidden bg-muted/10 border-t border-border/50"
-                >
-                  <div className="flex items-center justify-between mt-4">
-                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Reminder Time</span>
-                     <button 
-                       onClick={() => setShowTimeModal(true)}
-                       style={{ color: accentColor, borderColor: `${accentColor}33` }}
-                       className="bg-card px-4 py-1.5 rounded-lg border outline-none font-black tracking-wide text-sm shadow-sm active:scale-95 transition-all"
-                     >
-                       {reminderTime}
-                     </button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
+          <div className="flex items-center gap-2">
+            <input
+              type={showAIKey ? "text" : "password"}
+              value={aiApiKey}
+              onChange={e => { setAiApiKey(e.target.value); saveAIKey(e.target.value); }}
+              placeholder="Paste your key from aistudio.google.com"
+              className="flex-1 bg-muted/60 rounded-xl px-3 py-2.5 text-xs font-semibold outline-none border border-border text-foreground placeholder:text-muted-foreground"
+            />
+            <button onClick={() => setShowAIKey(!showAIKey)} className="text-xs font-bold px-3 py-2.5 rounded-xl bg-muted text-muted-foreground">{showAIKey ? "Hide" : "Show"}</button>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold text-muted-foreground mb-1.5">Model</p>
+            <div className="flex gap-1.5 overflow-x-auto hide-scrollbar pb-1">
+              {aiModelOptions.map(m => (
+                <button key={m} onClick={() => { setAiModel(m); saveAIModel(m); }} className="whitespace-nowrap px-3 py-1.5 rounded-full text-[10px] font-bold transition-all shrink-0" style={aiModel === m ? { backgroundColor: accentColor, color: "#fff" } : { backgroundColor: "var(--color-muted)", color: "var(--color-muted-foreground)" }}>
+                  {m.replace("gemini-", "")}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center justify-between pt-1">
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground">Daily Limit</p>
+              <p className="text-[10px] text-muted-foreground">Protects your free tier ({aiUsageToday}/{aiDailyLimit} used today)</p>
+            </div>
+            <div className="flex items-center gap-1.5 bg-muted/60 rounded-lg border border-border px-2 py-1">
+              <input type="number" value={aiDailyLimit} onChange={e => { const v = Number(e.target.value) || 50; setAiDailyLimit(v); saveAIDailyLimit(v); }} className="w-12 bg-transparent text-xs font-bold outline-none text-foreground text-right" />
+              <span className="text-[10px] text-muted-foreground font-bold">/day</span>
+            </div>
+          </div>
+          <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="block text-[10px] font-bold pt-1" style={{ color: accentColor }}>Get free API key from Google AI Studio →</a>
         </div>
       </div>
 
@@ -508,21 +470,25 @@ export default function ProfilePage() {
         <div className="bg-card rounded-3xl shadow-soft border border-border/40 overflow-hidden relative">
 
           <div>
-            <div role="switch" aria-checked={enableFoodBudget} aria-label="Food budget tracker" tabIndex={0} onKeyDown={switchKey(() => toggleFoodBudget(!enableFoodBudget))} className="w-full flex items-center justify-between p-4 border-b border-border/40 active:bg-muted/50 transition-colors cursor-pointer" onClick={() => toggleFoodBudget(!enableFoodBudget)}>
-              <div className="flex items-center gap-3">
+            <div className="w-full flex items-center justify-between p-4 border-b border-border/40 active:bg-muted/50 transition-colors cursor-pointer">
+              <div className="flex items-center gap-3 flex-1" onClick={(e) => { e.stopPropagation(); if (enableFoodBudget) setShowFoodLimits(!showFoodLimits); else toggleFoodBudget(true); }}>
                 <div className="bg-orange-500/10 p-2 rounded-xl text-orange-500"><UtensilsCrossed className="w-5 h-5" aria-hidden="true" /></div>
                 <div>
                   <span className="font-semibold text-foreground text-sm block">Food Budget Tracker</span>
-                  <p className="text-[10px] text-muted-foreground leading-none mt-0.5">Daily & monthly food limits</p>
+                  {enableFoodBudget && (foodDailyLimit > 0 || foodMonthlyLimit > 0) ? (
+                    <p className="text-[10px] font-medium leading-none mt-0.5" style={{ color: accentColor }}>{currency} {foodDailyLimit}/day · {currency} {foodMonthlyLimit}/mo</p>
+                  ) : (
+                    <p className="text-[10px] text-muted-foreground leading-none mt-0.5">Daily & monthly food limits</p>
+                  )}
                 </div>
               </div>
-              <button aria-hidden="true" tabIndex={-1} className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${enableFoodBudget ? 'border-transparent' : 'bg-muted border border-border'}`} style={enableFoodBudget ? { backgroundColor: accentColor } : {}}>
+              <button aria-label="Toggle food budget" onClick={() => toggleFoodBudget(!enableFoodBudget)} className={`w-12 h-7 rounded-full transition-colors relative flex items-center ${enableFoodBudget ? 'border-transparent' : 'bg-muted border border-border'}`} style={enableFoodBudget ? { backgroundColor: accentColor } : {}}>
                 <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${enableFoodBudget ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
               </button>
             </div>
 
             <AnimatePresence>
-              {enableFoodBudget && (
+              {enableFoodBudget && showFoodLimits && (
                 <motion.div
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: "auto", opacity: 1 }}
@@ -637,19 +603,6 @@ export default function ProfilePage() {
             </div>
             <button aria-hidden="true" tabIndex={-1} className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${isWanderPlanEnabled ? 'border-transparent' : 'bg-muted border border-border'}`} style={isWanderPlanEnabled ? { backgroundColor: accentColor } : {}}>
               <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${isWanderPlanEnabled ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
-            </button>
-          </div>
-
-          <div role="switch" aria-checked={isArcadeEnabled} aria-label="Slack Arcade" tabIndex={0} onKeyDown={switchKey(() => toggleArcade(!isArcadeEnabled))} className="w-full flex items-center justify-between p-4 active:bg-muted/50 transition-colors cursor-pointer" onClick={() => toggleArcade(!isArcadeEnabled)}>
-            <div className="flex items-center gap-3">
-              <div className="bg-indigo-500/10 p-2 rounded-xl text-indigo-500"><span className="text-lg" aria-hidden="true">🎮</span></div>
-              <div>
-                <span className="font-semibold text-foreground text-sm block">Slack Arcade</span>
-                <p className="text-[10px] text-muted-foreground leading-none mt-0.5">Mini-games, idle clicker & boss key</p>
-              </div>
-            </div>
-            <button aria-hidden="true" tabIndex={-1} className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${isArcadeEnabled ? 'border-transparent' : 'bg-muted border border-border'}`} style={isArcadeEnabled ? { backgroundColor: accentColor } : {}}>
-              <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${isArcadeEnabled ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
             </button>
           </div>
 
@@ -957,60 +910,12 @@ export default function ProfilePage() {
         )}
       </AnimatePresence>
 
-      {/* Billing Cycle Bottom Sheet */}
-      <AnimatePresence>
-        {showBillingSheet && (
-          <BillingCycleSheet
-            current={billingCycle}
-            accentColor={accentColor}
-            onSelect={(day) => {
-              setBillingCycle(day);
-              setShowBillingSheet(false);
-              triggerToast(`Billing reset day set to ${day}`);
-              if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(30);
-            }}
-            onClose={() => setShowBillingSheet(false)}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Time Picker Modal */}
-      <AnimatePresence>
-        {showTimeModal && (
-          <TimePickerModal
-            accentColor={accentColor}
-            tempHour={tempHour}
-            setTempHour={setTempHour}
-            tempMin={tempMin}
-            setTempMin={setTempMin}
-            tempAmPm={tempAmPm}
-            setTempAmPm={setTempAmPm}
-            onSave={saveTime}
-            onClose={() => setShowTimeModal(false)}
-          />
-        )}
-      </AnimatePresence>
-
       {/* PIN Setup Modal */}
       <AnimatePresence>
         {showPinSetup && (
           <PinSetupModal
             onSuccess={handlePinSuccess}
             onClose={() => setShowPinSetup(false)}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Weather Locations Modal */}
-      <AnimatePresence>
-        {showLocationsModal && (
-          <LocationsModal
-            primary={primaryLocation}
-            secondary={secondaryLocation}
-            onSavePrimary={setPrimaryLocation}
-            onSaveSecondary={setSecondaryLocation}
-            accentColor={accentColor}
-            onClose={() => setShowLocationsModal(false)}
           />
         )}
       </AnimatePresence>

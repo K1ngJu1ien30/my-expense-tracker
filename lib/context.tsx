@@ -62,12 +62,6 @@ type AppContextType = {
   setCurrency: (val: string) => void;
   formatCurrency: (amount: number) => string;
   exchangeRates: Record<string, number>;
-  billingCycle: string;
-  setBillingCycle: (val: string) => void;
-  dailyReminder: boolean;
-  setDailyReminder: (val: boolean) => void;
-  reminderTime: string;
-  setReminderTime: (val: string) => void;
   categories: string[];
   setCategories: (cats: string[]) => void;
   addCategory: (cat: string) => void;
@@ -141,8 +135,6 @@ type AppContextType = {
   toggleTrading: (val: boolean) => void;
   isWanderPlanEnabled: boolean;
   toggleWanderPlan: (val: boolean) => void;
-  isArcadeEnabled: boolean;
-  toggleArcade: (val: boolean) => void;
   isCookMateEnabled: boolean;
   toggleCookMate: (val: boolean) => void;
   // WanderPlan state + CRUD
@@ -195,10 +187,6 @@ type AppContextType = {
   toggleTimeBasedGreeting: (val: boolean) => Promise<void>;
   enableFridayThe13th: boolean;
   toggleFridayThe13th: (val: boolean) => Promise<void>;
-  primaryLocation: string;
-  setPrimaryLocation: (val: string) => Promise<void>;
-  secondaryLocation: string;
-  setSecondaryLocation: (val: string) => Promise<void>;
 };
 
 export const AppContext = createContext<AppContextType | null>(null);
@@ -213,9 +201,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const {
     userName, setUserName,
     currency, setCurrency,
-    billingCycle, setBillingCycle,
-    dailyReminder, setDailyReminder,
-    reminderTime, setReminderTime,
     accentColor, setAccentColor,
     includeSavings, toggleIncludeSavings,
     enableFoodBudget, toggleFoodBudget,
@@ -229,12 +214,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     isClaimsEnabled, toggleClaims,
     isTradingEnabled, toggleTrading,
     isWanderPlanEnabled, toggleWanderPlan,
-    isArcadeEnabled, toggleArcade,
     isCookMateEnabled, toggleCookMate,
     enableTimeBasedGreeting, toggleTimeBasedGreeting,
     enableFridayThe13th, toggleFridayThe13th,
-    primaryLocation, setPrimaryLocation,
-    secondaryLocation, setSecondaryLocation,
   } = prefs;
 
   // ─── Remaining non-preference state ─────────────────────────────────────
@@ -676,9 +658,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     <AppContext.Provider value={{
       userName, setUserName,
       currency, setCurrency, formatCurrency, exchangeRates,
-      billingCycle, setBillingCycle,
-      dailyReminder, setDailyReminder,
-      reminderTime, setReminderTime,
       categories, setCategories, addCategory, deleteCategory,
       includeSavings, toggleIncludeSavings,
       toast, triggerToast,
@@ -708,13 +687,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       isClaimsEnabled, toggleClaims,
       isTradingEnabled, toggleTrading,
       isWanderPlanEnabled, toggleWanderPlan,
-      isArcadeEnabled, toggleArcade,
       isCookMateEnabled, toggleCookMate,
       ...wanderPlan,
       enableTimeBasedGreeting, toggleTimeBasedGreeting,
       enableFridayThe13th, toggleFridayThe13th,
-      primaryLocation, setPrimaryLocation,
-      secondaryLocation, setSecondaryLocation,
       tradeItems, addTradeItem, updateTradeItem, deleteTradeItem,
       activeAssetId, setActiveAssetId,
       showTransactionModal, setShowTransactionModal,

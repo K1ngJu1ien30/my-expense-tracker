@@ -7,7 +7,7 @@ import { useAppContext } from "@/lib/context";
 import { supabase } from "@/lib/supabase";
 
 export default function HubPage() {
-  const { accentColor, enableFoodBudget, enableSalaryPlanner, isVaultEnabled, isRadarEnabled, isClaimsEnabled, isTradingEnabled, isWanderPlanEnabled, isArcadeEnabled, isCookMateEnabled, transactions, subscriptions, utilities, session, setShowTransactionModal, formatCurrency } = useAppContext();
+  const { accentColor, enableFoodBudget, enableSalaryPlanner, isVaultEnabled, isRadarEnabled, isClaimsEnabled, isTradingEnabled, isWanderPlanEnabled, isCookMateEnabled, transactions, subscriptions, utilities, session, setShowTransactionModal, formatCurrency } = useAppContext();
 
   const [radarCount, setRadarCount] = useState(0);
 
@@ -84,6 +84,15 @@ export default function HubPage() {
 
   const modules = [
     {
+      href: "/ai",
+      icon: "✨",
+      title: "AI Assistant",
+      description: "Smart financial insights & personalized advice",
+      color: "bg-violet-500/10",
+      enabled: true,
+      sub: [],
+    },
+    {
       href: "/goals",
       icon: "🎯",
       title: "Financial Planning",
@@ -138,15 +147,6 @@ export default function HubPage() {
       description: "Trip planner, itinerary, budget & on-trip companion",
       color: "bg-sky-500/10",
       enabled: isWanderPlanEnabled,
-      sub: [],
-    },
-    {
-      href: "/arcade",
-      icon: "🎮",
-      title: "Slack Arcade",
-      description: "Mini-games, idle clicker & daily slack timer",
-      color: "bg-indigo-500/10",
-      enabled: isArcadeEnabled,
       sub: [],
     },
     {
@@ -303,18 +303,6 @@ export default function HubPage() {
               <div className="bg-muted p-4 rounded-2xl text-3xl">✈️</div>
               <div className="flex-1">
                 <p className="font-bold text-foreground text-lg leading-tight">WanderPlan</p>
-                <p className="text-xs text-muted-foreground font-medium mt-0.5">Enable in Profile → Modules</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {!isArcadeEnabled && (
-          <div className="bg-card p-5 rounded-3xl shadow-soft border border-border/40 opacity-50">
-            <div className="flex items-center gap-4">
-              <div className="bg-muted p-4 rounded-2xl text-3xl">🎮</div>
-              <div className="flex-1">
-                <p className="font-bold text-foreground text-lg leading-tight">Slack Arcade</p>
                 <p className="text-xs text-muted-foreground font-medium mt-0.5">Enable in Profile → Modules</p>
               </div>
             </div>

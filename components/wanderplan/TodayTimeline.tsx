@@ -5,10 +5,9 @@ import { useAppContext } from "@/lib/context";
 import { format, isToday, parseISO, differenceInMinutes } from "date-fns";
 import type { WPTrip } from "@/lib/types";
 import { ACTIVITY_CATEGORY_COLORS } from "@/lib/wanderplanConstants";
-import WeatherWidget from "./WeatherWidget";
 
 export default function TodayTimeline({ trip }: { trip: WPTrip }) {
-  const { wpActivities, getWPTripDays, wpPlaces, toggleWPActivityCompleted } = useAppContext();
+  const { wpActivities, getWPTripDays, toggleWPActivityCompleted } = useAppContext();
 
   const todayDay = useMemo(() => {
     const days = getWPTripDays(trip.id);
@@ -23,12 +22,6 @@ export default function TodayTimeline({ trip }: { trip: WPTrip }) {
   }, [todayDay, wpActivities]);
 
   const completedCount = todayActivities.filter(a => a.is_completed).length;
-
-  // Find the first saved place with coords for weather
-  const weatherCoords = useMemo(() => {
-    const place = wpPlaces.find(p => p.trip_id === trip.id && p.location?.lat && p.location?.lng);
-    return place?.location || null;
-  }, [wpPlaces, trip.id]);
 
   const now = new Date();
   const currentActivity = todayActivities.find(a => {
@@ -60,8 +53,6 @@ export default function TodayTimeline({ trip }: { trip: WPTrip }) {
         </div>
         <span className="text-xs font-bold text-muted-foreground">{completedCount}/{todayActivities.length} done</span>
       </div>
-
-      {weatherCoords && <WeatherWidget lat={weatherCoords.lat} lng={weatherCoords.lng} />}
 
       {/* Happening Now */}
       {currentActivity && (

@@ -9,10 +9,10 @@ import { supabase } from "../supabase";
  * in Supabase `auth.users.user_metadata`.
  *
  * Groups three categories:
- *   1. Profile preferences — userName, currency, billingCycle, reminders.
+ *   1. Profile preferences — userName, currency, accent.
  *   2. Money behaviour flags — includeSavings, foodBudget, salaryPlanner.
  *   3. Security flags — isPinEnabled, isBiometricEnabled.
- *   4. Module flags — vault / radar / claims / trading.
+ *   4. Module flags — vault / radar / claims / trading / wanderplan / cookmate.
  *
  * Every setter writes to Supabase IFF a session is provided. The caller (the
  * provider) passes the current `session` down so this hook stays decoupled
@@ -25,9 +25,6 @@ export function useUserPreferences(session: Session | null) {
   // ─── Profile ────────────────────────────────────────────────────────────
   const [userName, setUserNameRaw] = useState("User");
   const [currency, setCurrency] = useState("RM");
-  const [billingCycle, setBillingCycle] = useState("1");
-  const [dailyReminder, setDailyReminder] = useState(false);
-  const [reminderTime, setReminderTime] = useState("20:00");
   const [accentColor, setAccentColor] = useState("#3b82f6");
 
   // ─── Money behaviour ────────────────────────────────────────────────────
@@ -47,7 +44,6 @@ export function useUserPreferences(session: Session | null) {
   const [isClaimsEnabled, setIsClaimsEnabledRaw] = useState(false);
   const [isTradingEnabled, setIsTradingEnabledRaw] = useState(false);
   const [isWanderPlanEnabled, setIsWanderPlanEnabledRaw] = useState(false);
-  const [isArcadeEnabled, setIsArcadeEnabledRaw] = useState(false);
   const [isCookMateEnabled, setIsCookMateEnabledRaw] = useState(true);
 
   // ─── Easter-egg flags ───────────────────────────────────────────────────
@@ -57,14 +53,6 @@ export function useUserPreferences(session: Session | null) {
   // Auto-trigger the Derry horror sequence at 13:13 on any Friday the 13th.
   // OFF by default because horror is not for everyone.
   const [enableFridayThe13th, setEnableFridayThe13thRaw] = useState(false);
-
-  // ─── Weather-driven theming ─────────────────────────────────────────────
-  // User-typed city names (free-text — geocoded client-side via Open-Meteo).
-  // Blank strings = feature disabled. Kept separate (primary + secondary)
-  // so users on holiday can pin their home city + current city and see
-  // both. Stored in user_metadata so it syncs across devices.
-  const [primaryLocation, setPrimaryLocationRaw] = useState("");
-  const [secondaryLocation, setSecondaryLocationRaw] = useState("");
 
   // ─── Setters that dual-write local state + Supabase user_metadata ───────
 
@@ -191,14 +179,6 @@ export function useUserPreferences(session: Session | null) {
     [persist]
   );
 
-  const toggleArcade = useCallback(
-    async (val: boolean) => {
-      setIsArcadeEnabledRaw(val);
-      await persist({ arcade_enabled: val });
-    },
-    [persist]
-  );
-
   const toggleCookMate = useCallback(
     async (val: boolean) => {
       setIsCookMateEnabledRaw(val);
@@ -219,22 +199,6 @@ export function useUserPreferences(session: Session | null) {
     async (val: boolean) => {
       setEnableFridayThe13thRaw(val);
       await persist({ enable_friday_the_13th: val });
-    },
-    [persist]
-  );
-
-  const setPrimaryLocation = useCallback(
-    async (val: string) => {
-      setPrimaryLocationRaw(val);
-      await persist({ primary_location: val });
-    },
-    [persist]
-  );
-
-  const setSecondaryLocation = useCallback(
-    async (val: string) => {
-      setSecondaryLocationRaw(val);
-      await persist({ secondary_location: val });
     },
     [persist]
   );
@@ -266,7 +230,6 @@ export function useUserPreferences(session: Session | null) {
       setIsClaimsEnabledRaw(meta.claims_enabled === true);
       setIsTradingEnabledRaw(meta.trading_enabled === true);
       setIsWanderPlanEnabledRaw(meta.wanderplan_enabled === true);
-      setIsArcadeEnabledRaw(meta.arcade_enabled === true);
       setIsCookMateEnabledRaw(meta.cookmate_enabled !== false);
       // Greeting is ON by default unless user explicitly opted out.
       setEnableTimeBasedGreetingRaw(
@@ -274,9 +237,6 @@ export function useUserPreferences(session: Session | null) {
       );
       // Horror flag is OFF by default — only ON if user explicitly opted in.
       setEnableFridayThe13thRaw(meta.enable_friday_the_13th === true);
-      // Weather locations — blank strings = disabled.
-      setPrimaryLocationRaw((meta.primary_location as string | undefined) || "");
-      setSecondaryLocationRaw((meta.secondary_location as string | undefined) || "");
     },
     []
   );
@@ -296,12 +256,9 @@ export function useUserPreferences(session: Session | null) {
     setIsClaimsEnabledRaw(false);
     setIsTradingEnabledRaw(false);
     setIsWanderPlanEnabledRaw(false);
-    setIsArcadeEnabledRaw(false);
     setIsCookMateEnabledRaw(true);
     setEnableTimeBasedGreetingRaw(true);
     setEnableFridayThe13thRaw(false);
-    setPrimaryLocationRaw("");
-    setSecondaryLocationRaw("");
   }, []);
 
   return {
@@ -310,12 +267,6 @@ export function useUserPreferences(session: Session | null) {
     setUserName,
     currency,
     setCurrency,
-    billingCycle,
-    setBillingCycle,
-    dailyReminder,
-    setDailyReminder,
-    reminderTime,
-    setReminderTime,
     accentColor,
     setAccentColor,
     // Money behaviour
@@ -345,8 +296,6 @@ export function useUserPreferences(session: Session | null) {
     toggleTrading,
     isWanderPlanEnabled,
     toggleWanderPlan,
-    isArcadeEnabled,
-    toggleArcade,
     isCookMateEnabled,
     toggleCookMate,
     // Easter-egg flags
@@ -354,11 +303,6 @@ export function useUserPreferences(session: Session | null) {
     toggleTimeBasedGreeting,
     enableFridayThe13th,
     toggleFridayThe13th,
-    // Weather locations
-    primaryLocation,
-    setPrimaryLocation,
-    secondaryLocation,
-    setSecondaryLocation,
     // Lifecycle
     hydrateFromMetadata,
     resetPreferences,
