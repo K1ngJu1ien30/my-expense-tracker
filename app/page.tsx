@@ -8,7 +8,6 @@ import Link from "next/link";
 import { useAppContext } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
 import { getTimeTheme } from "@/lib/timeTheme";
-import { generateAIGreeting } from "@/lib/ai/greeting";
 import MonthlyReceiptModal from "@/components/MonthlyReceiptModal";
 
 /**
@@ -177,57 +176,7 @@ export default function Dashboard() {
   }, [enableTimeBasedGreeting]);
   const greeting = timeTheme.greeting;
 
-  // AI-powered personalized greeting (merged with insight — cached 4h, non-blocking)
-  const [aiGreeting, setAiGreeting] = useState<string | null>(null);
-  useEffect(() => {
-    if (!enableTimeBasedGreeting || typeof window === "undefined") return;
-    // Don't fire while transactions are still loading from Supabase —
-    // otherwise we'd cache a bogus "RM 0 spent this month" greeting.
-    if (transactions.length === 0) return;
-    const hour = new Date().getHours();
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const weekStart = startOfToday - ((now.getDay() || 7) - 1) * 86400000;
-    const lastWeekStart = weekStart - 7 * 86400000;
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
-
-    const todayExp = transactions.filter(t => t.type === "Expense" && new Date(t.date).getTime() >= startOfToday);
-    const weekExp = transactions.filter(t => t.type === "Expense" && new Date(t.date).getTime() >= weekStart);
-    const lastWeekExp = transactions.filter(t => t.type === "Expense" && new Date(t.date).getTime() >= lastWeekStart && new Date(t.date).getTime() < weekStart);
-    const monthExp = transactions.filter(t => t.type === "Expense" && new Date(t.date).getTime() >= monthStart);
-    const lastMonthExp = transactions.filter(t => t.type === "Expense" && new Date(t.date).getTime() >= lastMonthStart && new Date(t.date).getTime() < monthStart);
-
-    const catMap: Record<string, number> = {};
-    monthExp.forEach(t => { catMap[t.category] = (catMap[t.category] || 0) + t.amount; });
-    const topCat = Object.entries(catMap).sort(([,a],[,b]) => b - a)[0];
-
-    const lastExpDate = transactions.find(t => t.type === "Expense")?.date;
-    const streakDays = lastExpDate ? Math.floor((Date.now() - new Date(lastExpDate).getTime()) / 86400000) : 0;
-
-    const topGoal = goals[0] as unknown as { title: string; current: number; target: number } | undefined;
-
-    generateAIGreeting(timeTheme.bucket, {
-      userName,
-      hour,
-      currency,
-      spentToday: todayExp.reduce((s, t) => s + t.amount, 0),
-      spentThisWeek: weekExp.reduce((s, t) => s + t.amount, 0),
-      spentLastWeek: lastWeekExp.reduce((s, t) => s + t.amount, 0),
-      spentThisMonth: monthExp.reduce((s, t) => s + t.amount, 0),
-      spentLastMonth: lastMonthExp.reduce((s, t) => s + t.amount, 0),
-      topCategory: topCat?.[0] || "",
-      topCategoryAmount: topCat?.[1] || 0,
-      transactionCount: transactions.length,
-      streakDays,
-      savingsGoalName: topGoal?.title || "",
-      savingsGoalPct: topGoal ? Math.round((topGoal.current / topGoal.target) * 100) : 0,
-      dayOfMonth: now.getDate(),
-    }).then(result => { if (result) setAiGreeting(result); });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeTheme.bucket, enableTimeBasedGreeting, transactions.length]);
-
-  const displayGreeting = aiGreeting || greeting;
+  const displayGreeting = greeting;
 
   // === Single-pass transaction computation (Task 3: performance) ===
   const dashData = useMemo(() => {
@@ -778,7 +727,7 @@ export default function Dashboard() {
       {/* Spending Trend Chart */}
       <div className="bg-card p-5 rounded-3xl shadow-soft border border-border/40 mb-10">
         <h3 className="font-bold text-foreground mb-4">Spending Trend</h3>
-        <div className="h-[120px] w-[105%] -ml-[2.5%]" style={{ minWidth: 0 }}>
+        <div className="h-[120px] w-full" style={{ minWidth: 0 }}>
           <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
             <LineChart data={dynamicTrendData}>
               <Line 

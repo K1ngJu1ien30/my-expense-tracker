@@ -85,6 +85,7 @@ export type MoneyStateDeps = {
 export function useMoneyState(deps: MoneyStateDeps) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [fixedBills, setFixedBills] = useState<Subscription[]>([]);
   const [utilities, setUtilities] = useState<Subscription[]>([]);
 
   const { session, isOfflineRef, triggerToast, triggerWhaleAlert, maybeTriggerPenguinAlert, cacheDeletedItem } = deps;
@@ -190,19 +191,21 @@ export function useMoneyState(deps: MoneyStateDeps) {
     billing_day?: number;
     source_account?: string;
     auto_deduct?: boolean;
-    type?: "subscription" | "utility";
+    type?: "subscription" | "fixed_bill" | "utility" | "bill";
+    last_paid_month?: string;
     user_id?: string;
   };
 
   const buildSubsPayload = useCallback(
-    (sub: Partial<Subscription>, kind: "subscription" | "utility"): SubsPayload => {
-      const { cost, billingDay, sourceAccount, autoDeduct } = sub;
+    (sub: Partial<Subscription>, kind: "subscription" | "fixed_bill" | "utility"): SubsPayload => {
+      const { cost, billingDay, sourceAccount, autoDeduct, lastPaidMonth } = sub;
       return {
         name: sub.name,
         amount: cost,
         billing_day: billingDay,
         source_account: sourceAccount,
         auto_deduct: autoDeduct,
+        last_paid_month: lastPaidMonth,
         type: kind,
         user_id: session?.user?.id,
       };
@@ -218,6 +221,7 @@ export function useMoneyState(deps: MoneyStateDeps) {
       if (patch.billingDay !== undefined) out.billing_day = patch.billingDay;
       if (patch.sourceAccount !== undefined) out.source_account = patch.sourceAccount;
       if (patch.autoDeduct !== undefined) out.auto_deduct = patch.autoDeduct;
+      if (patch.lastPaidMonth !== undefined) out.last_paid_month = patch.lastPaidMonth;
       return out;
     },
     []
@@ -263,6 +267,52 @@ export function useMoneyState(deps: MoneyStateDeps) {
     const { error } = await supabase.from("subscriptions").delete().eq("id", id);
     if (!error) {
       setSubscriptions(prev => prev.filter(s => s.id !== id));
+      setFixedBills(prev => prev.filter(s => s.id !== id));
+      setUtilities(prev => prev.filter(s => s.id !== id));
+      NativeHaptics.heavyDoubleThud();
+    }
+  }, []);
+
+  const addFixedBill = useCallback(
+    async (sub: Partial<Subscription>) => {
+      const { id: _id, ...rest } = sub;
+      const payload = buildSubsPayload(rest, "fixed_bill");
+      const { data, error } = await supabase
+        .from("subscriptions")
+        .insert(payload)
+        .select()
+        .single();
+      if (!error && data) {
+        setFixedBills(prev => [{ ...rest, id: data.id, type: "fixed_bill" } as Subscription, ...prev]);
+        NativeHaptics.successMedium();
+      }
+    },
+    [buildSubsPayload]
+  );
+
+  const updateFixedBill = useCallback(
+    async (id: string, patch: Partial<Subscription>) => {
+      const payload = buildSubsPatch(patch);
+      const { data, error } = await supabase
+        .from("subscriptions")
+        .update(payload)
+        .eq("id", id)
+        .select()
+        .single();
+      if (!error && data) {
+        setFixedBills(prev => prev.map(s => (s.id === id ? { ...s, ...patch } : s)));
+        NativeHaptics.lightTick();
+      }
+    },
+    [buildSubsPatch]
+  );
+
+  const deleteFixedBill = useCallback(async (id: string) => {
+    const { error } = await supabase.from("subscriptions").delete().eq("id", id);
+    if (!error) {
+      setSubscriptions(prev => prev.filter(s => s.id !== id));
+      setFixedBills(prev => prev.filter(s => s.id !== id));
+      setUtilities(prev => prev.filter(s => s.id !== id));
       NativeHaptics.heavyDoubleThud();
     }
   }, []);
@@ -305,6 +355,8 @@ export function useMoneyState(deps: MoneyStateDeps) {
   const deleteUtility = useCallback(async (id: string) => {
     const { error } = await supabase.from("subscriptions").delete().eq("id", id);
     if (!error) {
+      setSubscriptions(prev => prev.filter(s => s.id !== id));
+      setFixedBills(prev => prev.filter(s => s.id !== id));
       setUtilities(prev => prev.filter(s => s.id !== id));
       NativeHaptics.heavyDoubleThud();
     }
@@ -316,6 +368,8 @@ export function useMoneyState(deps: MoneyStateDeps) {
     setTransactions,
     subscriptions,
     setSubscriptions,
+    fixedBills,
+    setFixedBills,
     utilities,
     setUtilities,
     // Transaction CRUD
@@ -326,6 +380,10 @@ export function useMoneyState(deps: MoneyStateDeps) {
     addSubscription,
     updateSubscription,
     deleteSubscription,
+    // Fixed Bill CRUD
+    addFixedBill,
+    updateFixedBill,
+    deleteFixedBill,
     // Utility CRUD
     addUtility,
     updateUtility,

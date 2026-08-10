@@ -40,11 +40,8 @@ export function useUserPreferences(session: Session | null) {
 
   // ─── Module flags ───────────────────────────────────────────────────────
   const [isVaultEnabled, setIsVaultEnabledRaw] = useState(false);
-  const [isRadarEnabled, setIsRadarEnabledRaw] = useState(false);
   const [isClaimsEnabled, setIsClaimsEnabledRaw] = useState(false);
-  const [isTradingEnabled, setIsTradingEnabledRaw] = useState(false);
   const [isWanderPlanEnabled, setIsWanderPlanEnabledRaw] = useState(false);
-  const [isCookMateEnabled, setIsCookMateEnabledRaw] = useState(true);
 
   // ─── Easter-egg flags ───────────────────────────────────────────────────
   // Greeting-line swap at different hours (2 AM owl, 5 AM early-bird, etc.).
@@ -147,14 +144,6 @@ export function useUserPreferences(session: Session | null) {
     [persist]
   );
 
-  const toggleRadar = useCallback(
-    async (val: boolean) => {
-      setIsRadarEnabledRaw(val);
-      await persist({ radar_enabled: val });
-    },
-    [persist]
-  );
-
   const toggleClaims = useCallback(
     async (val: boolean) => {
       setIsClaimsEnabledRaw(val);
@@ -163,26 +152,10 @@ export function useUserPreferences(session: Session | null) {
     [persist]
   );
 
-  const toggleTrading = useCallback(
-    async (val: boolean) => {
-      setIsTradingEnabledRaw(val);
-      await persist({ trading_enabled: val });
-    },
-    [persist]
-  );
-
   const toggleWanderPlan = useCallback(
     async (val: boolean) => {
       setIsWanderPlanEnabledRaw(val);
       await persist({ wanderplan_enabled: val });
-    },
-    [persist]
-  );
-
-  const toggleCookMate = useCallback(
-    async (val: boolean) => {
-      setIsCookMateEnabledRaw(val);
-      await persist({ cookmate_enabled: val });
     },
     [persist]
   );
@@ -226,11 +199,8 @@ export function useUserPreferences(session: Session | null) {
       setIsPinEnabledRaw(meta.pin_enabled === true);
       setIsBiometricEnabledRaw(meta.biometric_enabled === true);
       setIsVaultEnabledRaw(meta.vault_enabled === true);
-      setIsRadarEnabledRaw(meta.radar_enabled === true);
       setIsClaimsEnabledRaw(meta.claims_enabled === true);
-      setIsTradingEnabledRaw(meta.trading_enabled === true);
       setIsWanderPlanEnabledRaw(meta.wanderplan_enabled === true);
-      setIsCookMateEnabledRaw(meta.cookmate_enabled !== false);
       // Greeting is ON by default unless user explicitly opted out.
       setEnableTimeBasedGreetingRaw(
         meta.enable_time_based_greeting === false ? false : true
@@ -252,11 +222,8 @@ export function useUserPreferences(session: Session | null) {
     setIsPinEnabledRaw(false);
     setIsBiometricEnabledRaw(false);
     setIsVaultEnabledRaw(false);
-    setIsRadarEnabledRaw(false);
     setIsClaimsEnabledRaw(false);
-    setIsTradingEnabledRaw(false);
     setIsWanderPlanEnabledRaw(false);
-    setIsCookMateEnabledRaw(true);
     setEnableTimeBasedGreetingRaw(true);
     setEnableFridayThe13thRaw(false);
   }, []);
@@ -288,16 +255,10 @@ export function useUserPreferences(session: Session | null) {
     // Module flags
     isVaultEnabled,
     toggleVault,
-    isRadarEnabled,
-    toggleRadar,
     isClaimsEnabled,
     toggleClaims,
-    isTradingEnabled,
-    toggleTrading,
     isWanderPlanEnabled,
     toggleWanderPlan,
-    isCookMateEnabled,
-    toggleCookMate,
     // Easter-egg flags
     enableTimeBasedGreeting,
     toggleTimeBasedGreeting,

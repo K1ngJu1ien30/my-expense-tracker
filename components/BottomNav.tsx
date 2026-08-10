@@ -24,9 +24,7 @@ export default function BottomNav({ onOpenAdd }: { onOpenAdd: () => void }) {
     pathname.startsWith("/hub") ||
     pathname.startsWith("/vault") ||
     pathname.startsWith("/goals") ||
-    pathname.startsWith("/wanderplan") ||
-    pathname.startsWith("/cookmate") ||
-    pathname.startsWith("/ai");
+    pathname.startsWith("/wanderplan");
   const isProfile = pathname.startsWith("/profile");
 
   // ─── Long-press detection for the + FAB ────────────────────────────────
@@ -99,7 +97,7 @@ export default function BottomNav({ onOpenAdd }: { onOpenAdd: () => void }) {
     <>
       <nav
         aria-label="Primary"
-        className="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-zinc-950 pb-safe border-t border-border shadow-up rounded-t-3xl px-6 py-4 flex justify-between items-center bg-opacity-90 dark:bg-opacity-90 backdrop-blur-xl"
+        className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-50 bg-white dark:bg-zinc-950 pb-safe border-t border-border shadow-up rounded-t-3xl px-6 py-4 flex justify-around items-center bg-opacity-90 dark:bg-opacity-90 backdrop-blur-xl"
       >
         <Link
           href="/"

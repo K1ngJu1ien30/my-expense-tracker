@@ -1,6 +1,7 @@
 "use client";
 
-import { Trash2, Tags, Moon, ChevronRight, Edit2, Check, CircleDollarSign, ShieldAlert, Palette, Database, LogOut, Lock, Wallet, PiggyBank, UtensilsCrossed, TrendingUp, Fingerprint, Package, Radio, CreditCard, FileSpreadsheet, Sparkles } from "lucide-react";
+import { Trash2, Tags, Moon, ChevronRight, Edit2, Check, CircleDollarSign, ShieldAlert, Palette, Database, LogOut, Lock, Wallet, PiggyBank, UtensilsCrossed, TrendingUp, Fingerprint, Package, Radio, CreditCard, FileSpreadsheet, Sparkles, Upload } from "lucide-react";
+import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
 import { useAppContext } from "@/lib/context";
 import { exportDataToCSV } from "@/lib/exportUtils";
@@ -13,7 +14,6 @@ import { ManageAccountsModal } from "@/components/profile/ManageAccountsModal";
 import { RawDataModal } from "@/components/profile/RawDataModal";
 import { PinSetupModal } from "@/components/profile/PinSetupModal";
 import { setStoredPin } from "@/components/AuthGate";
-import { getApiKey, setApiKey as saveAIKey, getModel, setModel as saveAIModel, getDailyLimit as getAIDailyLimit, setDailyLimit as saveAIDailyLimit, getUsageToday, AI_MODEL_OPTIONS } from "@/lib/ai/gemini";
 
 const ACCENT_COLORS = [
   { name: 'Blue', hex: '#3b82f6', bg: 'bg-blue-500' },
@@ -45,12 +45,9 @@ export default function ProfilePage() {
     enableFoodBudget, toggleFoodBudget, enableSalaryPlanner, toggleSalaryPlanner,
     foodDailyLimit, setFoodDailyLimit, foodMonthlyLimit, setFoodMonthlyLimit,
     isVaultEnabled, toggleVault,
-    isRadarEnabled, toggleRadar,
     isPinEnabled, togglePin, isBiometricEnabled, toggleBiometric,
     isClaimsEnabled, toggleClaims,
-    isTradingEnabled, toggleTrading,
     isWanderPlanEnabled, toggleWanderPlan,
-    isCookMateEnabled, toggleCookMate,
     enableTimeBasedGreeting, toggleTimeBasedGreeting,
     enableFridayThe13th, toggleFridayThe13th,
     session
@@ -78,21 +75,7 @@ export default function ProfilePage() {
   const [showClearModal, setShowClearModal] = useState(false);
   const [showFoodLimits, setShowFoodLimits] = useState(false);
 
-  // AI Assistant settings
-  const [aiApiKey, setAiApiKey] = useState("");
-  const [aiModel, setAiModel] = useState("gemini-2.0-flash-lite");
-  const [aiDailyLimit, setAiDailyLimit] = useState(50);
-  const [aiUsageToday, setAiUsageToday] = useState(0);
-  const [showAIKey, setShowAIKey] = useState(false);
-  const aiModelOptions = AI_MODEL_OPTIONS;
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    setAiApiKey(getApiKey());
-    setAiModel(getModel());
-    setAiDailyLimit(getAIDailyLimit());
-    setAiUsageToday(getUsageToday());
-  }, []);
 
   // Loading / form state for the two modals that need parent-side async.
   const [exportLoading, setExportLoading] = useState(false);
@@ -419,50 +402,7 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* AI Assistant */}
-      <div>
-        <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 px-2">AI Assistant</h3>
-        <div className="bg-card rounded-3xl shadow-soft border border-border/40 overflow-hidden relative p-4 space-y-3">
-          <div className="flex items-center gap-3">
-            <div className="bg-violet-500/10 p-2 rounded-xl text-violet-500"><Sparkles className="w-5 h-5" /></div>
-            <div className="flex-1">
-              <p className="font-semibold text-foreground text-sm">Gemini API Key</p>
-              <p className="text-[10px] text-muted-foreground font-medium">Powers AI chat + CookMate Ask AI</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              type={showAIKey ? "text" : "password"}
-              value={aiApiKey}
-              onChange={e => { setAiApiKey(e.target.value); saveAIKey(e.target.value); }}
-              placeholder="Paste your key from aistudio.google.com"
-              className="flex-1 bg-muted/60 rounded-xl px-3 py-2.5 text-xs font-semibold outline-none border border-border text-foreground placeholder:text-muted-foreground"
-            />
-            <button onClick={() => setShowAIKey(!showAIKey)} className="text-xs font-bold px-3 py-2.5 rounded-xl bg-muted text-muted-foreground">{showAIKey ? "Hide" : "Show"}</button>
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-muted-foreground mb-1.5">Model</p>
-            <div className="flex gap-1.5 overflow-x-auto hide-scrollbar pb-1">
-              {aiModelOptions.map(m => (
-                <button key={m} onClick={() => { setAiModel(m); saveAIModel(m); }} className="whitespace-nowrap px-3 py-1.5 rounded-full text-[10px] font-bold transition-all shrink-0" style={aiModel === m ? { backgroundColor: accentColor, color: "#fff" } : { backgroundColor: "var(--color-muted)", color: "var(--color-muted-foreground)" }}>
-                  {m.replace("gemini-", "")}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="flex items-center justify-between pt-1">
-            <div>
-              <p className="text-[10px] font-bold text-muted-foreground">Daily Limit</p>
-              <p className="text-[10px] text-muted-foreground">Protects your free tier ({aiUsageToday}/{aiDailyLimit} used today)</p>
-            </div>
-            <div className="flex items-center gap-1.5 bg-muted/60 rounded-lg border border-border px-2 py-1">
-              <input type="number" value={aiDailyLimit} onChange={e => { const v = Number(e.target.value) || 50; setAiDailyLimit(v); saveAIDailyLimit(v); }} className="w-12 bg-transparent text-xs font-bold outline-none text-foreground text-right" />
-              <span className="text-[10px] text-muted-foreground font-bold">/day</span>
-            </div>
-          </div>
-          <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="block text-[10px] font-bold pt-1" style={{ color: accentColor }}>Get free API key from Google AI Studio →</a>
-        </div>
-      </div>
+
 
       {/* Modules */}
       <div>
@@ -554,18 +494,7 @@ export default function ProfilePage() {
             </button>
           </div>
 
-          <div role="switch" aria-checked={isRadarEnabled} aria-label="Radar tracker" tabIndex={0} onKeyDown={switchKey(() => toggleRadar(!isRadarEnabled))} className="w-full flex items-center justify-between p-4 active:bg-muted/50 transition-colors cursor-pointer" onClick={() => toggleRadar(!isRadarEnabled)}>
-            <div className="flex items-center gap-3">
-              <div className="bg-purple-500/10 p-2 rounded-xl text-purple-500"><Radio className="w-5 h-5" aria-hidden="true" /></div>
-              <div>
-                <span className="font-semibold text-foreground text-sm block">Radar Tracker</span>
-                <p className="text-[10px] text-muted-foreground leading-none mt-0.5">Tech & entertainment news feed</p>
-              </div>
-            </div>
-            <button aria-hidden="true" tabIndex={-1} className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${isRadarEnabled ? 'border-transparent' : 'bg-muted border border-border'}`} style={isRadarEnabled ? { backgroundColor: accentColor } : {}}>
-              <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${isRadarEnabled ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
-            </button>
-          </div>
+
 
           <div role="switch" aria-checked={isClaimsEnabled} aria-label="Claims and splits" tabIndex={0} onKeyDown={switchKey(() => toggleClaims(!isClaimsEnabled))} className="w-full flex items-center justify-between p-4 active:bg-muted/50 transition-colors cursor-pointer" onClick={() => toggleClaims(!isClaimsEnabled)}>
             <div className="flex items-center gap-3">
@@ -580,18 +509,7 @@ export default function ProfilePage() {
             </button>
           </div>
 
-          <div role="switch" aria-checked={isTradingEnabled} aria-label="Trading and flipping" tabIndex={0} onKeyDown={switchKey(() => toggleTrading(!isTradingEnabled))} className="w-full flex items-center justify-between p-4 active:bg-muted/50 transition-colors cursor-pointer" onClick={() => toggleTrading(!isTradingEnabled)}>
-            <div className="flex items-center gap-3">
-              <div className="bg-rose-500/10 p-2 rounded-xl text-rose-500"><TrendingUp className="w-5 h-5" aria-hidden="true" /></div>
-              <div>
-                <span className="font-semibold text-foreground text-sm block">Trading / Flipping</span>
-                <p className="text-[10px] text-muted-foreground leading-none mt-0.5">Buy low, sell high — track profits</p>
-              </div>
-            </div>
-            <button aria-hidden="true" tabIndex={-1} className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${isTradingEnabled ? 'border-transparent' : 'bg-muted border border-border'}`} style={isTradingEnabled ? { backgroundColor: accentColor } : {}}>
-              <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${isTradingEnabled ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
-            </button>
-          </div>
+
 
           <div role="switch" aria-checked={isWanderPlanEnabled} aria-label="WanderPlan travel planner" tabIndex={0} onKeyDown={switchKey(() => toggleWanderPlan(!isWanderPlanEnabled))} className="w-full flex items-center justify-between p-4 active:bg-muted/50 transition-colors cursor-pointer" onClick={() => toggleWanderPlan(!isWanderPlanEnabled)}>
             <div className="flex items-center gap-3">
@@ -606,18 +524,7 @@ export default function ProfilePage() {
             </button>
           </div>
 
-          <div role="switch" aria-checked={isCookMateEnabled} aria-label="CookMate" tabIndex={0} onKeyDown={switchKey(() => toggleCookMate(!isCookMateEnabled))} className="w-full flex items-center justify-between p-4 active:bg-muted/50 transition-colors cursor-pointer" onClick={() => toggleCookMate(!isCookMateEnabled)}>
-            <div className="flex items-center gap-3">
-              <div className="bg-orange-500/10 p-2 rounded-xl text-orange-500"><span className="text-lg" aria-hidden="true">🍳</span></div>
-              <div>
-                <span className="font-semibold text-foreground text-sm block">CookMate</span>
-                <p className="text-[10px] text-muted-foreground leading-none mt-0.5">Smart kitchen companion</p>
-              </div>
-            </div>
-            <button aria-hidden="true" tabIndex={-1} className={`w-12 h-7 rounded-full transition-colors relative flex items-center pointer-events-none ${isCookMateEnabled ? 'border-transparent' : 'bg-muted border border-border'}`} style={isCookMateEnabled ? { backgroundColor: accentColor } : {}}>
-              <div className={`w-5 h-5 bg-card rounded-full shadow-sm absolute transition-transform ${isCookMateEnabled ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
-            </button>
-          </div>
+
         </div>
       </div>
 
@@ -793,6 +700,17 @@ export default function ProfilePage() {
         <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 px-2">Data Management</h3>
         <div className="bg-card rounded-3xl shadow-soft border border-border/40 overflow-hidden">
           
+          <Link href="/hub/statement-import" className="w-full flex items-center justify-between p-4 border-b border-border/40 active:bg-muted/50 transition-colors text-left cursor-pointer">
+            <div className="flex items-center gap-3">
+              <div className="bg-rose-500/10 p-2 rounded-xl text-rose-500"><Upload className="w-5 h-5" /></div>
+              <div>
+                <span className="font-semibold text-foreground text-sm block">AI Statement Import</span>
+                <span className="text-xs text-muted-foreground font-medium">Parse & import bank statements via AI</span>
+              </div>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </Link>
+
           <button onClick={() => setShowRawDataModal(true)} className="w-full flex items-center justify-between p-4 border-b border-border/40 active:bg-muted/50 transition-colors text-left cursor-pointer">
             <div className="flex items-center gap-3">
               <div className="bg-indigo-500/10 p-2 rounded-xl text-indigo-500"><Database className="w-5 h-5" /></div>

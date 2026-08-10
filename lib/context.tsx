@@ -13,7 +13,6 @@ import type {
   PlannerItem,
   Asset,
   AssetLog,
-  TradeItem,
   Account,
   WPTrip, WPTripDay, WPActivity, WPBudgetAllocation,
   WPTripExpense, WPSavedPlace, WPDocument, WPPackingItem,
@@ -39,7 +38,6 @@ export type {
   PlannerItem,
   Asset,
   AssetLog,
-  TradeItem,
   Account,
 };
 
@@ -78,6 +76,10 @@ type AppContextType = {
   addSubscription: (sub: Partial<Subscription>) => Promise<void>;
   updateSubscription: (id: string, patch: Partial<Subscription>) => Promise<void>;
   deleteSubscription: (id: string) => Promise<void>;
+  fixedBills: Subscription[];
+  addFixedBill: (sub: Partial<Subscription>) => Promise<void>;
+  updateFixedBill: (id: string, patch: Partial<Subscription>) => Promise<void>;
+  deleteFixedBill: (id: string) => Promise<void>;
   utilities: Subscription[];
   addUtility: (sub: Partial<Subscription>) => Promise<void>;
   updateUtility: (id: string, patch: Partial<Subscription>) => Promise<void>;
@@ -122,21 +124,10 @@ type AppContextType = {
   deleteAsset: (id: string) => Promise<void>;
   isVaultEnabled: boolean;
   toggleVault: (val: boolean) => void;
-  isRadarEnabled: boolean;
-  toggleRadar: (val: boolean) => void;
-  activeAssetId: string | null;
-  setActiveAssetId: (id: string | null) => void;
-  showTransactionModal: boolean;
-  setShowTransactionModal: (val: boolean) => void;
-  isOffline: boolean;
   isClaimsEnabled: boolean;
   toggleClaims: (val: boolean) => void;
-  isTradingEnabled: boolean;
-  toggleTrading: (val: boolean) => void;
   isWanderPlanEnabled: boolean;
   toggleWanderPlan: (val: boolean) => void;
-  isCookMateEnabled: boolean;
-  toggleCookMate: (val: boolean) => void;
   // WanderPlan state + CRUD
   wpTrips: WPTrip[];
   wpTripDays: WPTripDay[];
@@ -171,10 +162,11 @@ type AppContextType = {
   addWPPackingItems: (tripId: string, items: { category: string; item_name: string; quantity: number }[]) => Promise<void>;
   toggleWPPacked: (id: string) => Promise<void>;
   deleteWPPackingItem: (id: string) => Promise<void>;
-  tradeItems: TradeItem[];
-  addTradeItem: (item: Partial<TradeItem>) => Promise<void>;
-  updateTradeItem: (id: string, patch: Partial<TradeItem>) => Promise<void>;
-  deleteTradeItem: (id: string) => Promise<void>;
+  activeAssetId: string | null;
+  setActiveAssetId: (id: string | null) => void;
+  showTransactionModal: boolean;
+  setShowTransactionModal: (val: boolean) => void;
+  isOffline: boolean;
   isGodMode: boolean;
   whaleAlert: boolean;
   sharkUndo: boolean;
@@ -210,11 +202,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     isPinEnabled, togglePin,
     isBiometricEnabled, toggleBiometric,
     isVaultEnabled, toggleVault,
-    isRadarEnabled, toggleRadar,
     isClaimsEnabled, toggleClaims,
-    isTradingEnabled, toggleTrading,
     isWanderPlanEnabled, toggleWanderPlan,
-    isCookMateEnabled, toggleCookMate,
     enableTimeBasedGreeting, toggleTimeBasedGreeting,
     enableFridayThe13th, toggleFridayThe13th,
   } = prefs;
@@ -289,10 +278,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const payload = { title: g.title, current_amount: g.current || 0, target_amount: g.target, is_pinned: g.isPinned || false, user_id: g.user_id };
         const { data } = await supabase.from("goals").insert(payload).select().single();
         if (data) setGoals(prev => [{ ...g, id: data.id } as Goal, ...prev]);
-      } else if (type === "trade") {
-        const { id: _id, ...rest } = item as TradeItem;
-        const { data } = await supabase.from("trade_items").insert(rest).select().single();
-        if (data) setTradeItems(prev => [data as TradeItem, ...prev]);
       } else if (type === "asset") {
         const { id: _id, ...rest } = item as Asset;
         const { data } = await supabase.from("asset_vault").insert(rest).select().single();
@@ -312,7 +297,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     showSharkUndo,
     triggerPhoenixAlert,
     // Intentionally excluded from the dep array:
-    //   - setTransactions / setGoals / setTradeItems / setAssets: React state
+    //   - setTransactions / setGoals / setAssets: React state
     //     setters are guaranteed-stable for the component's lifetime.
     //   - triggerToast: a stable useCallback from useUIState (declared further
     //     down in this provider — including it would be a temporal-dead-zone
@@ -398,19 +383,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     deletePlannerItem,
   } = usePlanningState({ session, cacheDeletedItem, triggerDragonAlert });
 
-  // ─── Modules data (assets + tradeItems + their CRUD) ────────────────────
+  // ─── Modules data (assets + asset CRUD) ─────────────────────────────────
   const {
     assets,
     setAssets,
-    tradeItems,
-    setTradeItems,
     addAsset,
     updateAsset,
     deleteAsset,
-    addTradeItem,
-    updateTradeItem,
-    deleteTradeItem,
-  } = useModulesData({ session, triggerWhaleAlert, cacheDeletedItem });
+  } = useModulesData({ session, cacheDeletedItem });
 
   // ─── WanderPlan state (trips, itinerary, budget, places, docs, packing) ─
   const wanderPlan = useWanderPlanState({ session });
@@ -421,6 +401,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setTransactions,
     subscriptions,
     setSubscriptions,
+    fixedBills,
+    setFixedBills,
     utilities,
     setUtilities,
     addTransaction,
@@ -429,6 +411,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     addSubscription,
     updateSubscription,
     deleteSubscription,
+    addFixedBill,
+    updateFixedBill,
+    deleteFixedBill,
     addUtility,
     updateUtility,
     deleteUtility,
@@ -446,10 +431,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setTransactions,
     setGoals,
     setSubscriptions,
+    setFixedBills,
     setUtilities,
     setPlannerItems,
     setAssets,
-    setTradeItems,
     setAccountObjects,
     setCategoriesRaw,
     setCategories,
@@ -604,6 +589,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     () => subscriptions.filter((s) => !s.user_id || s.user_id === sessionUserId),
     [subscriptions, sessionUserId]
   );
+  const visibleFixedBills = useMemo(
+    () => fixedBills.filter((f) => !f.user_id || f.user_id === sessionUserId),
+    [fixedBills, sessionUserId]
+  );
   const visibleUtilities = useMemo(
     () => utilities.filter((u) => !u.user_id || u.user_id === sessionUserId),
     [utilities, sessionUserId]
@@ -628,10 +617,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
        setTransactions([]);
        setGoals([]);
        setSubscriptions([]);
+       setFixedBills([]);
        setUtilities([]);
        setPlannerItems([]);
        setAssets([]);
-       setTradeItems([]);
        setIsHydrating(false);
     }
     // This effect fires only when the Supabase session changes. All the
@@ -663,6 +652,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       toast, triggerToast,
       subscriptions: visibleSubscriptions,
       addSubscription, updateSubscription, deleteSubscription,
+      fixedBills: visibleFixedBills,
+      addFixedBill, updateFixedBill, deleteFixedBill,
       utilities: visibleUtilities,
       addUtility, updateUtility, deleteUtility,
       transactions: visibleTransactions,
@@ -683,15 +674,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       isBiometricEnabled, toggleBiometric,
       assets, addAsset, updateAsset, deleteAsset,
       isVaultEnabled, toggleVault,
-      isRadarEnabled, toggleRadar,
       isClaimsEnabled, toggleClaims,
-      isTradingEnabled, toggleTrading,
       isWanderPlanEnabled, toggleWanderPlan,
-      isCookMateEnabled, toggleCookMate,
       ...wanderPlan,
       enableTimeBasedGreeting, toggleTimeBasedGreeting,
       enableFridayThe13th, toggleFridayThe13th,
-      tradeItems, addTradeItem, updateTradeItem, deleteTradeItem,
       activeAssetId, setActiveAssetId,
       showTransactionModal, setShowTransactionModal,
       isOffline,

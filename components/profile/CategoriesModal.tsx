@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { motion, Reorder } from "framer-motion";
 import { X, GripVertical, Trash2, Plus } from "lucide-react";
+import { getCategoryColor } from "@/lib/utils";
 
 /**
  * Drag-to-reorder category manager. State for "new category input" is local
@@ -76,6 +77,7 @@ export function CategoriesModal({
               >
                 <div className="flex items-center gap-3">
                   <GripVertical className="w-4 h-4 text-muted-foreground/50" aria-hidden="true" />
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: getCategoryColor(cat) }} />
                   <span className="font-medium text-sm text-foreground">{cat}</span>
                 </div>
                 <button

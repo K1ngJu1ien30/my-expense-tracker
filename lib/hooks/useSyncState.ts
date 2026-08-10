@@ -13,7 +13,6 @@ import type {
   PlannerItem,
   Subscription,
   Transaction,
-  TradeItem,
   RawGoalRow,
   RawSubscriptionRow,
   RawUserAccountRow,
@@ -30,10 +29,10 @@ export type SyncSetters = {
   setTransactions: (val: Transaction[] | ((prev: Transaction[]) => Transaction[])) => void;
   setGoals: (val: Goal[]) => void;
   setSubscriptions: (val: Subscription[]) => void;
+  setFixedBills: (val: Subscription[]) => void;
   setUtilities: (val: Subscription[]) => void;
   setPlannerItems: (val: PlannerItem[]) => void;
   setAssets: (val: Asset[]) => void;
-  setTradeItems: (val: TradeItem[]) => void;
   setAccountObjects: (val: Account[]) => void;
   setCategoriesRaw: (val: string[]) => void;
   setCategories: (val: string[]) => void;
@@ -82,14 +81,13 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
 
       try {
         console.log("[refreshData] Fetching live data...");
-        const [txs, gls, subs, plannerRes, assetsRes, tradesRes, accountsRes, categoriesRes] =
+        const [txs, gls, subs, plannerRes, assetsRes, accountsRes, categoriesRes] =
           await Promise.all([
             supabase.from("transactions").select("*").eq("user_id", currentUser.id).order("date", { ascending: false }),
             supabase.from("goals").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false }),
             supabase.from("subscriptions").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false }),
             supabase.from("salary_planner").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false }),
             supabase.from("asset_vault").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false }),
-            supabase.from("trade_items").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false }),
             // Migration 002 tables — tolerant of missing table / RLS issues.
             supabase.from("user_accounts").select("*").eq("user_id", currentUser.id).order("sort_order", { ascending: true }),
             supabase.from("user_categories").select("name").eq("user_id", currentUser.id).order("sort_order", { ascending: true }),
@@ -99,15 +97,15 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
         // NOTE: we intentionally do NOT include accountsRes/categoriesRes
         // in this fatal-error check. If those are missing we fall back to
         // user_metadata (old-APK compatible).
-        if (txs.error || gls.error || subs.error || plannerRes.error || assetsRes.error || tradesRes.error) {
+        if (txs.error || gls.error || subs.error || plannerRes.error || assetsRes.error) {
           console.log("[refreshData] Supabase returned error objects:", {
             txs: txs.error, gls: gls.error, subs: subs.error,
-            planner: plannerRes.error, assets: assetsRes.error, trades: tradesRes.error,
+            planner: plannerRes.error, assets: assetsRes.error,
           });
           throw new Error("Supabase fetch returned errors");
         }
 
-        if (!txs.data || !gls.data || !subs.data || !plannerRes.data || !assetsRes.data || !tradesRes.data) {
+        if (!txs.data || !gls.data || !subs.data || !plannerRes.data || !assetsRes.data) {
           console.log("[refreshData] Supabase returned null data arrays — treating as offline");
           throw new Error("Supabase returned null data");
         }
@@ -182,24 +180,34 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
         }));
         const subRows = subs.data as RawSubscriptionRow[];
         const parsedSubscriptions: Subscription[] = subRows
-          .filter(sub => sub.type === "subscription")
+          .filter(sub => sub.type === "subscription" || !sub.type)
           .map(sub => ({
             id: sub.id, name: sub.name, cost: Number(sub.amount),
             billingDay: sub.billing_day, sourceAccount: sub.source_account,
-            autoDeduct: sub.auto_deduct, user_id: sub.user_id,
+            autoDeduct: sub.auto_deduct, user_id: sub.user_id, type: "subscription",
+            lastPaidMonth: sub.last_paid_month,
             icon: "MonitorPlay", bg: "bg-red-500/10", color: "text-red-500",
+          }));
+        const parsedFixedBills: Subscription[] = subRows
+          .filter(sub => sub.type === "fixed_bill" || sub.type === "bill")
+          .map(sub => ({
+            id: sub.id, name: sub.name, cost: Number(sub.amount),
+            billingDay: sub.billing_day, sourceAccount: sub.source_account,
+            autoDeduct: sub.auto_deduct, user_id: sub.user_id, type: "fixed_bill",
+            lastPaidMonth: sub.last_paid_month,
+            icon: "FileText", bg: "bg-purple-500/10", color: "text-purple-500",
           }));
         const parsedUtilities: Subscription[] = subRows
           .filter(sub => sub.type === "utility")
           .map(sub => ({
             id: sub.id, name: sub.name, cost: Number(sub.amount),
             billingDay: sub.billing_day, sourceAccount: sub.source_account,
-            autoDeduct: sub.auto_deduct, user_id: sub.user_id,
+            autoDeduct: sub.auto_deduct, user_id: sub.user_id, type: "utility",
+            lastPaidMonth: sub.last_paid_month,
             icon: "Zap", bg: "bg-yellow-500/10", color: "text-yellow-500",
           }));
         const parsedPlanner = plannerRes.data as PlannerItem[];
         const parsedAssets = assetsRes.data as Asset[];
-        const parsedTrades = tradesRes.data as TradeItem[];
 
         console.log("[refreshData] Live data fetch successful. Saving to cache...", {
           tx: parsedTransactions.length,
@@ -208,17 +216,16 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
           utils: parsedUtilities.length,
           planner: parsedPlanner.length,
           assets: parsedAssets.length,
-          trades: parsedTrades.length,
         });
 
         // ─── Commit to state ──────────────────────────────────────────────
         s.setTransactions(parsedTransactions);
         s.setGoals(parsedGoals);
         s.setSubscriptions(parsedSubscriptions);
+        s.setFixedBills(parsedFixedBills);
         s.setUtilities(parsedUtilities);
         s.setPlannerItems(parsedPlanner);
         s.setAssets(parsedAssets);
-        s.setTradeItems(parsedTrades);
         s.setAccountObjects(savedAccounts);
 
         // Bootstrap the category predictor on first run from the full
@@ -239,10 +246,10 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
           transactions: parsedTransactions,
           goals: parsedGoals,
           subscriptions: parsedSubscriptions,
+          fixedBills: parsedFixedBills,
           utilities: parsedUtilities,
           plannerItems: parsedPlanner,
           assets: parsedAssets,
-          tradeItems: parsedTrades,
           accounts: savedAccounts,
           categories: s.categoriesRef.current,
         };
@@ -263,10 +270,10 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
                 transactions?: Transaction[];
                 goals?: Goal[];
                 subscriptions?: Subscription[];
+                fixedBills?: Subscription[];
                 utilities?: Subscription[];
                 plannerItems?: PlannerItem[];
                 assets?: Asset[];
-                tradeItems?: TradeItem[];
                 accounts?: unknown;
                 categories?: string[];
               }
@@ -276,10 +283,10 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
             let cachedTx = (data.transactions ?? []) as Transaction[];
             s.setGoals(data.goals ?? []);
             s.setSubscriptions(data.subscriptions ?? []);
+            s.setFixedBills(data.fixedBills ?? []);
             s.setUtilities(data.utilities ?? []);
             s.setPlannerItems(data.plannerItems ?? []);
             s.setAssets(data.assets ?? []);
-            s.setTradeItems(data.tradeItems ?? []);
             if (data.accounts) s.setAccountObjects(migrateAccounts(data.accounts));
             if (data.categories?.length) s.setCategories(data.categories);
 

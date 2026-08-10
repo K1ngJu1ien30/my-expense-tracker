@@ -8,7 +8,6 @@ import AuthScreen from "./AuthScreen";
 import InstallPrompt from "./InstallPrompt";
 import AuthGate from "./AuthGate";
 import { useAppContext } from "@/lib/context";
-import { clearGreetingCache } from "@/lib/ai/greeting";
 import { AnimatePresence, motion } from "framer-motion";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -86,9 +85,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             // resume like a cold-open and force a fresh greeting on the
             // next dashboard render.
             const awayMs = Date.now() - backgroundedAt;
-            if (awayMs > 5 * 60 * 1000) {
-              clearGreetingCache();
-            }
             backgroundedAt = null;
           }
         });
@@ -101,7 +97,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (authLoading) return <div className="h-[100dvh] flex items-center justify-center bg-background max-w-md mx-auto"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"/></div>;
 
   if (!session) return (
-    <div className="relative mx-auto w-full max-w-md h-[100dvh] lg:min-h-0 lg:h-[844px] lg:my-8 bg-background shadow-2xl flex flex-col overflow-hidden lg:rounded-[3rem] lg:border-[12px] lg:border-white/10 ring-1 ring-black/5 dark:ring-white/10">
+    <div className="relative mx-auto w-full max-w-md h-[100dvh] lg:min-h-0 lg:h-[844px] lg:my-8 bg-background shadow-2xl flex flex-col overflow-x-hidden overflow-y-hidden lg:rounded-[3rem] lg:border-[12px] lg:border-white/10 ring-1 ring-black/5 dark:ring-white/10">
       <AuthScreen />
       <InstallPrompt />
       {/*
@@ -125,11 +121,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // Routes that have their own sub-navigation — hide the main bottom nav
   // and transaction FAB to avoid double-bar. These modules render their
   // own tab bar inside their layout.tsx.
-  const hasOwnNav = pathname.startsWith("/cookmate") || pathname.startsWith("/wanderplan");
+  const hasOwnNav = pathname.startsWith("/wanderplan");
 
   return (
     <AuthGate>
-    <div className="relative mx-auto w-full max-w-md h-[100dvh] lg:min-h-0 lg:h-[844px] lg:my-8 bg-background shadow-2xl flex flex-col overflow-hidden lg:rounded-[3rem] lg:border-[12px] lg:border-white/10 ring-1 ring-black/5 dark:ring-white/10">
+    <div className="relative mx-auto w-full max-w-md h-[100dvh] lg:min-h-0 lg:h-[844px] lg:my-8 bg-background shadow-2xl flex flex-col overflow-x-hidden overflow-y-hidden lg:rounded-[3rem] lg:border-[12px] lg:border-white/10 ring-1 ring-black/5 dark:ring-white/10">
       <AnimatePresence>
         {toast && (
           <motion.div initial={{ y: -50, opacity: 0}} animate={{ y: 0, opacity: 1}} exit={{ y: -50, opacity: 0 }} role="status" aria-live="polite" aria-atomic="true" className="absolute pt-12 top-0 left-0 right-0 z-[100] flex justify-center px-4 pointer-events-none">

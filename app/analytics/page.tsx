@@ -2,15 +2,16 @@
 
 import { PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useAppContext } from "@/lib/context";
-import { Sparkles, Receipt } from "lucide-react";
+import { Sparkles, Receipt, Calendar as CalendarIcon, Filter, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useState, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import MonthlyReceiptModal from "@/components/MonthlyReceiptModal";
+import CustomDateRangeModal from "@/components/CustomDateRangeModal";
 import type { ReceiptMonth } from "@/lib/receiptData";
+import { NativeHaptics } from "@/lib/haptics";
 import { countsTowardVelocity, velocityFilterExplainer } from "@/lib/velocity";
+import { getCategoryColor } from "@/lib/utils";
 
-// Minimal shape Recharts hands to custom tooltip components. Fields like `dataKey`,
-// `fill`, `stroke`, and `payload` are always present at runtime, but Recharts' own
-// generics are overly restrictive for our use, so we describe just what we read.
 type ChartPayload = {
   name?: string | number;
   value?: number | string;
@@ -18,7 +19,7 @@ type ChartPayload = {
   fill?: string;
   stroke?: string;
   color?: string;
-  payload?: { fill?: string; color?: string; currency?: string };
+  payload?: { fill?: string; color?: string; currency?: string; percentage?: number };
 };
 
 type TooltipProps = {
@@ -31,13 +32,19 @@ const PieTooltip = ({ active, payload }: TooltipProps) => {
   if (active && payload && payload.length) {
     const first = payload[0];
     const { name, value } = first;
-    const color = first.payload?.fill || first.payload?.color;
+    const color = first.payload?.fill || first.payload?.color || "#ef4444";
+    const pct = first.payload?.percentage !== undefined ? Number(first.payload.percentage).toFixed(1) : "0";
     return (
-      <div className="bg-card/95 backdrop-blur-xl border border-border/50 rounded-2xl shadow-heavy p-3 min-w-[140px]">
-        <p className="text-xs font-bold text-muted-foreground mb-2 pb-2 border-b border-border/50">{name}</p>
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color }} />
-          <span className="text-sm font-black text-foreground">{first.payload?.currency || 'RM'} {Number(value).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+      <div className="bg-card/95 backdrop-blur-xl border border-border/50 rounded-2xl shadow-heavy p-3 min-w-[150px]">
+        <p className="text-xs font-bold text-muted-foreground mb-1.5 pb-1 border-b border-border/40">{name}</p>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color }} />
+            <span className="text-xs font-black text-foreground">{pct}%</span>
+          </div>
+          <span className="text-xs font-black text-red-500">
+            {first.payload?.currency || 'RM'} {Number(value).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          </span>
         </div>
       </div>
     );
@@ -48,16 +55,16 @@ const PieTooltip = ({ active, payload }: TooltipProps) => {
 const BarTooltip = ({ active, payload, label }: TooltipProps) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-card/95 backdrop-blur-xl border border-border/50 rounded-2xl shadow-heavy p-3 min-w-[150px]">
-        <p className="text-xs font-bold text-muted-foreground mb-2 pb-2 border-b border-border/50">{label}</p>
+      <div className="bg-slate-900/95 backdrop-blur-xl border border-slate-700 rounded-xl shadow-2xl p-3 text-white min-w-[150px]">
+        <p className="text-xs font-bold text-slate-400 mb-2 pb-1.5 border-b border-slate-800">{label}</p>
         <div className="space-y-1.5">
           {payload.map((entry, i) => (
             <div key={i} className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-2 min-w-0">
                 <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: entry.fill || entry.color }} />
-                <span className="text-xs font-semibold text-muted-foreground truncate">{entry.dataKey}</span>
+                <span className="text-xs font-semibold text-slate-300 truncate">{entry.dataKey}</span>
               </div>
-              <span className="text-xs font-black text-foreground shrink-0">{entry.payload?.currency || ''} {Number(entry.value).toFixed(2)}</span>
+              <span className="text-xs font-black text-white shrink-0">{entry.payload?.currency || ''} {Number(entry.value).toFixed(2)}</span>
             </div>
           ))}
         </div>
@@ -84,9 +91,6 @@ const VelocityTooltip = ({ active, payload, label }: TooltipProps) => {
   return null;
 };
 
-// Takes `formatCurrency` as a prop so it can be rendered via a parent-provided
-// closure instead of reaching into context directly. Passed as a JSX element to
-// <Tooltip /> so Recharts clones it with `active`/`payload`/`label` at runtime.
 const IncomeTooltip = ({ active, payload, label, formatCurrency }: TooltipProps & { formatCurrency: (n: number) => string }) => {
   if (!active || !payload?.length) return null;
   return (
@@ -97,21 +101,91 @@ const IncomeTooltip = ({ active, payload, label, formatCurrency }: TooltipProps 
   );
 };
 
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
+];
+
+const formatRangeLabel = (startStr: string, endStr: string, fallback: string) => {
+  if (!startStr || !endStr) return fallback;
+  const s = new Date(startStr + "T00:00:00");
+  const e = new Date(endStr + "T00:00:00");
+  if (isNaN(s.getTime()) || isNaN(e.getTime())) return fallback;
+  const startFmt = s.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const endFmt = e.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return `${startFmt} - ${endFmt}`;
+};
+
 export default function AnalyticsPage() {
+  const now = new Date();
   const {
-    subscriptions, utilities,
     accentColor, transactions,
-    currency, formatCurrency
+    accounts, currency, formatCurrency
   } = useAppContext();
 
-  const [timeFilter, setTimeFilter] = useState("Month");
+  // Filter state: WEEK | MONTH | YEAR | CUSTOM
+  const [timeFilter, setTimeFilter] = useState<"WEEK" | "MONTH" | "YEAR" | "CUSTOM">("MONTH");
+  const [customStartDate, setCustomStartDate] = useState<string>("");
+  const [customEndDate, setCustomEndDate] = useState<string>("");
 
-  // ─── Monthly Receipt trigger state ─────────────────────────────────────
-  // Opens the receipt modal. The `target` is passed in so we can open the
-  // recap for the CURRENT month (if user triggers from Analytics with
-  // timeFilter="Month"), the previous month (default), or any other.
+  // Active Tab state: OVERVIEW vs COMPARE
+  const [activeTab, setActiveTab] = useState<"overview" | "compare">("overview");
+
+  // Compare Tab state
+  const [comparePreset, setComparePreset] = useState<"MONTH" | "QUARTER" | "CUSTOM">("MONTH");
+  const [comparePeriodAStart, setComparePeriodAStart] = useState<string>("");
+  const [comparePeriodAEnd, setComparePeriodAEnd] = useState<string>("");
+  const [comparePeriodBStart, setComparePeriodBStart] = useState<string>("");
+  const [comparePeriodBEnd, setComparePeriodBEnd] = useState<string>("");
+
+  // Custom Date Picker Modal State
+  const [isCustomModalOpen, setIsCustomModalOpen] = useState(false);
+  const [isCompareAModalOpen, setIsCompareAModalOpen] = useState(false);
+  const [isCompareBModalOpen, setIsCompareBModalOpen] = useState(false);
+  const [isHistoricModalOpen, setIsHistoricModalOpen] = useState(false);
+
+  // Monthly Receipt trigger state
   const [showReceipt, setShowReceipt] = useState(false);
   const [receiptTarget, setReceiptTarget] = useState<ReceiptMonth | undefined>(undefined);
+
+  const availableHistoricMonths = useMemo(() => {
+    const map = new Map<string, { year: number; month: number; total: number; count: number }>();
+    const now = new Date();
+    
+    transactions.forEach(t => {
+      if (t.type !== "Expense" || t.deleted_at) return;
+      const d = new Date(t.date);
+      if (isNaN(d.getTime())) return;
+      const year = d.getFullYear();
+      const month = d.getMonth();
+      if (year > now.getFullYear() || (year === now.getFullYear() && month > now.getMonth())) return;
+
+      const key = `${year}-${month}`;
+      const prev = map.get(key) || { year, month, total: 0, count: 0 };
+      prev.total += Number(t.amount);
+      prev.count += 1;
+      map.set(key, prev);
+    });
+
+    const list = Array.from(map.values()).sort((a, b) => {
+      if (a.year !== b.year) return b.year - a.year;
+      return b.month - a.month;
+    });
+
+    if (list.length > 0) return list;
+
+    const fallbackList = [];
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      fallbackList.push({
+        year: d.getFullYear(),
+        month: d.getMonth(),
+        total: 0,
+        count: 0,
+      });
+    }
+    return fallbackList;
+  }, [transactions]);
 
   const openCurrentMonthReceipt = () => {
     const now = new Date();
@@ -128,126 +202,159 @@ export default function AnalyticsPage() {
     setShowReceipt(true);
   };
 
+  // Date Range Filtering
   const filteredTxs = useMemo(() => {
-     const now = new Date();
-     if (timeFilter === "Month") {
-       return transactions.filter(t => {
-         const d = new Date(t.date);
-         return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-       });
-     }
-     if (timeFilter === "Year") {
-       return transactions.filter(t => new Date(t.date).getFullYear() === now.getFullYear());
-     }
-     return transactions;
-  }, [transactions, timeFilter]);
+    const now = new Date();
 
+    if (timeFilter === "WEEK") {
+      const startOfWeek = new Date(now);
+      const day = now.getDay() || 7;
+      startOfWeek.setDate(now.getDate() - day + 1);
+      startOfWeek.setHours(0, 0, 0, 0);
+
+      return transactions.filter(t => {
+        const d = new Date(t.date);
+        return d >= startOfWeek && d <= now;
+      });
+    }
+
+    if (timeFilter === "MONTH") {
+      return transactions.filter(t => {
+        const d = new Date(t.date);
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      });
+    }
+
+    if (timeFilter === "YEAR") {
+      return transactions.filter(t => new Date(t.date).getFullYear() === now.getFullYear());
+    }
+
+    if (timeFilter === "CUSTOM") {
+      if (!customStartDate || !customEndDate) return transactions;
+      const start = new Date(customStartDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(customEndDate);
+      end.setHours(23, 59, 59, 999);
+
+      return transactions.filter(t => {
+        const d = new Date(t.date);
+        return d >= start && d <= end;
+      });
+    }
+
+    return transactions;
+  }, [transactions, timeFilter, customStartDate, customEndDate]);
+
+  // Expense Breakdown (Pie Chart Data) with Solid Red Fill Shades
   const categoryData = useMemo(() => {
     const map: Record<string, number> = {};
     filteredTxs.forEach(t => {
-       if (t.type !== "Expense") return;
-       map[t.category] = (map[t.category] || 0) + Number(t.amount);
+      if (t.type !== "Expense" || t.deleted_at) return;
+      map[t.category] = (map[t.category] || 0) + Number(t.amount);
     });
-    const colors = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4'];
-    return Object.entries(map).map(([name, value], i) => ({ name, value, color: colors[i % colors.length], currency })).sort((a,b)=>b.value-a.value);
+
+    const total = Object.values(map).reduce((acc, curr) => acc + curr, 0);
+
+    return Object.entries(map)
+      .map(([name, value]) => ({
+        name,
+        value,
+        percentage: total > 0 ? (value / total) * 100 : 0,
+        color: getCategoryColor(name),
+        currency
+      }))
+      .sort((a, b) => b.value - a.value);
   }, [filteredTxs, currency]);
 
   const totalExpense = useMemo(() => categoryData.reduce((acc, curr) => acc + curr.value, 0), [categoryData]);
 
-  const stackedCashFlow = useMemo(() => {
-     // Each row is `{ name: string, [category]: number }`. Values are union typed
-     // because `name` is a string while category totals are numbers.
-     type CashFlowRow = { name: string } & Record<string, string | number>;
-     const data: CashFlowRow[] = [];
-     const map: Record<string, CashFlowRow> = {};
-     const uniqueCats = new Set<string>();
-     
-     // Reverse for chronological ordering on the chart
-     const chronologicalTxs = [...filteredTxs].reverse();
+  const dateRangeLabel = useMemo(() => {
+    const now = new Date();
+    if (timeFilter === "WEEK") return "Current Week";
+    if (timeFilter === "MONTH") return now.toLocaleString('default', { month: 'long', year: 'numeric' });
+    if (timeFilter === "YEAR") return now.getFullYear().toString();
+    if (timeFilter === "CUSTOM") {
+      if (customStartDate && customEndDate) return `${customStartDate} to ${customEndDate}`;
+      return "Custom Range";
+    }
+    return "All Time";
+  }, [timeFilter, customStartDate, customEndDate]);
 
-     chronologicalTxs.forEach(t => {
-         if (t.type !== "Expense") return;
-         const d = new Date(t.date);
-         
-         const key = (timeFilter === "Year" || timeFilter === "All") 
-              ? `${d.toLocaleString('default', { month: 'short' })} '${d.getFullYear().toString().slice(2)}`
-              : `${d.getMonth()+1}/${d.getDate()}`;
-              
-         if (!map[key]) {
-            map[key] = { name: key };
-            data.push(map[key]);
-         }
-         uniqueCats.add(t.category);
-         const prev = typeof map[key][t.category] === "number" ? (map[key][t.category] as number) : 0;
-         map[key][t.category] = prev + Number(t.amount);
-     });
-     
-     // If data is entirely empty, just mock a shell so the chart doesn't crash visually
-     if (data.length === 0) {
-        data.push({ name: "No Data" });
-     }
-     
-     const colors = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4', '#f43f5e'];
-     return { data, categories: Array.from(uniqueCats), colors };
+  // Cash flow stacked data
+  const stackedCashFlow = useMemo(() => {
+    type CashFlowRow = { name: string } & Record<string, string | number>;
+    const data: CashFlowRow[] = [];
+    const map: Record<string, CashFlowRow> = {};
+    const uniqueCats = new Set<string>();
+    
+    const chronologicalTxs = [...filteredTxs].reverse();
+
+    chronologicalTxs.forEach(t => {
+      if (t.type !== "Expense" || t.deleted_at) return;
+      const d = new Date(t.date);
+      
+      const key = (timeFilter === "YEAR") 
+        ? `${d.toLocaleString('default', { month: 'short' })} '${d.getFullYear().toString().slice(2)}`
+        : `${d.getMonth()+1}/${d.getDate()}`;
+            
+      if (!map[key]) {
+        map[key] = { name: key };
+        data.push(map[key]);
+      }
+      uniqueCats.add(t.category);
+      const prev = typeof map[key][t.category] === "number" ? (map[key][t.category] as number) : 0;
+      map[key][t.category] = prev + Number(t.amount);
+    });
+    
+    const categoriesArr = Array.from(uniqueCats);
+    const colors = categoriesArr.map(cat => getCategoryColor(cat));
+    return { data, categories: categoriesArr, colors };
   }, [filteredTxs, timeFilter]);
 
+  // Smart Insights
   const smartInsightText = useMemo(() => {
-     if (!transactions || transactions.length === 0) return "Start tracking to uncover your financial personality!";
+    if (!transactions || transactions.length === 0) return "Start tracking to uncover your financial habits!";
 
-     const now = new Date();
-     const dayOfWeek = now.getDay() || 7;
-     const startOfThisWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek + 1).getTime();
-     const startOfLastWeek = startOfThisWeek - 7 * 86400000;
+    const now = new Date();
+    const dayOfWeek = now.getDay() || 7;
+    const startOfThisWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek + 1).getTime();
+    const startOfLastWeek = startOfThisWeek - 7 * 86400000;
 
-     const thisWeekExpenses: Record<string, number> = {};
-     let thisWeekTotal = 0;
-     let lastWeekTotal = 0;
+    const thisWeekExpenses: Record<string, number> = {};
+    let thisWeekTotal = 0;
+    let lastWeekTotal = 0;
 
-     transactions.forEach(t => {
-       if (t.type !== "Expense") return;
-       const txTime = new Date(t.date).getTime();
-       const amt = Number(t.amount);
-       if (txTime >= startOfThisWeek) {
-         thisWeekTotal += amt;
-         const cat = t.category || "Other";
-         thisWeekExpenses[cat] = (thisWeekExpenses[cat] || 0) + amt;
-       } else if (txTime >= startOfLastWeek && txTime < startOfThisWeek) {
-         lastWeekTotal += amt;
-       }
-     });
+    transactions.forEach(t => {
+      if (t.type !== "Expense" || t.deleted_at) return;
+      const txTime = new Date(t.date).getTime();
+      const amt = Number(t.amount);
+      if (txTime >= startOfThisWeek) {
+        thisWeekTotal += amt;
+        const cat = t.category || "Other";
+        thisWeekExpenses[cat] = (thisWeekExpenses[cat] || 0) + amt;
+      } else if (txTime >= startOfLastWeek && txTime < startOfThisWeek) {
+        lastWeekTotal += amt;
+      }
+    });
 
-     if (lastWeekTotal === 0 && thisWeekTotal === 0) return "No spending data for the last two weeks yet.";
-     if (lastWeekTotal === 0) return `You've spent ${formatCurrency(thisWeekTotal)} this week. Keep it up!`;
+    if (lastWeekTotal === 0 && thisWeekTotal === 0) return "No spending data for the last two weeks yet.";
+    if (lastWeekTotal === 0) return `You've spent ${formatCurrency(thisWeekTotal)} this week. Keep it up!`;
 
-     const pctChange = ((thisWeekTotal - lastWeekTotal) / lastWeekTotal) * 100;
-     const topCategory = Object.entries(thisWeekExpenses).sort((a, b) => b[1] - a[1])[0];
-     const direction = pctChange > 0 ? "more" : "less";
-     const topCatStr = topCategory ? `, primarily driven by ${topCategory[0]}` : "";
+    const pctChange = ((thisWeekTotal - lastWeekTotal) / lastWeekTotal) * 100;
+    const topCategory = Object.entries(thisWeekExpenses).sort((a, b) => b[1] - a[1])[0];
+    const direction = pctChange > 0 ? "more" : "less";
+    const topCatStr = topCategory ? `, primarily driven by ${topCategory[0]}` : "";
 
-     if (Math.abs(pctChange) < 2) return `Your spending is steady this week — almost identical to last week.`;
-     return `You spent ${Math.abs(pctChange).toFixed(0)}% ${direction} this week${topCatStr}.`;
+    if (Math.abs(pctChange) < 2) return `Your spending is steady this week — almost identical to last week.`;
+    return `You spent ${Math.abs(pctChange).toFixed(0)}% ${direction} this week${topCatStr}.`;
   }, [transactions, formatCurrency]);
 
-  const dateRangeLabel = useMemo(() => {
-     const now = new Date();
-     if (timeFilter === "Month") return now.toLocaleString('default', { month: 'long', year: 'numeric' });
-     if (timeFilter === "Year") return now.getFullYear().toString();
-     return "All Time";
-  }, [timeFilter]);
-
-  // Velocity Projection (current month only)
-  //
-  // Uses `countsTowardVelocity` so bills / subs / utilities / savings
-  // (and transfers, income) don't inflate the per-day pace. On salary
-  // day this is the difference between a realistic RM 30/day projection
-  // and a nonsensical RM 180/day projection inflated by a one-shot
-  // RM 550 bill stack.
+  // Velocity projection
   const velocityData = useMemo(() => {
     const now = new Date();
     const currentDay = now.getDate();
     const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
 
-    // Build cumulative actual spend by day — velocity-eligible only.
     const dailySpend: Record<number, number> = {};
     let excludedTotal = 0;
     let excludedCount = 0;
@@ -267,7 +374,6 @@ export default function AnalyticsPage() {
     let cumulative = 0;
     const data: { day: number; actual?: number; projected?: number }[] = [];
 
-    // Actual line up to today
     for (let d = 1; d <= daysInMonth; d++) {
       if (d <= currentDay) {
         cumulative += dailySpend[d] || 0;
@@ -277,7 +383,6 @@ export default function AnalyticsPage() {
       }
     }
 
-    // Projected line from today to end of month
     const dailyAvg = currentDay > 0 ? cumulative / currentDay : 0;
     let projCumulative = cumulative;
     for (let d = currentDay + 1; d <= daysInMonth; d++) {
@@ -285,7 +390,6 @@ export default function AnalyticsPage() {
       const existing = data.find(item => item.day === d);
       if (existing) existing.projected = Math.round(projCumulative * 100) / 100;
     }
-    // Set projected on the current day entry to bridge the lines
     const todayEntry = data.find(item => item.day === currentDay);
     if (todayEntry) todayEntry.projected = cumulative;
 
@@ -303,9 +407,9 @@ export default function AnalyticsPage() {
     };
   }, [transactions]);
 
-  // Income by Account — grouped bar chart data respecting time filter
+  // Income by Account
   const incomeByAccount = useMemo(() => {
-    const incomeTxs = filteredTxs.filter(t => t.type === "Income");
+    const incomeTxs = filteredTxs.filter(t => t.type === "Income" && !t.deleted_at);
     const map: Record<string, number> = {};
     incomeTxs.forEach(t => {
       const acc = t.account || "Unknown";
@@ -316,27 +420,298 @@ export default function AnalyticsPage() {
       .sort((a, b) => b.amount - a.amount);
   }, [filteredTxs]);
 
+  // ─── Compare Tab Variance & Period Analysis Derivation ──────────────────────
+  const comparisonData = useMemo(() => {
+    const now = new Date();
+    let labelA = "Period A";
+    let labelB = "Period B";
+    let startA: Date;
+    let endA: Date;
+    let startB: Date;
+    let endB: Date;
+
+    if (comparePreset === "MONTH") {
+      const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      labelA = prevMonth.toLocaleString("default", { month: "short", year: "numeric" });
+      labelB = now.toLocaleString("default", { month: "short", year: "numeric" });
+
+      startA = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
+      endA = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+
+      startB = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      endB = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    } else if (comparePreset === "QUARTER") {
+      const q = Math.floor(now.getMonth() / 3);
+      const prevQYear = q === 0 ? now.getFullYear() - 1 : now.getFullYear();
+      const prevQ = q === 0 ? 3 : q - 1;
+
+      labelA = `Q${prevQ + 1} ${prevQYear}`;
+      labelB = `Q${q + 1} ${now.getFullYear()}`;
+
+      startA = new Date(prevQYear, prevQ * 3, 1, 0, 0, 0, 0);
+      endA = new Date(prevQYear, (prevQ + 1) * 3, 0, 23, 59, 59, 999);
+
+      startB = new Date(now.getFullYear(), q * 3, 1, 0, 0, 0, 0);
+      endB = new Date(now.getFullYear(), (q + 1) * 3, 0, 23, 59, 59, 999);
+    } else {
+      labelA = comparePeriodAStart && comparePeriodAEnd ? formatRangeLabel(comparePeriodAStart, comparePeriodAEnd, "Period A") : "Period A";
+      labelB = comparePeriodBStart && comparePeriodBEnd ? formatRangeLabel(comparePeriodBStart, comparePeriodBEnd, "Period B") : "Period B";
+
+      if (comparePeriodAStart) {
+        startA = new Date(comparePeriodAStart + "T00:00:00");
+      } else {
+        startA = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
+      }
+
+      if (comparePeriodAEnd) {
+        endA = new Date(comparePeriodAEnd + "T23:59:59.999");
+      } else {
+        endA = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+      }
+
+      if (comparePeriodBStart) {
+        startB = new Date(comparePeriodBStart + "T00:00:00");
+      } else {
+        startB = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      }
+
+      if (comparePeriodBEnd) {
+        endB = new Date(comparePeriodBEnd + "T23:59:59.999");
+      } else {
+        endB = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      }
+    }
+
+    const txsA = transactions.filter(t => {
+      if (t.type !== "Expense" || t.deleted_at) return false;
+      const d = new Date(t.date);
+      return d >= startA && d <= endA;
+    });
+
+    const txsB = transactions.filter(t => {
+      if (t.type !== "Expense" || t.deleted_at) return false;
+      const d = new Date(t.date);
+      return d >= startB && d <= endB;
+    });
+
+    const totalA = txsA.reduce((s, t) => s + Number(t.amount), 0);
+    const totalB = txsB.reduce((s, t) => s + Number(t.amount), 0);
+    const netDiff = totalB - totalA;
+    const pctChange = totalA > 0 ? (netDiff / totalA) * 100 : (totalB > 0 ? 100 : 0);
+
+    const catMapA: Record<string, number> = {};
+    const catMapB: Record<string, number> = {};
+    const allCategories = new Set<string>();
+
+    txsA.forEach(t => {
+      catMapA[t.category] = (catMapA[t.category] || 0) + Number(t.amount);
+      allCategories.add(t.category);
+    });
+
+    txsB.forEach(t => {
+      catMapB[t.category] = (catMapB[t.category] || 0) + Number(t.amount);
+      allCategories.add(t.category);
+    });
+
+    const categoryRows = Array.from(allCategories).map(cat => {
+      const costA = catMapA[cat] || 0;
+      const costB = catMapB[cat] || 0;
+      const delta = costB - costA;
+      const pct = costA > 0 ? (delta / costA) * 100 : (costB > 0 ? 100 : 0);
+      return { category: cat, costA, costB, delta, pct };
+    }).sort((a, b) => b.delta - a.delta); // Sort by largest spending increases at top!
+
+    const positiveDrivers = categoryRows.filter(r => r.delta > 0);
+    const totalPositiveDelta = positiveDrivers.reduce((s, r) => s + r.delta, 0);
+
+    const topDrivers = positiveDrivers.slice(0, 3).map(driver => {
+      const shareOfGrowth = totalPositiveDelta > 0 ? (driver.delta / totalPositiveDelta) * 100 : 0;
+      const categoryTxsB = txsB.filter(t => t.category === driver.category);
+
+      let largestTx: typeof transactions[0] | null = null;
+      categoryTxsB.forEach(t => {
+        if (!largestTx || Number(t.amount) > Number(largestTx.amount)) {
+          largestTx = t;
+        }
+      });
+
+      const largestAmt = largestTx ? Number((largestTx as any).amount) : 0;
+      const largestName = largestTx ? ((largestTx as any).merchant || (largestTx as any).description || (largestTx as any).note || "").trim() : "";
+
+      const merchantMap: Record<string, { count: number; total: number }> = {};
+      categoryTxsB.forEach(t => {
+        const name = ((t as any).merchant || (t as any).description || (t as any).note || "").trim();
+        if (!name) return;
+        if (!merchantMap[name]) merchantMap[name] = { count: 0, total: 0 };
+        merchantMap[name].count += 1;
+        merchantMap[name].total += Number(t.amount);
+      });
+
+      let topMerchant: { name: string; count: number; total: number } | null = null;
+      Object.entries(merchantMap).forEach(([name, data]) => {
+        if (!topMerchant || data.count > topMerchant.count || (data.count === topMerchant.count && data.total > topMerchant.total)) {
+          topMerchant = { name, ...data };
+        }
+      });
+
+      let insightText = "";
+      const deltaFormatted = formatCurrency(driver.delta);
+      const pctFormatted = driver.pct.toFixed(0);
+
+      if (largestTx && largestName && (largestAmt >= 0.35 * driver.delta || categoryTxsB.length === 1)) {
+        insightText = `${driver.category} increased by ${deltaFormatted} (+${pctFormatted}%), primarily driven by a ${formatCurrency(largestAmt)} transaction at ${largestName}.`;
+      } else if (topMerchant && (topMerchant as any).count >= 2) {
+        insightText = `${driver.category} increased by ${deltaFormatted} (+${pctFormatted}%), heavily driven by ${(topMerchant as any).count} repeated transactions at ${(topMerchant as any).name}.`;
+      } else {
+        const count = categoryTxsB.length || 1;
+        insightText = `${driver.category} increased by ${deltaFormatted} (+${pctFormatted}%), distributed across ${count} regular payment${count > 1 ? "s" : ""}.`;
+      }
+
+      return {
+        ...driver,
+        shareOfGrowth,
+        insightText,
+      };
+    });
+
+    return {
+      labelA,
+      labelB,
+      totalA,
+      totalB,
+      netDiff,
+      pctChange,
+      categoryRows,
+      topDrivers,
+      totalPositiveDelta
+    };
+  }, [transactions, comparePreset, comparePeriodAStart, comparePeriodAEnd, comparePeriodBStart, comparePeriodBEnd]);
+
   return (
     <div className="p-6 animate-in fade-in duration-500 space-y-6 pb-[120px] relative min-h-screen overflow-x-hidden">
       
+      {/* Header & Tab View Switcher */}
       <div className="flex items-center justify-between pt-2">
-        <h1 className="text-2xl font-bold">Analytics</h1>
-        
-        <div className="flex bg-muted/60 p-1 rounded-xl">
-           {["Month", "Year", "All"].map(filter => (
-             <button 
-               key={filter}
-               onClick={() => { setTimeFilter(filter); if(navigator.vibrate) navigator.vibrate(20); }}
-               style={timeFilter === filter ? { backgroundColor: accentColor, color: '#fff' } : {}}
-               className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${timeFilter === filter ? 'shadow-sm scale-110 z-10' : 'text-muted-foreground hover:text-foreground'}`}
-             >
-               {filter}
-             </button>
-           ))}
+        <div>
+          <h1 className="text-2xl font-bold">Analytics</h1>
+          <p className="text-xs font-semibold text-muted-foreground mt-0.5">
+            {activeTab === "overview" ? (
+              <>Range: <span className="text-foreground font-bold">{dateRangeLabel}</span></>
+            ) : (
+              <>Period Comparison &amp; Variance Insights</>
+            )}
+          </p>
+        </div>
+
+        <div className="bg-card p-1 rounded-2xl border border-border/50 shadow-soft flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab("overview");
+              NativeHaptics.lightTick();
+            }}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              activeTab === "overview"
+                ? "bg-foreground text-background shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Overview
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab("compare");
+              NativeHaptics.lightTick();
+            }}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              activeTab === "compare"
+                ? "bg-foreground text-background shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Compare
+          </button>
         </div>
       </div>
 
-      <p className="text-sm font-semibold text-muted-foreground">Viewing: {dateRangeLabel}</p>
+      {activeTab === "overview" ? (
+        <>
+          {/* Pill-Shaped Filter Control Bar */}
+      <div className="bg-card p-1.5 rounded-full border border-border/50 shadow-soft flex items-center justify-between gap-1 overflow-x-auto hide-scrollbar">
+        {(["WEEK", "MONTH", "YEAR", "CUSTOM"] as const).map(filter => {
+          const isSelected = timeFilter === filter;
+          return (
+            <button
+              key={filter}
+              type="button"
+              onClick={() => {
+                setTimeFilter(filter);
+                NativeHaptics.lightTick();
+              }}
+              className={`flex-1 min-w-[70px] py-2 px-3 rounded-full text-xs font-bold transition-all text-center select-none ${
+                isSelected
+                  ? "bg-rose-500 text-white shadow-md scale-[1.02]"
+                  : "text-muted-foreground hover:text-foreground bg-transparent"
+              }`}
+            >
+              {filter}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Custom Date Selector Trigger Card */}
+      {timeFilter === "CUSTOM" && (
+        <div className="bg-card p-4 rounded-3xl border border-border/40 shadow-soft space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+              <CalendarIcon className="w-3.5 h-3.5 text-emerald-500" />
+              Custom Date Range
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setIsCustomModalOpen(true);
+                NativeHaptics.lightTick();
+              }}
+              className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors flex items-center gap-1.5"
+            >
+              <CalendarIcon className="w-3.5 h-3.5" />
+              {customStartDate && customEndDate ? "Change Range" : "Select Range"}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 pt-1">
+            <button
+              type="button"
+              onClick={() => {
+                setIsCustomModalOpen(true);
+                NativeHaptics.lightTick();
+              }}
+              className="p-3 rounded-2xl bg-muted/40 border border-border/50 text-left hover:border-emerald-500/50 transition-colors"
+            >
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Start Date</span>
+              <span className="text-xs font-black text-foreground mt-0.5 block">
+                {customStartDate || "Select..."}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsCustomModalOpen(true);
+                NativeHaptics.lightTick();
+              }}
+              className="p-3 rounded-2xl bg-muted/40 border border-border/50 text-left hover:border-emerald-500/50 transition-colors"
+            >
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">End Date</span>
+              <span className="text-xs font-black text-foreground mt-0.5 block">
+                {customEndDate || "Select..."}
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Empty State */}
       {transactions.length === 0 && (
@@ -347,21 +722,18 @@ export default function AnalyticsPage() {
         </div>
       )}
 
-      {/* Smart Insights Array */}
+      {/* Smart Insights Banner */}
       <div style={{ backgroundColor: `${accentColor}1A`, borderColor: `${accentColor}30` }} className="border p-4 rounded-2xl flex items-start gap-4">
-         <div style={{ backgroundColor: accentColor, boxShadow: `0 0 15px ${accentColor}60` }} className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 mt-1 pb-0.5 shadow-soft text-white">
-            <Sparkles className="w-5 h-5"/>
-         </div>
-         <div className="flex-1 pr-2">
-            <p style={{ color: accentColor }} className="text-xs font-black uppercase tracking-wider mb-1">Smart Insights</p>
-            <p className="text-sm font-semibold text-foreground/90 leading-snug">{smartInsightText}</p>
-         </div>
+        <div style={{ backgroundColor: accentColor, boxShadow: `0 0 15px ${accentColor}60` }} className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 mt-1 pb-0.5 shadow-soft text-white">
+          <Sparkles className="w-5 h-5"/>
+        </div>
+        <div className="flex-1 pr-2">
+          <p style={{ color: accentColor }} className="text-xs font-black uppercase tracking-wider mb-1">Smart Insights</p>
+          <p className="text-sm font-semibold text-foreground/90 leading-snug">{smartInsightText}</p>
+        </div>
       </div>
 
-      {/* Monthly Receipt trigger cards — two-up grid.
-          "This Month" gives a live mid-month snapshot; "Last Month" is the
-          full close-out receipt that's also surfaced automatically on the
-          Dashboard during the first week of a new month. */}
+      {/* Monthly Receipt trigger cards */}
       {transactions.length > 0 && (
         <div className="grid grid-cols-2 gap-3">
           <button
@@ -377,23 +749,26 @@ export default function AnalyticsPage() {
               Receipt
             </p>
             <p className="text-sm font-bold text-foreground leading-tight mt-0.5">
-              This Month
+              This Month&apos;s Receipt
             </p>
           </button>
           <button
             type="button"
-            onClick={openLastMonthReceipt}
-            aria-label="Generate last month's receipt"
+            onClick={() => {
+              setIsHistoricModalOpen(true);
+              NativeHaptics.lightTick();
+            }}
+            aria-label="Browse historic receipts"
             className="bg-card p-4 rounded-2xl shadow-soft border border-border/40 text-left active:scale-[0.98] transition-transform"
           >
             <div className="w-8 h-8 rounded-xl bg-amber-500/15 flex items-center justify-center mb-2">
               <Receipt className="w-4 h-4 text-amber-500" aria-hidden="true" />
             </div>
             <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
-              Receipt
+              Archive
             </p>
             <p className="text-sm font-bold text-foreground leading-tight mt-0.5">
-              Last Month
+              Historic Receipts
             </p>
           </button>
         </div>
@@ -405,72 +780,118 @@ export default function AnalyticsPage() {
         target={receiptTarget}
       />
 
-      {/* Spending Breakdown */}
-      <div className="bg-card p-6 rounded-[2rem] shadow-heavy shadow-black/5 border border-border/40 relative">
-        <h3 className="font-bold text-foreground mb-6">Spending Category</h3>
-        <div className="flex items-center justify-center flex-col md:flex-row min-h-[350px]">
-          <div className="h-[250px] w-full relative -mt-4">
-             <div className="absolute inset-0 flex flex-col items-center justify-center">
-               <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Total</span>
-               <span className="font-black text-xl text-foreground">{formatCurrency(totalExpense)}</span>
-             </div>
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart margin={{ top: 20, right: 30, bottom: 20, left: 30 }}>
-                <Pie
-                  data={categoryData}
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                  stroke="none"
-                  labelLine={true}
-                  label={({ name, percent, x, y, textAnchor }: { name?: string; percent?: number; x?: number; y?: number; textAnchor?: "start" | "middle" | "end" | "inherit" }) => (
-                    <text x={x} y={y} textAnchor={textAnchor} dominantBaseline="central" className="fill-foreground text-[10px] font-bold">
-                      {name} ({((percent ?? 0) * 100).toFixed(0)}%)
-                    </text>
-                  )}
-                >
-                  {categoryData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  content={<PieTooltip />}
-                  allowEscapeViewBox={{ x: true, y: true }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+      {/* ─── EXPENSE BREAKDOWN VIEW (LARGE CENTERED RED PIE CHART) ──────────── */}
+      <div className="bg-card p-6 rounded-[2.5rem] shadow-heavy border border-border/40 relative space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-black text-foreground text-lg">Expense Breakdown</h3>
+            <p className="text-xs font-semibold text-muted-foreground">Distribution by category</p>
           </div>
-          
-          <div className="flex-1 space-y-3 pl-4 w-full pt-4 md:pt-0">
-            {categoryData.map(entry => (
-              <div key={entry.name} className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: entry.color }} />
-                <div>
-                   <p className="text-xs font-bold text-foreground leading-none">{entry.name}</p>
-                   <p className="text-[10px] text-muted-foreground font-semibold mt-0.5">{currency} {entry.value.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+          <span className="text-xs font-bold px-3 py-1 rounded-full bg-rose-500/10 text-rose-500 border border-rose-500/20">
+            {categoryData.length} Categories
+          </span>
+        </div>
+
+        {/* Large Centered Pie Chart */}
+        <div className="relative h-[280px] w-full flex items-center justify-center">
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Total Spent</span>
+            <span className="font-black text-2xl text-foreground mt-0.5">{formatCurrency(totalExpense)}</span>
+          </div>
+
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
+              <Pie
+                data={categoryData}
+                innerRadius={75}
+                outerRadius={105}
+                paddingAngle={4}
+                dataKey="value"
+                stroke="none"
+              >
+                {categoryData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Pie>
+              <Tooltip content={<PieTooltip />} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Category List under Pie Chart with Percentage & RM Amount */}
+        <div className="space-y-3 pt-2 border-t border-border/40">
+          <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-muted-foreground px-1">
+            <span>Category</span>
+            <span>Share & Total</span>
+          </div>
+
+          {categoryData.length === 0 ? (
+            <div className="text-center py-6 text-xs text-muted-foreground font-medium">
+              No expenses recorded for this period.
+            </div>
+          ) : (
+            categoryData.map((cat) => (
+              <div
+                key={cat.name}
+                className="p-3.5 rounded-2xl bg-muted/30 border border-border/30 space-y-2 hover:bg-muted/50 transition-colors"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div
+                      className="w-3.5 h-3.5 rounded-full shrink-0 shadow-sm"
+                      style={{ backgroundColor: cat.color }}
+                    />
+                    <span className="text-xs font-bold text-foreground truncate">{cat.name}</span>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="text-xs font-black text-foreground">{formatCurrency(cat.value)}</span>
+                    <span className="text-[11px] font-bold text-rose-500 ml-2">
+                      ({cat.percentage.toFixed(1)}%)
+                    </span>
+                  </div>
+                </div>
+
+                {/* Progress bar visual for category share */}
+                <div className="w-full h-1.5 rounded-full bg-muted/60 overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${cat.percentage}%`,
+                      backgroundColor: cat.color,
+                    }}
+                  />
                 </div>
               </div>
-            ))}
-          </div>
+            ))
+          )}
         </div>
       </div>
 
-      {/* Month over Month Chart */}
+      {/* Cash Flow Chart */}
       <div className="bg-card p-6 rounded-[2rem] shadow-soft border border-border/40">
-        <h3 className="font-bold text-foreground mb-6">Cash Flow</h3>
+        <h3 className="font-bold text-foreground mb-6">Cash Flow Trends</h3>
         <div className="w-full overflow-x-auto pb-4 hide-scrollbar">
-          <div className="h-[220px]" style={{ minWidth: `${Math.max(100, stackedCashFlow.data.length * 60)}px` }}>
+          <div className="h-[250px]" style={{ minWidth: `${Math.max(100, stackedCashFlow.data.length * 60)}px` }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={stackedCashFlow.data} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+              <BarChart data={stackedCashFlow.data} margin={{ top: 10, right: 10, left: -15, bottom: 25 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.5} />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--muted-foreground)', fontWeight: 600 }} dy={10} interval={0} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--muted-foreground)', fontWeight: 600 }} />
-                <Tooltip 
-                   content={<BarTooltip />}
-                   cursor={{ fill: 'var(--muted)', opacity: 0.2 }}
+                <XAxis
+                  dataKey="name"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 10, fill: 'var(--muted-foreground)', fontWeight: 600 }}
+                  interval="preserveStartEnd"
+                  angle={-25}
+                  textAnchor="end"
+                  height={40}
                 />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', fontWeight: 'bold', paddingTop: '10px' }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--muted-foreground)', fontWeight: 600 }} />
+                <Tooltip 
+                  content={<BarTooltip />}
+                  cursor={{ fill: 'var(--muted)', opacity: 0.2 }}
+                  wrapperStyle={{ zIndex: 1000 }}
+                  allowEscapeViewBox={{ x: true, y: true }}
+                />
                 {stackedCashFlow.categories.map((cat, i) => (
                   <Bar key={cat} dataKey={cat} stackId="a" fill={stackedCashFlow.colors[i % stackedCashFlow.colors.length]} radius={ i === stackedCashFlow.categories.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0] } maxBarSize={20} />
                 ))}
@@ -505,7 +926,6 @@ export default function AnalyticsPage() {
               </BarChart>
             </ResponsiveContainer>
           </div>
-          {/* Account breakdown legend */}
           <div className="flex flex-wrap gap-3 pt-1">
             {incomeByAccount.map((entry, i) => (
               <div key={entry.account} className="flex items-center gap-2">
@@ -521,7 +941,7 @@ export default function AnalyticsPage() {
       )}
 
       {/* Velocity Projection Chart */}
-      {timeFilter === "Month" && velocityData.totalSoFar > 0 && (
+      {timeFilter === "MONTH" && velocityData.totalSoFar > 0 && (
         <div className="bg-card p-6 rounded-[2rem] shadow-soft border border-border/40 space-y-4">
           <div>
             <h3 className="font-bold text-foreground">Spending Velocity</h3>
@@ -532,9 +952,6 @@ export default function AnalyticsPage() {
               {formatCurrency(velocityData.projectedTotal)}
             </p>
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mt-0.5">end-of-month projection</p>
-            {/* Transparency line — tells the user what's being left out of
-                the velocity calc and why. Without this the number looks
-                arbitrary; with it, the rule is legible. */}
             <p className="text-[10px] font-medium text-muted-foreground/80 mt-3 leading-snug">
               {velocityData.excludedCount > 0 ? (
                 <>
@@ -596,32 +1013,413 @@ export default function AnalyticsPage() {
           </div>
         </div>
       )}
-      
-      {/* Recurring Costs Summary (managed in Financial Planning) */}
-      {(subscriptions.length > 0 || utilities.length > 0) && (
-        <div className="bg-card p-5 rounded-[2rem] shadow-soft border border-border/40 space-y-3">
-          <h3 className="font-bold text-foreground text-sm">Recurring Costs</h3>
-          {subscriptions.length > 0 && (
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-muted-foreground font-medium">Subscriptions ({subscriptions.length})</span>
-              <span className="text-sm font-bold text-foreground">{formatCurrency(subscriptions.reduce((s, sub) => s + sub.cost, 0))}</span>
+        </>
+      ) : (
+        /* ─── COMPARE TAB VIEW ───────────────────────────────────────────────── */
+        <div className="space-y-6 animate-in fade-in duration-300">
+          {/* 1. Comparison Header & Preset Selector */}
+          <div className="bg-card p-4 rounded-3xl border border-border/40 shadow-soft space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-foreground text-sm">Compare Timeframes</h3>
+              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-500 border border-rose-500/20">
+                Variance Analysis
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { id: "MONTH", label: "Month vs Month" },
+                { id: "QUARTER", label: "Quarter vs Quarter" },
+                { id: "CUSTOM", label: "Custom Range" },
+              ].map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => {
+                    setComparePreset(preset.id as any);
+                    NativeHaptics.lightTick();
+                  }}
+                  className={`py-2 px-2 rounded-2xl text-xs font-bold transition-all text-center border ${
+                    comparePreset === preset.id
+                      ? "bg-rose-500 text-white border-rose-500 shadow-md scale-[1.02]"
+                      : "bg-muted/40 border-border/50 text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Custom Date Selection Controls for Compare Tab */}
+          {comparePreset === "CUSTOM" && (
+            <div className="bg-card p-4 rounded-3xl border border-border/40 shadow-soft space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                <CalendarIcon className="w-3.5 h-3.5 text-rose-500" />
+                Custom Compare Ranges
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* Period A Selector Card */}
+                <div className="p-3.5 rounded-2xl bg-muted/30 border border-border/40 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-foreground">Period A Range</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCompareAModalOpen(true);
+                        NativeHaptics.lightTick();
+                      }}
+                      className="text-xs font-bold px-3 py-1 rounded-full bg-rose-500/10 text-rose-500 border border-rose-500/20 hover:bg-rose-500/20 transition-colors flex items-center gap-1.5"
+                    >
+                      <CalendarIcon className="w-3.5 h-3.5" />
+                      {comparePeriodAStart && comparePeriodAEnd ? "Change Period A" : "Set Period A"}
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-left">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCompareAModalOpen(true);
+                        NativeHaptics.lightTick();
+                      }}
+                      className="p-2.5 rounded-xl bg-background/60 border border-border/40 hover:border-rose-500/50 transition-colors text-left"
+                    >
+                      <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">Start Date</span>
+                      <span className="text-xs font-black text-foreground mt-0.5 block">{comparePeriodAStart || "Select..."}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCompareAModalOpen(true);
+                        NativeHaptics.lightTick();
+                      }}
+                      className="p-2.5 rounded-xl bg-background/60 border border-border/40 hover:border-rose-500/50 transition-colors text-left"
+                    >
+                      <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">End Date</span>
+                      <span className="text-xs font-black text-foreground mt-0.5 block">{comparePeriodAEnd || "Select..."}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Period B Selector Card */}
+                <div className="p-3.5 rounded-2xl bg-muted/30 border border-border/40 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-foreground">Period B Range</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCompareBModalOpen(true);
+                        NativeHaptics.lightTick();
+                      }}
+                      className="text-xs font-bold px-3 py-1 rounded-full bg-rose-500/10 text-rose-500 border border-rose-500/20 hover:bg-rose-500/20 transition-colors flex items-center gap-1.5"
+                    >
+                      <CalendarIcon className="w-3.5 h-3.5" />
+                      {comparePeriodBStart && comparePeriodBEnd ? "Change Period B" : "Set Period B"}
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-left">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCompareBModalOpen(true);
+                        NativeHaptics.lightTick();
+                      }}
+                      className="p-2.5 rounded-xl bg-background/60 border border-border/40 hover:border-rose-500/50 transition-colors text-left"
+                    >
+                      <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">Start Date</span>
+                      <span className="text-xs font-black text-foreground mt-0.5 block">{comparePeriodBStart || "Select..."}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCompareBModalOpen(true);
+                        NativeHaptics.lightTick();
+                      }}
+                      className="p-2.5 rounded-xl bg-background/60 border border-border/40 hover:border-rose-500/50 transition-colors text-left"
+                    >
+                      <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">End Date</span>
+                      <span className="text-xs font-black text-foreground mt-0.5 block">{comparePeriodBEnd || "Select..."}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
-          {utilities.length > 0 && (
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-muted-foreground font-medium">Utilities ({utilities.length})</span>
-              <span className="text-sm font-bold text-foreground">{formatCurrency(utilities.reduce((s, u) => s + u.cost, 0))}</span>
+
+          {/* 2. High-Level Summary Card */}
+          <div className="bg-card p-6 rounded-[2.5rem] border border-border/40 shadow-heavy space-y-4 relative overflow-hidden">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+                Total Spend Comparison
+              </span>
+              <span className={`text-xs font-black px-3 py-1 rounded-full flex items-center gap-1 ${
+                comparisonData.netDiff > 0
+                  ? "bg-rose-500/10 text-rose-500 border border-rose-500/20"
+                  : comparisonData.netDiff < 0
+                  ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
+                  : "bg-muted text-muted-foreground"
+              }`}>
+                {comparisonData.netDiff > 0
+                  ? `+${formatCurrency(comparisonData.netDiff)} (+${comparisonData.pctChange.toFixed(1)}%) 📈`
+                  : comparisonData.netDiff < 0
+                  ? `-${formatCurrency(Math.abs(comparisonData.netDiff))} (${comparisonData.pctChange.toFixed(1)}%) 📉`
+                  : "0.0%"}
+              </span>
             </div>
-          )}
-          <div className="pt-2 border-t border-border/40 flex justify-between items-center">
-            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Total Monthly</span>
-            <span className="text-sm font-black text-foreground">
-              {formatCurrency(subscriptions.reduce((s, sub) => s + sub.cost, 0) + utilities.reduce((s, u) => s + u.cost, 0))}
-            </span>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3.5 rounded-2xl bg-muted/30 border border-border/40">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
+                  Period A: {comparisonData.labelA}
+                </span>
+                <p className="text-lg font-black text-foreground mt-0.5">
+                  {formatCurrency(comparisonData.totalA)}
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-muted/30 border border-border/40">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
+                  Period B: {comparisonData.labelB}
+                </span>
+                <p className="text-lg font-black text-foreground mt-0.5">
+                  {formatCurrency(comparisonData.totalB)}
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-border/40 flex items-center justify-between">
+              <span className="text-xs font-bold text-muted-foreground">Net Variance ($\Delta$)</span>
+              <span className={`text-base font-black ${
+                comparisonData.netDiff > 0 ? "text-rose-500" : comparisonData.netDiff < 0 ? "text-emerald-500" : "text-foreground"
+              }`}>
+                {comparisonData.netDiff > 0 ? `+${formatCurrency(comparisonData.netDiff)}` : comparisonData.netDiff < 0 ? `-${formatCurrency(Math.abs(comparisonData.netDiff))}` : formatCurrency(0)}
+              </span>
+            </div>
+          </div>
+
+          {/* 3. Top Spending Drivers Insight Card */}
+          <div className="bg-card p-6 rounded-[2.5rem] border border-border/40 shadow-soft space-y-4">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2.5 rounded-2xl bg-rose-500/10 text-rose-500">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-black text-foreground text-base">Top Spending Drivers</h3>
+                <p className="text-[11px] font-semibold text-muted-foreground">Categories driving expense growth</p>
+              </div>
+            </div>
+
+            {comparisonData.topDrivers.length > 0 ? (
+              <div className="space-y-3 pt-1">
+                {comparisonData.topDrivers.map((driver) => (
+                  <div key={driver.category} className="p-4 rounded-2xl bg-muted/20 border border-border/40 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: getCategoryColor(driver.category) }} />
+                        <span className="font-bold text-sm text-foreground">{driver.category}</span>
+                      </div>
+                      <span className="text-xs font-black text-rose-500">
+                        +{formatCurrency(driver.delta)} (+{driver.pct.toFixed(1)}%)
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground font-medium leading-relaxed">
+                      {driver.insightText}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-center space-y-1">
+                <p className="text-xs font-bold text-emerald-400">Great Financial Discipline! 🎉</p>
+                <p className="text-xs text-muted-foreground font-medium">
+                  Your overall spending did not increase in Period B compared to Period A. No category contributed to expense growth.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* 4. Category Comparison Table */}
+          <div className="bg-card p-6 rounded-[2.5rem] border border-border/40 shadow-soft space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-black text-foreground text-base">Category Comparison</h3>
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                Sorted by Highest Increase
+              </span>
+            </div>
+
+            <div className="overflow-x-auto rounded-2xl border border-border/40 hide-scrollbar">
+              <table className="w-full text-xs">
+                <thead className="bg-muted/50 border-b border-border/40">
+                  <tr>
+                    <th className="text-left p-3 font-bold text-muted-foreground uppercase tracking-wider">Category</th>
+                    <th className="text-right p-3 font-bold text-muted-foreground uppercase tracking-wider">Period A</th>
+                    <th className="text-right p-3 font-bold text-muted-foreground uppercase tracking-wider">Period B</th>
+                    <th className="text-right p-3 font-bold text-muted-foreground uppercase tracking-wider">Variance ($\Delta$)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/30">
+                  {comparisonData.categoryRows.map((row) => (
+                    <tr key={row.category} className="hover:bg-muted/20 transition-colors">
+                      <td className="p-3 font-bold text-foreground">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: getCategoryColor(row.category) }} />
+                          <span className="truncate max-w-[100px]">{row.category}</span>
+                        </div>
+                      </td>
+                      <td className="p-3 text-right font-medium text-muted-foreground">{formatCurrency(row.costA)}</td>
+                      <td className="p-3 text-right font-semibold text-foreground">{formatCurrency(row.costB)}</td>
+                      <td className="p-3 text-right font-black">
+                        <span className={row.delta > 0 ? "text-rose-500" : row.delta < 0 ? "text-emerald-500" : "text-muted-foreground"}>
+                          {row.delta > 0 ? `+${formatCurrency(row.delta)}` : row.delta < 0 ? `-${formatCurrency(Math.abs(row.delta))}` : formatCurrency(0)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {comparisonData.categoryRows.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="text-center p-6 text-muted-foreground font-semibold">
+                        No category expense data found for selected periods.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
 
+      {/* Custom Date Range Picker Modal for Overview */}
+      <CustomDateRangeModal
+        isOpen={isCustomModalOpen}
+        startDate={customStartDate}
+        endDate={customEndDate}
+        onClose={() => setIsCustomModalOpen(false)}
+        onApply={(start, end) => {
+          setCustomStartDate(start);
+          setCustomEndDate(end);
+          setIsCustomModalOpen(false);
+        }}
+      />
+
+      {/* Custom Date Range Modal for Compare Period A */}
+      <CustomDateRangeModal
+        isOpen={isCompareAModalOpen}
+        startDate={comparePeriodAStart}
+        endDate={comparePeriodAEnd}
+        onClose={() => setIsCompareAModalOpen(false)}
+        onApply={(start, end) => {
+          setComparePeriodAStart(start);
+          setComparePeriodAEnd(end);
+          setIsCompareAModalOpen(false);
+        }}
+      />
+
+      {/* Custom Date Range Modal for Compare Period B */}
+      <CustomDateRangeModal
+        isOpen={isCompareBModalOpen}
+        startDate={comparePeriodBStart}
+        endDate={comparePeriodBEnd}
+        onClose={() => setIsCompareBModalOpen(false)}
+        onApply={(start, end) => {
+          setComparePeriodBStart(start);
+          setComparePeriodBEnd(end);
+          setIsCompareBModalOpen(false);
+        }}
+      />
+
+      {/* Historic Receipts Selection Modal */}
+      <AnimatePresence>
+        {isHistoricModalOpen && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsHistoricModalOpen(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              className="relative z-10 w-full max-w-sm bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl p-5 space-y-4 text-white overflow-hidden"
+            >
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div>
+                  <h3 className="font-black text-white text-base">Historic Receipts</h3>
+                  <p className="text-[11px] text-slate-400 font-semibold mt-0.5">
+                    Select a month to view or export receipt
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsHistoricModalOpen(false)}
+                  className="p-1.5 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="max-h-[320px] overflow-y-auto space-y-2 pr-1 hide-scrollbar">
+                {availableHistoricMonths.map(item => {
+                  const label = `${MONTH_NAMES[item.month]} ${item.year}`;
+                  const isCurrent = item.year === now.getFullYear() && item.month === now.getMonth();
+
+                  return (
+                    <button
+                      key={`${item.year}-${item.month}`}
+                      type="button"
+                      onClick={() => {
+                        setIsHistoricModalOpen(false);
+                        setReceiptTarget({ year: item.year, month: item.month });
+                        setShowReceipt(true);
+                        NativeHaptics.lightTick();
+                      }}
+                      className="w-full p-3 rounded-2xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 flex items-center justify-between transition-colors text-left group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center font-bold text-xs">
+                          <Receipt className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-white flex items-center gap-1.5">
+                            {label}
+                            {isCurrent && (
+                              <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Current</span>
+                            )}
+                          </p>
+                          <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                            {item.count > 0 ? `${item.count} expenses logged` : "No expenses"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-xs font-black text-amber-400">
+                          {formatCurrency(item.total)}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsHistoricModalOpen(false)}
+                className="w-full py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition-colors"
+              >
+                Close
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
-  )
+  );
 }

@@ -32,6 +32,7 @@ export type Subscription = {
   sourceAccount?: string;
   type?: string;
   user_id?: string;
+  lastPaidMonth?: string;
 };
 
 export type Transaction = {
@@ -92,16 +93,7 @@ export type AssetLog = {
   cost: number;
 };
 
-export type TradeItem = {
-  id: string;
-  item_name: string;
-  buy_price: number;
-  sell_price: number | null;
-  status: "held" | "sold";
-  date_acquired: string;
-  date_sold: string | null;
-  user_id?: string;
-};
+
 
 export type Account = {
   name: string;
@@ -132,7 +124,8 @@ export type RawSubscriptionRow = {
   billing_day?: number;
   source_account?: string;
   auto_deduct?: boolean;
-  type: "subscription" | "utility";
+  type: "subscription" | "fixed_bill" | "utility" | "bill";
+  last_paid_month?: string;
   created_at?: string;
 };
 
@@ -166,7 +159,7 @@ export type ConfirmState = {
 // A single cached deleted item (for shake-to-undo).
 // `item` is intentionally `unknown` here — each caller knows its own shape.
 export type DeletedItemCache = {
-  type: "transaction" | "goal" | "trade" | "asset";
+  type: "transaction" | "goal" | "asset";
   item: unknown;
   timeout: ReturnType<typeof setTimeout>;
 };
