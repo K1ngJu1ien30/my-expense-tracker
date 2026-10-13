@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Fingerprint, Delete, ShieldCheck } from "lucide-react";
 import { useAppContext } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
+import { getUserPinKey, LEGACY_PIN_KEY } from "@/lib/cacheKeys";
 
 async function isNative(): Promise<boolean> {
   try {
@@ -15,27 +16,46 @@ async function isNative(): Promise<boolean> {
   }
 }
 
-async function getStoredPin(): Promise<string | null> {
+async function getStoredPin(userId?: string): Promise<string | null> {
+  const pinKey = getUserPinKey(userId);
   try {
     if (await isNative()) {
       const { Preferences } = await import("@capacitor/preferences");
-      const { value } = await Preferences.get({ key: "app_lock_pin" });
+      let { value } = await Preferences.get({ key: pinKey });
+      if (!value && userId) {
+        const legacy = await Preferences.get({ key: LEGACY_PIN_KEY });
+        if (legacy?.value) {
+          value = legacy.value;
+          await Preferences.set({ key: pinKey, value });
+        }
+      }
       return value;
     }
   } catch {}
-  if (typeof window !== "undefined") return localStorage.getItem("app_lock_pin");
+  if (typeof window !== "undefined") {
+    let val = localStorage.getItem(pinKey);
+    if (!val && userId) {
+      const legacy = localStorage.getItem(LEGACY_PIN_KEY);
+      if (legacy) {
+        val = legacy;
+        localStorage.setItem(pinKey, legacy);
+      }
+    }
+    return val;
+  }
   return null;
 }
 
-async function setStoredPin(pin: string): Promise<void> {
+async function setStoredPin(pin: string, userId?: string): Promise<void> {
+  const pinKey = getUserPinKey(userId);
   try {
     if (await isNative()) {
       const { Preferences } = await import("@capacitor/preferences");
-      await Preferences.set({ key: "app_lock_pin", value: pin });
+      await Preferences.set({ key: pinKey, value: pin });
       return;
     }
   } catch {}
-  if (typeof window !== "undefined") localStorage.setItem("app_lock_pin", pin);
+  if (typeof window !== "undefined") localStorage.setItem(pinKey, pin);
 }
 
 async function tryBiometric(): Promise<boolean> {
@@ -117,7 +137,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   };
 
   const verifyPin = async (pin: string) => {
-    const stored = await getStoredPin();
+    const stored = await getStoredPin(session?.user?.id);
     if (stored && pin === stored) {
       unlock();
       NativeHaptics.successMedium();

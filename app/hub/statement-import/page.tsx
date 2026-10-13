@@ -7,6 +7,7 @@ import { useAppContext } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
 import type { Transaction } from "@/lib/types";
 import CustomSelect from "@/components/CustomSelect";
+import { roundCurrency } from "@/lib/utils";
 
 export const STATEMENT_PROMPT_STRING = `Parse the uploaded bank statement(s) into JSON. One or more files may be attached.
 
@@ -191,11 +192,16 @@ export default function StatementImportPage() {
         account?: string;
       }
 
-      const mappedItems: ParsedImportItem[] = (rawTxs as RawStatementRow[]).map((row, idx) => {
+      const mappedItems: ParsedImportItem[] = [];
+      (rawTxs as RawStatementRow[]).forEach((row, idx) => {
         const rawAmount = Number(row.amount || 0);
+        if (isNaN(rawAmount) || !isFinite(rawAmount) || rawAmount === 0) {
+          return;
+        }
         // Negative amount = Expense, Positive amount = Income
         const isExpense = rawAmount < 0;
-        const absAmount = Math.abs(rawAmount);
+        const absAmount = roundCurrency(Math.abs(rawAmount));
+        if (absAmount <= 0) return;
 
         const desc = (row.description || "Statement Transaction").trim();
         const cat = isExpense
@@ -214,7 +220,7 @@ export default function StatementImportPage() {
           }
         }
 
-        return {
+        mappedItems.push({
           id: `import-${idx}-${Date.now()}`,
           date: dateStr,
           note: desc,
@@ -223,8 +229,13 @@ export default function StatementImportPage() {
           category: cat,
           account: acc,
           selected: true,
-        };
+        });
       });
+
+      if (mappedItems.length === 0) {
+        setParseError("No valid, non-zero transactions found in the parsed data.");
+        return;
+      }
 
       setParsedItems(mappedItems);
       NativeHaptics.successMedium();

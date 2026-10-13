@@ -38,6 +38,36 @@ export async function getOfflineQueue(): Promise<Partial<Transaction>[]> {
 }
 
 /**
+ * Retrieve offline transactions belonging specifically to the given user.
+ * If legacy transactions exist without a user_id, they are safely claimed
+ * by the current user so they are not lost.
+ */
+export async function getOfflineQueueForUser(userId: string): Promise<Partial<Transaction>[]> {
+  if (!userId) return [];
+  return withQueueLock(async () => {
+    const queue = (await localforage.getItem<Partial<Transaction>[]>(OFFLINE_QUEUE_KEY)) || [];
+    let updated = false;
+
+    const userQueue = queue.filter(tx => {
+      if (tx.user_id === userId) return true;
+      if (!tx.user_id) {
+        // Cautiously assign legacy un-owned offline transaction to current authenticated user
+        tx.user_id = userId;
+        updated = true;
+        return true;
+      }
+      return false;
+    });
+
+    if (updated) {
+      await localforage.setItem(OFFLINE_QUEUE_KEY, queue);
+    }
+
+    return userQueue;
+  });
+}
+
+/**
  * Safely removes ONLY the successfully acknowledged transactions from the queue.
  * Any transactions added concurrently during sync, or transactions that failed to upload,
  * remain securely in the queue.

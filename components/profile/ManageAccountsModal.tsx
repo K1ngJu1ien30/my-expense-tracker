@@ -46,7 +46,17 @@ export function ManageAccountsModal({
 
   const submitNew = () => {
     const name = newAccount.trim();
-    if (!name) return;
+    if (!name) {
+      triggerToast("⚠️ Account name cannot be empty.");
+      return;
+    }
+    const isDuplicate = accountObjects.some(
+      (a) => a.name.trim().toLowerCase() === name.toLowerCase()
+    );
+    if (isDuplicate) {
+      triggerToast(`⚠️ An account named "${name}" already exists.`);
+      return;
+    }
     addAccount(name, newAccountCurrency);
     triggerToast(`"${name}" added!`);
     setNewAccount("");
@@ -55,7 +65,21 @@ export function ManageAccountsModal({
 
   const commitRename = (oldName: string) => {
     const next = editingAccountVal.trim();
-    if (!next) return;
+    if (!next) {
+      triggerToast("⚠️ Account name cannot be empty.");
+      return;
+    }
+    if (next.toLowerCase() === oldName.trim().toLowerCase()) {
+      setEditingAccount(null);
+      return;
+    }
+    const isDuplicate = accountObjects.some(
+      (a) => a.name.trim().toLowerCase() === next.toLowerCase() && a.name !== oldName
+    );
+    if (isDuplicate) {
+      triggerToast(`⚠️ An account named "${next}" already exists.`);
+      return;
+    }
     renameAccount(oldName, next);
     setEditingAccount(null);
     triggerToast("Account renamed!");

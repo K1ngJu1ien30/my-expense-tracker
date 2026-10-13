@@ -9,6 +9,7 @@ import type { Transaction, Subscription, TransactionSaveResult } from "../types"
 import type { DeletedItemCache } from "../types";
 import { learn, loadModel, saveModel } from "../categoryPredictor";
 import { enqueueOfflineTx } from "../offlineQueue";
+import { roundCurrency } from "../utils";
 
 /** Threshold above which an income/expense triggers the 🐋 whale alert. */
 const WHALE_THRESHOLD = 5000;
@@ -56,6 +57,57 @@ export type MoneyStateDeps = {
  * `refreshData` orchestrator can populate these collections after a
  * successful Supabase fetch.
  */
+/**
+ * Strict financial and logical validation for transaction payloads.
+ * Protects against zero/negative amounts, IEEE floating drift, invalid dates,
+ * missing accounts, and invalid transfer source/destinations.
+ */
+export function validateTransactionInput(tx: Partial<Transaction>): { valid: boolean; error?: string } {
+  if (tx.amount === undefined || tx.amount === null) {
+    return { valid: false, error: "Amount is required." };
+  }
+  const numAmount = Number(tx.amount);
+  if (isNaN(numAmount) || !isFinite(numAmount) || numAmount <= 0) {
+    return { valid: false, error: "Amount must be a valid positive number." };
+  }
+  if (numAmount > 999999999.99) {
+    return { valid: false, error: "Amount exceeds maximum supported limit." };
+  }
+
+  const validTypes = ["Expense", "Income", "Transfer"];
+  if (!tx.type || !validTypes.includes(tx.type)) {
+    return { valid: false, error: "Invalid transaction type." };
+  }
+
+  if (!tx.account || typeof tx.account !== "string" || !tx.account.trim()) {
+    return { valid: false, error: "An account must be selected." };
+  }
+
+  if (tx.type === "Transfer") {
+    if (!tx.to_account || typeof tx.to_account !== "string" || !tx.to_account.trim()) {
+      return { valid: false, error: "Destination account is required for transfers." };
+    }
+    if (tx.account.trim().toLowerCase() === tx.to_account.trim().toLowerCase()) {
+      return { valid: false, error: "Source and destination accounts cannot be the same." };
+    }
+  }
+
+  if (tx.type === "Expense") {
+    if (!tx.category || typeof tx.category !== "string" || !tx.category.trim()) {
+      return { valid: false, error: "A category must be selected for expenses." };
+    }
+  }
+
+  if (tx.date) {
+    const d = new Date(tx.date);
+    if (isNaN(d.getTime())) {
+      return { valid: false, error: "Invalid transaction date." };
+    }
+  }
+
+  return { valid: true };
+}
+
 export function useMoneyState(deps: MoneyStateDeps) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -68,18 +120,32 @@ export function useMoneyState(deps: MoneyStateDeps) {
 
   const addTransaction = useCallback(
     async (tx: Partial<Transaction>): Promise<TransactionSaveResult> => {
+      const validation = validateTransactionInput(tx);
+      if (!validation.valid) {
+        return {
+          success: false,
+          error: validation.error || "Invalid transaction input",
+        };
+      }
+
+      const sanitizedAmount = roundCurrency(Number(tx.amount));
       // Client-generated UUID makes the upsert idempotent — safe to retry.
       const clientId = crypto.randomUUID();
-      const txWithId = { ...tx, id: clientId };
+      const txWithId = {
+        ...tx,
+        amount: sanitizedAmount,
+        id: clientId,
+        date: tx.date ? new Date(tx.date).toISOString() : new Date().toISOString(),
+      };
 
       // Teach the category predictor after any successful add. Only expenses
       // with a non-empty note contribute useful signal — transfers/income are
       // structural, not learned.
       const teachPredictor = async () => {
         if (tx.type !== "Expense" || !tx.note || !tx.category) return;
-        const model = await loadModel();
+        const model = await loadModel(session?.user?.id);
         learn(model, tx.note, tx.category);
-        await saveModel(model);
+        await saveModel(model, session?.user?.id);
       };
 
       // Offline queue path: push to IndexedDB, then sync when network returns.
@@ -179,10 +245,33 @@ export function useMoneyState(deps: MoneyStateDeps) {
 
   const updateTransaction = useCallback(
     async (id: string, patch: Partial<Transaction>): Promise<{ success: boolean; error?: string }> => {
+      const cleanPatch = { ...patch };
+      if (cleanPatch.amount !== undefined) {
+        const num = Number(cleanPatch.amount);
+        if (isNaN(num) || !isFinite(num) || num <= 0) {
+          return { success: false, error: "Amount must be a valid positive number." };
+        }
+        if (num > 999999999.99) {
+          return { success: false, error: "Amount exceeds maximum supported limit." };
+        }
+        cleanPatch.amount = roundCurrency(num);
+      }
+      if (cleanPatch.date !== undefined) {
+        if (isNaN(new Date(cleanPatch.date).getTime())) {
+          return { success: false, error: "Invalid transaction date." };
+        }
+        cleanPatch.date = new Date(cleanPatch.date).toISOString();
+      }
+      if (cleanPatch.type === "Transfer" && cleanPatch.account && cleanPatch.to_account) {
+        if (cleanPatch.account.trim().toLowerCase() === cleanPatch.to_account.trim().toLowerCase()) {
+          return { success: false, error: "Source and destination accounts cannot be the same." };
+        }
+      }
+
       try {
         const { data, error } = await supabase
           .from("transactions")
-          .update(patch)
+          .update(cleanPatch)
           .eq("id", id)
           .select()
           .single();

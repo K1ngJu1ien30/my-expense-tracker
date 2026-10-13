@@ -183,6 +183,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     deleteAccount,
     toggleArchiveAccount,
     reorderAccounts,
+    resetAccountsState,
     categories,
     setCategoriesRaw,
     setCategories,
@@ -567,6 +568,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       refreshData(session.user).finally(() => setIsHydrating(false));
     } else {
        prefs.resetPreferences();
+       resetAccountsState();
        setTransactions([]);
        setGoals([]);
        setSubscriptions([]);

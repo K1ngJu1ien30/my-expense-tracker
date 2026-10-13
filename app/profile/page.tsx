@@ -140,12 +140,15 @@ export default function ProfilePage() {
 
   const handlePinSuccess = async (pin: string) => {
     try {
-      await setStoredPin(pin);
+      await setStoredPin(pin, session?.user?.id);
     } catch {
       // setStoredPin already falls back to localStorage internally; if even
       // that fails (private mode, quota), persist the bare minimum so the
       // PIN flag isn't enabled with no stored value.
-      try { localStorage.setItem("app_lock_pin", pin); } catch {}
+      try {
+        const pinKey = session?.user?.id ? `app_lock_pin_${session.user.id}` : "app_lock_pin";
+        localStorage.setItem(pinKey, pin);
+      } catch {}
     }
     togglePin(true);
     setShowPinSetup(false);
@@ -773,6 +776,7 @@ export default function ProfilePage() {
             addCategory={addCategory}
             deleteCategory={deleteCategory}
             accentColor={accentColor}
+            triggerToast={triggerToast}
             onClose={() => setShowCategoriesModal(false)}
           />
         )}

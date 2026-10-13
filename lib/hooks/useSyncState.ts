@@ -6,7 +6,8 @@ import localforage from "localforage";
 import { supabase } from "../supabase";
 import { migrateAccounts } from "./useAccountsState";
 import { loadModel, rebuildFromHistory } from "../categoryPredictor";
-import { getOfflineQueue, removeAcknowledgedOfflineTxs } from "../offlineQueue";
+import { getOfflineQueueForUser, removeAcknowledgedOfflineTxs } from "../offlineQueue";
+import { getUserDataCacheKey, migrateLegacyCacheToUser } from "../cacheKeys";
 import type {
   Account,
   Asset,
@@ -220,8 +221,8 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
         });
 
         // ─── Commit to state ──────────────────────────────────────────────
-        // Merge any uncommitted offline queue items that haven't synced yet
-        const pendingOffline = await getOfflineQueue();
+        // Merge any uncommitted offline queue items belonging to this user
+        const pendingOffline = await getOfflineQueueForUser(currentUser.id);
         const cloudIds = new Set(parsedTransactions.map(t => t.id));
         const uncommittedOffline = pendingOffline
           .filter(t => t.id && !cloudIds.has(t.id))
@@ -242,9 +243,9 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
         // subsequent (note, category) pairs are learned incrementally inside
         // `useMoneyState.addTransaction`, so we only pay this cost once.
         try {
-          const existing = await loadModel();
+          const existing = await loadModel(currentUser.id);
           if (Object.keys(existing).length === 0 && parsedTransactions.length > 0) {
-            await rebuildFromHistory(parsedTransactions);
+            await rebuildFromHistory(parsedTransactions, currentUser.id);
           }
         } catch {
           /* predictor is a pure enhancement — never fail refresh over it */
@@ -262,9 +263,15 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
           accounts: savedAccounts,
           categories: s.categoriesRef.current,
         };
+        const userCacheKey = getUserDataCacheKey(currentUser.id);
         try {
-          await localforage.setItem("tracker_data_cache", cachePayload);
-          console.log("[refreshData] Cache saved successfully.");
+          await localforage.setItem(userCacheKey, cachePayload);
+          if (typeof window !== "undefined") {
+            try {
+              localStorage.setItem(userCacheKey, JSON.stringify(cachePayload));
+            } catch {}
+          }
+          console.log("[refreshData] Cache saved successfully for user:", currentUser.id);
         } catch (storageErr) {
           console.warn("[refreshData] localforage.setItem failed:", storageErr);
         }
@@ -272,9 +279,11 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
         console.log("[refreshData] Network error caught. Attempting to read cache...", err);
         s.setAccountObjects(savedAccounts);
 
-        // ─── Offline cold-boot hydration from cache ──────────────────────
+        // ─── Offline cold-boot hydration from user-scoped cache ──────────
         try {
-          const data = (await localforage.getItem("tracker_data_cache")) as
+          await migrateLegacyCacheToUser(currentUser.id);
+          const userCacheKey = getUserDataCacheKey(currentUser.id);
+          const data = (await localforage.getItem(userCacheKey)) as
             | {
                 transactions?: Transaction[];
                 goals?: Goal[];
@@ -299,8 +308,8 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
             if (data.accounts) s.setAccountObjects(migrateAccounts(data.accounts));
             if (data.categories?.length) s.setCategories(data.categories);
 
-            // Prepend any pending offline transactions so the balance stays accurate
-            const offlineQueue = await getOfflineQueue();
+            // Prepend any pending offline transactions belonging to this user
+            const offlineQueue = await getOfflineQueueForUser(currentUser.id);
             if (offlineQueue && offlineQueue.length > 0) {
               const offlineTxs = offlineQueue.map((tx, i) => ({
                 ...tx,
@@ -339,7 +348,7 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
     }
     isSyncingRef.current = true;
     try {
-      const queue = await getOfflineQueue();
+      const queue = await getOfflineQueueForUser(session.user.id);
       if (!queue || queue.length === 0) return;
 
       const acknowledgedIds = new Set<string>();

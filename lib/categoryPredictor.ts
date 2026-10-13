@@ -22,11 +22,10 @@
 
 import localforage from "localforage";
 import type { Transaction } from "./types";
+import { getUserPredictorKey, LEGACY_PREDICTOR_KEY } from "./cacheKeys";
 
 /** Shape: token → { category → occurrence count } */
 export type PredictorModel = Record<string, Record<string, number>>;
-
-const STORAGE_KEY = "category_predictor_v1";
 
 /** Stop-words too generic to carry predictive signal. */
 const STOP_WORDS = new Set([
@@ -55,20 +54,31 @@ export function tokenise(note: string): string[] {
     .filter((t) => t.length >= 2 && !STOP_WORDS.has(t));
 }
 
-/** Load the persisted model, or an empty one if absent. */
-export async function loadModel(): Promise<PredictorModel> {
+/** Load the persisted model for a user, or an empty one if absent. */
+export async function loadModel(userId?: string): Promise<PredictorModel> {
+  const key = getUserPredictorKey(userId);
   try {
-    const stored = await localforage.getItem<PredictorModel>(STORAGE_KEY);
+    let stored = await localforage.getItem<PredictorModel>(key);
+    if (!stored && userId) {
+      // Migrate from legacy un-scoped key if exists
+      const legacy = await localforage.getItem<PredictorModel>(LEGACY_PREDICTOR_KEY);
+      if (legacy) {
+        stored = legacy;
+        await localforage.setItem(key, legacy);
+        await localforage.removeItem(LEGACY_PREDICTOR_KEY);
+      }
+    }
     return stored || {};
   } catch {
     return {};
   }
 }
 
-/** Persist the model to IndexedDB. Swallows errors silently. */
-export async function saveModel(model: PredictorModel): Promise<void> {
+/** Persist the model to IndexedDB for a user. Swallows errors silently. */
+export async function saveModel(model: PredictorModel, userId?: string): Promise<void> {
+  const key = getUserPredictorKey(userId);
   try {
-    await localforage.setItem(STORAGE_KEY, model);
+    await localforage.setItem(key, model);
   } catch {
     /* swallow */
   }
@@ -101,14 +111,14 @@ export function learn(
  * Only expense transactions with a note contribute signal — transfers and
  * income are excluded because their categories are structural, not learned.
  */
-export async function rebuildFromHistory(txs: Transaction[]): Promise<PredictorModel> {
+export async function rebuildFromHistory(txs: Transaction[], userId?: string): Promise<PredictorModel> {
   const model: PredictorModel = {};
   for (const tx of txs) {
     if (tx.type !== "Expense") continue;
     if (tx.deleted_at) continue;
     learn(model, tx.note, tx.category);
   }
-  await saveModel(model);
+  await saveModel(model, userId);
   return model;
 }
 

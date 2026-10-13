@@ -175,7 +175,7 @@ function OptionChip({
 }
 
 export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const { categories, triggerToast, accentColor, addTransaction, updateTransaction, transactions, editTransactionId, setEditTransactionId, accounts, currency, exchangeRates, triggerDerry } = useAppContext();
+  const { categories, triggerToast, accentColor, addTransaction, updateTransaction, transactions, editTransactionId, setEditTransactionId, accounts, currency, exchangeRates, triggerDerry, session } = useAppContext();
 
   const [txType, setTxType] = useState<TxType>("Expense");
   const [modalCurrency, setModalCurrency] = useState(currency);
@@ -344,8 +344,8 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
   // so freshly-learned associations from the previous save are available.
   useEffect(() => {
     if (!isActuallyOpen) return;
-    loadModel().then(setPredictorModel).catch(() => setPredictorModel({}));
-  }, [isActuallyOpen]);
+    loadModel(session?.user?.id).then(setPredictorModel).catch(() => setPredictorModel({}));
+  }, [isActuallyOpen, session?.user?.id]);
 
   // Re-score the note whenever it changes. Only suggests for new expenses
   // (editing a transaction respects its saved category) and hides the pill
@@ -549,6 +549,15 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                       <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1.5">To Account</label>
                       <ScrollPillSelector options={accounts} value={toAccount} onChange={setToAccount} ariaLabel="To account" />
                     </div>
+                    {accounts.length < 2 ? (
+                      <p className="text-[11px] font-semibold text-amber-500 bg-amber-500/10 px-3 py-1.5 rounded-xl text-center mt-1">
+                        ⚠️ Transfers require at least two accounts.
+                      </p>
+                    ) : account && toAccount && account === toAccount ? (
+                      <p className="text-[11px] font-semibold text-amber-500 bg-amber-500/10 px-3 py-1.5 rounded-xl text-center mt-1">
+                        ⚠️ Source and destination accounts cannot be the same.
+                      </p>
+                    ) : null}
                   </div>
                 ) : (
                   <div>
@@ -783,8 +792,44 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                   )}
                   onClick={async () => {
                     if (isSubmitting) return;
-                    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
-                      triggerToast("⚠️ Please enter a valid amount.");
+                    const parsedAmount = Number(amount);
+                    if (!amount || isNaN(parsedAmount) || !isFinite(parsedAmount) || parsedAmount <= 0) {
+                      triggerToast("⚠️ Please enter a valid positive amount.");
+                      return;
+                    }
+                    if (parsedAmount > 999999999.99) {
+                      triggerToast("⚠️ Amount exceeds maximum supported limit.");
+                      return;
+                    }
+
+                    if (!account || !account.trim()) {
+                      triggerToast("⚠️ Please select an account.");
+                      return;
+                    }
+
+                    if (txType === "Transfer") {
+                      if (accounts.length < 2) {
+                        triggerToast("⚠️ Transfers require at least two accounts.");
+                        return;
+                      }
+                      if (!toAccount || !toAccount.trim()) {
+                        triggerToast("⚠️ Please select a destination account.");
+                        return;
+                      }
+                      if (account.trim().toLowerCase() === toAccount.trim().toLowerCase()) {
+                        triggerToast("⚠️ Source and destination accounts cannot be the same.");
+                        return;
+                      }
+                    }
+
+                    if (txType === "Expense" && (!category || !category.trim())) {
+                      triggerToast("⚠️ Please select a category.");
+                      return;
+                    }
+
+                    const parsedDate = new Date(date);
+                    if (isNaN(parsedDate.getTime())) {
+                      triggerToast("⚠️ Please enter a valid date.");
                       return;
                     }
 

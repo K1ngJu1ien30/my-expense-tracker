@@ -15,6 +15,7 @@ export function CategoriesModal({
   addCategory,
   deleteCategory,
   accentColor,
+  triggerToast,
   onClose,
 }: {
   categories: string[];
@@ -22,13 +23,26 @@ export function CategoriesModal({
   addCategory: (cat: string) => void;
   deleteCategory: (cat: string) => void;
   accentColor: string;
+  triggerToast?: (msg: string) => void;
   onClose: () => void;
 }) {
   const [newCat, setNewCat] = useState("");
 
   const submit = () => {
-    if (!newCat.trim()) return;
-    addCategory(newCat.trim());
+    const trimmed = newCat.trim();
+    if (!trimmed) {
+      if (triggerToast) triggerToast("⚠️ Category name cannot be empty.");
+      return;
+    }
+    const isDuplicate = categories.some(
+      (c) => c.trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    if (isDuplicate) {
+      if (triggerToast) triggerToast(`⚠️ Category "${trimmed}" already exists.`);
+      return;
+    }
+    addCategory(trimmed);
+    if (triggerToast) triggerToast(`Category "${trimmed}" added!`);
     setNewCat("");
   };
 

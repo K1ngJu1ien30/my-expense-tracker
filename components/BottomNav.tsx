@@ -15,7 +15,7 @@ const LONG_PRESS_MS = 450;
 
 export default function BottomNav({ onOpenAdd }: { onOpenAdd: () => void }) {
   const pathname = usePathname();
-  const { accentColor, transactions, addTransaction, triggerToast, formatCurrency } = useAppContext();
+  const { accentColor, transactions, addTransaction, triggerToast, formatCurrency, accounts } = useAppContext();
   const activeColor = accentColor || "#3b82f6";
 
   const isHome = pathname === "/";
@@ -75,11 +75,17 @@ export default function BottomNav({ onOpenAdd }: { onOpenAdd: () => void }) {
   const handleApplyTemplate = useCallback(
     async (tpl: QuickTemplate) => {
       setShowQuickSheet(false);
+      const parsedAmount = Number(tpl.amount);
+      if (isNaN(parsedAmount) || !isFinite(parsedAmount) || parsedAmount <= 0) {
+        triggerToast("⚠️ Invalid template amount.");
+        return;
+      }
+      const targetAccount = tpl.account || (accounts && accounts[0]) || "Cash";
       const res = await addTransaction({
         type: "Expense",
-        amount: tpl.amount,
-        category: tpl.category,
-        account: tpl.account,
+        amount: parsedAmount,
+        category: tpl.category || "General",
+        account: targetAccount,
         note: tpl.note,
         date: new Date().toISOString(),
         status: "cleared",
@@ -97,7 +103,7 @@ export default function BottomNav({ onOpenAdd }: { onOpenAdd: () => void }) {
         triggerToast(`❌ Failed to quick-add: ${res.error || "Please try again."}`);
       }
     },
-    [addTransaction, triggerToast]
+    [addTransaction, triggerToast, accounts]
   );
 
   return (

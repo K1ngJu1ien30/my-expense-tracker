@@ -5,6 +5,7 @@ import type { Session } from "@supabase/supabase-js";
 import localforage from "localforage";
 import { supabase } from "../supabase";
 import type { Account } from "../types";
+import { getUserDataCacheKey } from "../cacheKeys";
 
 const DEFAULT_ACCOUNTS: Account[] = [
   { name: "Bank", currencyCode: "RM", isArchived: false },
@@ -72,9 +73,13 @@ export function useAccountsState(session: Session | null) {
 
   /** Dual-write accounts to the user_accounts table (replace-all strategy). */
   const syncAccountsToNewTable = useCallback(
-    async (userId: string, accountsArray: Account[]) => {
+    async (userId: string, accountsArray: Account[]): Promise<boolean> => {
       try {
-        await supabase.from("user_accounts").delete().eq("user_id", userId);
+        const { error: delErr } = await supabase.from("user_accounts").delete().eq("user_id", userId);
+        if (delErr) {
+          console.warn("[dual-write] user_accounts delete failed:", delErr);
+          return false;
+        }
         if (accountsArray.length > 0) {
           const rows = accountsArray.map((a, idx) => ({
             user_id: userId,
@@ -83,25 +88,57 @@ export function useAccountsState(session: Session | null) {
             is_archived: a.isArchived || false,
             sort_order: idx,
           }));
-          await supabase.from("user_accounts").insert(rows);
+          const { error: insErr } = await supabase.from("user_accounts").insert(rows);
+          if (insErr) {
+            console.warn("[dual-write] user_accounts insert failed:", insErr);
+            return false;
+          }
         }
+        return true;
       } catch (err) {
         console.warn(
           "[dual-write] user_accounts sync failed (falling back to user_metadata only):",
           err
         );
+        return false;
       }
     },
     []
   );
 
   /**
-   * Update accounts + dual-write to both storage destinations.
-   * Uses Promise.allSettled so one failure doesn't block the other write.
+   * Update accounts + dual-write to both storage destinations, and immediately
+   * persist to user-scoped local cache (IndexedDB + localStorage) so offline
+   * edits are never lost on reload.
+   * Uses Promise.allSettled so cloud failure doesn't block local responsiveness.
    */
   const handleUpdateAccounts = useCallback(
     async (newAccountsArray: Account[]) => {
       setAccountObjects(newAccountsArray);
+      const cacheKey = getUserDataCacheKey(session?.user?.id);
+
+      // 1. IndexedDB cache
+      try {
+        const data =
+          ((await localforage.getItem(cacheKey)) as Record<string, unknown> | null) || {};
+        data.accounts = newAccountsArray;
+        await localforage.setItem(cacheKey, data);
+      } catch {
+        /* swallow */
+      }
+
+      // 2. localStorage fallback
+      if (typeof window !== "undefined") {
+        try {
+          const raw = localStorage.getItem(cacheKey);
+          const lsData = raw ? JSON.parse(raw) : {};
+          lsData.accounts = newAccountsArray;
+          localStorage.setItem(cacheKey, JSON.stringify(lsData));
+        } catch {
+          /* swallow */
+        }
+      }
+
       if (!session?.user) return;
       await Promise.allSettled([
         supabase.auth.updateUser({ data: { custom_accounts: newAccountsArray } }),
@@ -161,33 +198,46 @@ export function useAccountsState(session: Session | null) {
   );
 
   // ─── Categories ────────────────────────────────────────────────────────
-  // Sync initial read from localStorage so the first paint has something to show.
-  const [categories, setCategoriesRaw] = useState<string[]>(() => {
+  const [categories, setCategoriesRaw] = useState<string[]>(DEFAULT_CATEGORIES);
+
+  // User-isolated cache hydration: loads only for the authenticated user,
+  // and resets to clean defaults when logged out.
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId) {
+      setCategoriesRaw(DEFAULT_CATEGORIES);
+      setAccountObjects(DEFAULT_ACCOUNTS);
+      return;
+    }
+
+    const cacheKey = getUserDataCacheKey(userId);
+    // 1. Try sync read from user's localStorage cache for immediate paint
     if (typeof window !== "undefined") {
       try {
-        const cached = localStorage.getItem("tracker_data_cache");
+        const cached = localStorage.getItem(cacheKey);
         if (cached) {
           const data = JSON.parse(cached);
           if (Array.isArray(data.categories) && data.categories.length > 0) {
-            return data.categories;
+            setCategoriesRaw(data.categories);
+          }
+          if (Array.isArray(data.accounts) && data.accounts.length > 0) {
+            setAccountObjects(migrateAccounts(data.accounts));
           }
         }
       } catch {
         /* swallow */
       }
     }
-    return DEFAULT_CATEGORIES;
-  });
 
-  // Async hydration from IndexedDB (overrides sync localStorage fallback).
-  useEffect(() => {
+    // 2. Async hydration from user's IndexedDB cache
     localforage
-      .getItem<{ categories?: string[] }>("tracker_data_cache")
+      .getItem<{ categories?: string[]; accounts?: unknown }>(cacheKey)
       .then(data => {
         if (data?.categories?.length) setCategoriesRaw(data.categories);
+        if (data?.accounts) setAccountObjects(migrateAccounts(data.accounts));
       })
       .catch(() => {});
-  }, []);
+  }, [session?.user?.id]);
 
   // Ref mirror — used by the provider's refreshData to avoid stale closures
   // when caching the current category list after a network fetch.
@@ -234,24 +284,25 @@ export function useAccountsState(session: Session | null) {
   /** Persist categories to IndexedDB + localStorage + Supabase. */
   const persistCategories = useCallback(
     async (newCats: string[]) => {
+      const cacheKey = getUserDataCacheKey(session?.user?.id);
       // IndexedDB cache — source of truth when cloud is unreachable.
       try {
         const data =
-          ((await localforage.getItem("tracker_data_cache")) as Record<
+          ((await localforage.getItem(cacheKey)) as Record<
             string,
             unknown
           > | null) || {};
         data.categories = newCats;
-        await localforage.setItem("tracker_data_cache", data);
+        await localforage.setItem(cacheKey, data);
       } catch {
         /* swallow */
       }
       // localStorage fallback (for cold-boot useState initializer)
       try {
-        const raw = localStorage.getItem("tracker_data_cache");
+        const raw = localStorage.getItem(cacheKey);
         const lsData = raw ? JSON.parse(raw) : {};
         lsData.categories = newCats;
-        localStorage.setItem("tracker_data_cache", JSON.stringify(lsData));
+        localStorage.setItem(cacheKey, JSON.stringify(lsData));
       } catch {
         /* swallow */
       }
@@ -298,6 +349,11 @@ export function useAccountsState(session: Session | null) {
     [setCategories]
   );
 
+  const resetAccountsState = useCallback(() => {
+    setCategoriesRaw(DEFAULT_CATEGORIES);
+    setAccountObjects(DEFAULT_ACCOUNTS);
+  }, []);
+
   return {
     // Accounts
     accountObjects,
@@ -309,6 +365,7 @@ export function useAccountsState(session: Session | null) {
     deleteAccount,
     toggleArchiveAccount,
     reorderAccounts,
+    resetAccountsState,
     // Categories
     categories,
     setCategoriesRaw, // exposed so refreshData can bypass the persist path during cloud sync
