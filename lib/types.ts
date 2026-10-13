@@ -65,6 +65,10 @@ export type Transaction = {
   exclude_from_velocity?: boolean | null;
 };
 
+export type TransactionSaveResult =
+  | { success: true; status: "synced" | "pending_sync" }
+  | { success: false; error: string };
+
 export type ToastType = { message: string; id: number } | null;
 
 export type PlannerItem = {

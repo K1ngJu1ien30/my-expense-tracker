@@ -9,6 +9,7 @@ import type {
   Goal,
   Subscription,
   Transaction,
+  TransactionSaveResult,
   ToastType,
   PlannerItem,
   Asset,
@@ -30,6 +31,7 @@ export type {
   Goal,
   Subscription,
   Transaction,
+  TransactionSaveResult,
   ToastType,
   PlannerItem,
   Asset,
@@ -63,8 +65,8 @@ type AppContextType = {
   toast: ToastType;
   triggerToast: (msg: string) => void;
   transactions: Transaction[];
-  addTransaction: (tx: Partial<Transaction>) => Promise<void>;
-  updateTransaction: (id: string, patch: Partial<Transaction>) => Promise<void>;
+  addTransaction: (tx: Partial<Transaction>) => Promise<TransactionSaveResult>;
+  updateTransaction: (id: string, patch: Partial<Transaction>) => Promise<{ success: boolean; error?: string }>;
   deleteTransaction: (id: string) => Promise<void>;
   editTransactionId: string | null;
   setEditTransactionId: (val: string | null) => void;

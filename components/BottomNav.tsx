@@ -73,9 +73,9 @@ export default function BottomNav({ onOpenAdd }: { onOpenAdd: () => void }) {
   }, [clearPressTimer]);
 
   const handleApplyTemplate = useCallback(
-    (tpl: QuickTemplate) => {
+    async (tpl: QuickTemplate) => {
       setShowQuickSheet(false);
-      addTransaction({
+      const res = await addTransaction({
         type: "Expense",
         amount: tpl.amount,
         category: tpl.category,
@@ -86,8 +86,16 @@ export default function BottomNav({ onOpenAdd }: { onOpenAdd: () => void }) {
         is_claimable: false,
         claim_status: "none",
       });
-      triggerToast(`✅ Quick-added ${tpl.category}`);
-      NativeHaptics.successMedium();
+      if (res.success) {
+        if (res.status === "synced") {
+          triggerToast(`✅ Quick-added ${tpl.category}`);
+        } else {
+          triggerToast(`⏳ Quick-added ${tpl.category} (Pending Sync)`);
+        }
+        NativeHaptics.successMedium();
+      } else {
+        triggerToast(`❌ Failed to quick-add: ${res.error || "Please try again."}`);
+      }
     },
     [addTransaction, triggerToast]
   );

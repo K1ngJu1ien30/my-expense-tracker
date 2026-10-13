@@ -3,41 +3,15 @@
 import { useState, useCallback } from "react";
 import type { MutableRefObject } from "react";
 import type { Session } from "@supabase/supabase-js";
-import localforage from "localforage";
 import { supabase } from "../supabase";
 import { NativeHaptics } from "../haptics";
-import type { Transaction, Subscription } from "../types";
+import type { Transaction, Subscription, TransactionSaveResult } from "../types";
 import type { DeletedItemCache } from "../types";
 import { learn, loadModel, saveModel } from "../categoryPredictor";
+import { enqueueOfflineTx } from "../offlineQueue";
 
 /** Threshold above which an income/expense triggers the 🐋 whale alert. */
 const WHALE_THRESHOLD = 5000;
-
-/**
- * Single-flight serializer for the offline transaction queue.
- *
- * Without this, two rapid `addTransaction` calls while offline can race:
- * call #2's `getItem` may resolve before call #1's `setItem`, causing call
- * #1's transaction to be silently dropped from the persisted queue.
- *
- * Module-scoped (not per-instance) because there's only ever one queue key
- * (`offline_tx_queue`) and we want correctness even if the hook re-mounts.
- * The chain only holds the IndexedDB read+write window — typically <5ms —
- * so contention is invisible to the user.
- */
-let offlineQueueLock: Promise<void> = Promise.resolve();
-function enqueueOfflineTx(tx: Partial<Transaction>): Promise<void> {
-  const next = offlineQueueLock.then(async () => {
-    const existing =
-      (await localforage.getItem<Partial<Transaction>[]>("offline_tx_queue")) || [];
-    existing.push(tx);
-    await localforage.setItem("offline_tx_queue", existing);
-  });
-  // Always release the lock, even on failure — a swallowed error here must
-  // not deadlock subsequent saves.
-  offlineQueueLock = next.catch(() => {});
-  return next;
-}
 
 /**
  * Cross-cutting dependencies that the CRUD functions need to wire into the
@@ -88,12 +62,12 @@ export function useMoneyState(deps: MoneyStateDeps) {
   const [fixedBills, setFixedBills] = useState<Subscription[]>([]);
   const [utilities, setUtilities] = useState<Subscription[]>([]);
 
-  const { session, isOfflineRef, triggerToast, triggerWhaleAlert, maybeTriggerPenguinAlert, cacheDeletedItem } = deps;
+  const { session, isOfflineRef, triggerWhaleAlert, maybeTriggerPenguinAlert, cacheDeletedItem } = deps;
 
   // ─── Transactions ──────────────────────────────────────────────────────
 
   const addTransaction = useCallback(
-    async (tx: Partial<Transaction>) => {
+    async (tx: Partial<Transaction>): Promise<TransactionSaveResult> => {
       // Client-generated UUID makes the upsert idempotent — safe to retry.
       const clientId = crypto.randomUUID();
       const txWithId = { ...tx, id: clientId };
@@ -111,49 +85,120 @@ export function useMoneyState(deps: MoneyStateDeps) {
       // Offline queue path: push to IndexedDB, then sync when network returns.
       // Read isOffline lazily via ref so we always see the latest network state.
       if (isOfflineRef.current) {
-        const offlineTx = { ...txWithId, user_id: session?.user?.id };
-        setTransactions(prev => [offlineTx as Transaction, ...prev]);
+        const offlineTx = { ...txWithId, user_id: session?.user?.id } as Transaction;
         try {
-          // Serialized read-modify-write — see `enqueueOfflineTx` for why.
+          // Serialized read-modify-write — only acknowledge once IndexedDB persistence succeeds.
           await enqueueOfflineTx(offlineTx);
-        } catch {
-          /* swallow — UI already reflects the optimistic insert */
+        } catch (err) {
+          console.error("[addTransaction] IndexedDB persistence failed:", err);
+          return {
+            success: false,
+            error: err instanceof Error ? err.message : "Failed to save offline",
+          };
         }
+        setTransactions(prev => [offlineTx, ...prev]);
         await teachPredictor();
-        triggerToast("No connection. Expense saved offline.");
         NativeHaptics.successMedium();
         if (tx.type === "Expense") maybeTriggerPenguinAlert(Number(tx.amount));
-        return;
+        return { success: true, status: "pending_sync" };
       }
 
-      // Online path: insert directly to Supabase.
-      const { data, error } = await supabase
-        .from("transactions")
-        .insert({ ...txWithId, user_id: session?.user?.id })
-        .select()
-        .single();
-      if (!error && data) {
-        setTransactions(prev => [data as Transaction, ...prev]);
-        await teachPredictor();
-        NativeHaptics.successMedium();
-        if (Number(tx.amount) >= WHALE_THRESHOLD) triggerWhaleAlert();
-        if (tx.type === "Expense") maybeTriggerPenguinAlert(Number(tx.amount));
+      // Online path: attempt insert directly to Supabase.
+      try {
+        const { data, error } = await supabase
+          .from("transactions")
+          .insert({ ...txWithId, user_id: session?.user?.id })
+          .select()
+          .single();
+
+        if (!error && data) {
+          setTransactions(prev => [data as Transaction, ...prev]);
+          await teachPredictor();
+          NativeHaptics.successMedium();
+          if (Number(tx.amount) >= WHALE_THRESHOLD) triggerWhaleAlert();
+          if (tx.type === "Expense") maybeTriggerPenguinAlert(Number(tx.amount));
+          return { success: true, status: "synced" };
+        }
+
+        console.warn("[addTransaction] Cloud insert returned error:", error);
+
+        // Check if this error indicates network/connectivity failure while the browser was ostensibly online
+        const isNetworkFailure =
+          !error?.code ||
+          error.message?.toLowerCase().includes("failed to fetch") ||
+          error.message?.toLowerCase().includes("network") ||
+          error.message?.toLowerCase().includes("timeout") ||
+          error.code.startsWith("08") ||
+          error.code.startsWith("XX");
+
+        if (isNetworkFailure) {
+          console.log("[addTransaction] Falling back to offline queue due to network/server failure");
+          const offlineTx = { ...txWithId, user_id: session?.user?.id } as Transaction;
+          try {
+            await enqueueOfflineTx(offlineTx);
+            setTransactions(prev => [offlineTx, ...prev]);
+            await teachPredictor();
+            NativeHaptics.successMedium();
+            if (tx.type === "Expense") maybeTriggerPenguinAlert(Number(tx.amount));
+            return { success: true, status: "pending_sync" };
+          } catch (storageErr) {
+            console.error("[addTransaction] Offline fallback also failed:", storageErr);
+            return {
+              success: false,
+              error: "Network failed and local storage unavailable",
+            };
+          }
+        }
+
+        // Unrecoverable schema/RLS/constraint database error
+        return {
+          success: false,
+          error: error?.message || "Failed to save transaction to database",
+        };
+      } catch (exception) {
+        console.warn("[addTransaction] Exception during cloud insert — attempting offline fallback:", exception);
+        try {
+          const offlineTx = { ...txWithId, user_id: session?.user?.id } as Transaction;
+          await enqueueOfflineTx(offlineTx);
+          setTransactions(prev => [offlineTx, ...prev]);
+          await teachPredictor();
+          NativeHaptics.successMedium();
+          if (tx.type === "Expense") maybeTriggerPenguinAlert(Number(tx.amount));
+          return { success: true, status: "pending_sync" };
+        } catch (storageErr) {
+          console.error("[addTransaction] Offline fallback also failed:", storageErr);
+          return {
+            success: false,
+            error: "Network failed and local storage unavailable",
+          };
+        }
       }
     },
-    [session, isOfflineRef, triggerToast, triggerWhaleAlert, maybeTriggerPenguinAlert]
+    [session, isOfflineRef, triggerWhaleAlert, maybeTriggerPenguinAlert]
   );
 
   const updateTransaction = useCallback(
-    async (id: string, patch: Partial<Transaction>) => {
-      const { data, error } = await supabase
-        .from("transactions")
-        .update(patch)
-        .eq("id", id)
-        .select()
-        .single();
-      if (!error && data) {
-        setTransactions(prev => prev.map(t => (t.id === id ? { ...t, ...data } : t)));
-        NativeHaptics.lightTick();
+    async (id: string, patch: Partial<Transaction>): Promise<{ success: boolean; error?: string }> => {
+      try {
+        const { data, error } = await supabase
+          .from("transactions")
+          .update(patch)
+          .eq("id", id)
+          .select()
+          .single();
+        if (error) {
+          console.error("[updateTransaction] Supabase error:", error);
+          return { success: false, error: error.message };
+        }
+        if (data) {
+          setTransactions(prev => prev.map(t => (t.id === id ? { ...t, ...data } : t)));
+          NativeHaptics.lightTick();
+          return { success: true };
+        }
+        return { success: false, error: "Record not found" };
+      } catch (err) {
+        console.error("[updateTransaction] Exception:", err);
+        return { success: false, error: err instanceof Error ? err.message : "Update failed" };
       }
     },
     []

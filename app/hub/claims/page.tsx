@@ -39,9 +39,13 @@ export default function ClaimsPage() {
       "Mark as Cleared",
       `Confirm reimbursement of ${formatCurrency(Number(tx.amount))} for "${tx.category}"?`,
       async () => {
-        await updateTransaction(tx.id, { claim_status: "cleared" });
+        const updateRes = await updateTransaction(tx.id, { claim_status: "cleared" });
+        if (!updateRes.success) {
+          triggerToast(`❌ Failed to update claim status: ${updateRes.error || "Please try again."}`);
+          return;
+        }
 
-        await addTransaction({
+        const addRes = await addTransaction({
           type: "Income",
           amount: Number(tx.amount),
           account: tx.account,
@@ -53,7 +57,15 @@ export default function ClaimsPage() {
           claim_status: "none",
         });
 
-        triggerToast("Claim cleared & reimbursement logged!");
+        if (addRes.success) {
+          triggerToast(
+            addRes.status === "synced"
+              ? "Claim cleared & reimbursement logged!"
+              : "Claim cleared & logged offline (Pending Sync)"
+          );
+        } else {
+          triggerToast(`⚠️ Claim marked cleared, but reimbursement record failed: ${addRes.error || "Please log manually."}`);
+        }
       }
     );
   };

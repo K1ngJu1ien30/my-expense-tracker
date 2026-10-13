@@ -6,6 +6,7 @@ import localforage from "localforage";
 import { supabase } from "../supabase";
 import { migrateAccounts } from "./useAccountsState";
 import { loadModel, rebuildFromHistory } from "../categoryPredictor";
+import { getOfflineQueue, removeAcknowledgedOfflineTxs } from "../offlineQueue";
 import type {
   Account,
   Asset,
@@ -219,7 +220,15 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
         });
 
         // ─── Commit to state ──────────────────────────────────────────────
-        s.setTransactions(parsedTransactions);
+        // Merge any uncommitted offline queue items that haven't synced yet
+        const pendingOffline = await getOfflineQueue();
+        const cloudIds = new Set(parsedTransactions.map(t => t.id));
+        const uncommittedOffline = pendingOffline
+          .filter(t => t.id && !cloudIds.has(t.id))
+          .map((t, idx) => ({ ...t, id: t.id || `offline-${Date.now()}-${idx}`, user_id: currentUser.id })) as Transaction[];
+        const finalTransactions = uncommittedOffline.length > 0 ? [...uncommittedOffline, ...parsedTransactions] : parsedTransactions;
+
+        s.setTransactions(finalTransactions);
         s.setGoals(parsedGoals);
         s.setSubscriptions(parsedSubscriptions);
         s.setFixedBills(parsedFixedBills);
@@ -291,7 +300,7 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
             if (data.categories?.length) s.setCategories(data.categories);
 
             // Prepend any pending offline transactions so the balance stays accurate
-            const offlineQueue = await localforage.getItem<Partial<Transaction>[]>("offline_tx_queue");
+            const offlineQueue = await getOfflineQueue();
             if (offlineQueue && offlineQueue.length > 0) {
               const offlineTxs = offlineQueue.map((tx, i) => ({
                 ...tx,
@@ -324,25 +333,64 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
       console.log("[syncOfflineQueue] Already syncing — skipping duplicate run");
       return;
     }
+    if (!session?.user?.id) {
+      console.log("[syncOfflineQueue] No active session — skipping sync until authenticated");
+      return;
+    }
     isSyncingRef.current = true;
     try {
-      const queue = await localforage.getItem<Partial<Transaction>[]>("offline_tx_queue");
+      const queue = await getOfflineQueue();
       if (!queue || queue.length === 0) return;
-      for (const tx of queue) {
-        // Client-generated id makes this idempotent even if we somehow run twice.
-        await supabase
-          .from("transactions")
-          .upsert({ ...tx, user_id: session?.user?.id }, { onConflict: "id" });
-      }
-      await localforage.removeItem("offline_tx_queue");
-      settersRef.current.triggerToast(
-        `${queue.length} offline expense${queue.length > 1 ? "s" : ""} synced to cloud!`
-      );
 
-      // Post-sync: refresh state with server-assigned UUIDs
-      if (session?.user) await refreshData(session.user);
+      const acknowledgedIds = new Set<string>();
+
+      for (const tx of queue) {
+        if (!tx.id) continue;
+        try {
+          // Idempotent upsert by client-generated ID
+          const { error } = await supabase
+            .from("transactions")
+            .upsert({ ...tx, user_id: session.user.id }, { onConflict: "id" });
+
+          if (error) {
+            console.warn(`[syncOfflineQueue] Failed to sync transaction ${tx.id}:`, error);
+            // Stop if this is a network failure to avoid hammering a dropped connection
+            const isNetworkError =
+              !error.code ||
+              error.message?.toLowerCase().includes("failed to fetch") ||
+              error.message?.toLowerCase().includes("network") ||
+              error.code.startsWith("08");
+            if (isNetworkError) break;
+            // Otherwise skip this item and proceed with next so one malformed row doesn't block the entire queue
+          } else {
+            acknowledgedIds.add(tx.id);
+          }
+        } catch (netErr) {
+          console.warn(`[syncOfflineQueue] Network error for tx ${tx.id}:`, netErr);
+          break; // Stop loop on network disconnect
+        }
+      }
+
+      // Safely remove only the successfully acknowledged transactions
+      if (acknowledgedIds.size > 0) {
+        const removed = await removeAcknowledgedOfflineTxs(acknowledgedIds);
+        const remaining = queue.length - acknowledgedIds.size;
+
+        if (remaining === 0) {
+          settersRef.current.triggerToast(
+            `${removed} offline expense${removed > 1 ? "s" : ""} synced to cloud!`
+          );
+        } else {
+          settersRef.current.triggerToast(
+            `${removed} synced, ${remaining} pending retry`
+          );
+        }
+
+        // Post-sync: refresh state with live cloud state
+        if (session.user) await refreshData(session.user);
+      }
     } catch (err) {
-      console.error("Offline sync failed:", err);
+      console.error("[syncOfflineQueue] Process failed:", err);
     } finally {
       isSyncingRef.current = false;
     }

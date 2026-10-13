@@ -269,6 +269,7 @@ export default function StatementImportPage() {
 
     setIsImporting(true);
     let successCount = 0;
+    let failCount = 0;
 
     try {
       for (const item of selectedItems) {
@@ -280,15 +281,23 @@ export default function StatementImportPage() {
           category: item.category,
           account: item.account,
         };
-        await addTransaction(payload);
-        successCount++;
+        const res = await addTransaction(payload);
+        if (res.success) {
+          successCount++;
+        } else {
+          failCount++;
+        }
       }
 
       setImportedCount(successCount);
       setParsedItems([]);
       setJsonText("");
       NativeHaptics.successMedium();
-      triggerToast(`🎉 Successfully imported ${successCount} transactions!`);
+      if (failCount === 0) {
+        triggerToast(`🎉 Successfully imported ${successCount} transactions!`);
+      } else {
+        triggerToast(`⚠️ Imported ${successCount} transactions (${failCount} failed).`);
+      }
     } catch (err) {
       console.error(err);
       triggerToast("An error occurred during import. Please try again.");

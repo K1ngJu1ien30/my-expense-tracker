@@ -197,6 +197,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
   // a single tap since the category auto-rule handles the ~90% case.
   // Collapsed by default; expands only when the user wants to override.
   const [showMoreOptions, setShowMoreOptions] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Imperative ref for the amount <input>, kept for future use if we ever
   // want to programmatically focus it. NOT auto-focused on open — see the
@@ -372,6 +373,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
   };
 
   const handleClose = () => {
+    setIsSubmitting(false);
     setEditTransactionId(null);
     onClose();
   };
@@ -772,59 +774,96 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                 </div>
 
                 <button
+                  type="button"
+                  disabled={isSubmitting}
                   style={{ backgroundColor: accentColor, boxShadow: `0 0 15px ${accentColor}4D` }}
-                  className="w-full text-white py-4 rounded-xl font-bold active:scale-[0.98] transition-all mt-2"
-                  onClick={() => {
-                    if (!amount || isNaN(Number(amount))) return;
-
-                    // 🎈 The Derry Easter Egg
-                    const isDerry = Number(amount) === 6.66 || note.toLowerCase().includes('pennywise');
-                    if (isDerry) {
-                      triggerDerry();
+                  className={cn(
+                    "w-full text-white py-4 rounded-xl font-bold active:scale-[0.98] transition-all mt-2 flex items-center justify-center gap-2",
+                    isSubmitting && "opacity-70 cursor-not-allowed pointer-events-none"
+                  )}
+                  onClick={async () => {
+                    if (isSubmitting) return;
+                    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+                      triggerToast("⚠️ Please enter a valid amount.");
+                      return;
                     }
 
-                    const payload = {
-                       type: txType,
-                       amount: Number(amount),
-                       // Income is a top-level concept — it has no spending
-                       // category (Salary, Bonus, etc. are tracked via notes,
-                       // not category tags). Transfers get a canonical
-                       // "Transfer" tag. Expenses carry the user-picked
-                       // category.
-                       category:
-                         txType === "Transfer"
-                           ? "Transfer"
-                           : txType === "Income"
-                             ? ""
-                             : category,
-                       account,
-                       to_account: txType === "Transfer" ? toAccount : undefined,
-                       note,
-                       date: new Date(date).toISOString(),
-                       status: txType === "Income" ? status : "cleared",
-                       is_claimable: txType === "Expense" ? isClaimable : false,
-                       claim_status: txType === "Expense" && isClaimable ? "pending" : "none",
-                       // Per-row velocity override. Only persisted when the
-                       // user explicitly set it — otherwise we leave it null
-                       // so the category auto-rule applies retroactively if
-                       // the category is later renamed / reclassified.
-                       exclude_from_velocity:
-                         txType === "Expense" ? excludeFromVelocity : null,
-                    };
+                    setIsSubmitting(true);
 
-                    if (editTransactionId) {
-                       updateTransaction(editTransactionId, payload);
-                       triggerToast(`✅ ${txType} updated successfully!`);
-                    } else {
-                       addTransaction(payload);
-                       triggerToast(`✅ ${txType} saved!`);
+                    try {
+                      // 🎈 The Derry Easter Egg
+                      const isDerry = Number(amount) === 6.66 || note.toLowerCase().includes('pennywise');
+                      if (isDerry) {
+                        triggerDerry();
+                      }
+
+                      const payload = {
+                         type: txType,
+                         amount: Number(amount),
+                         // Income is a top-level concept — it has no spending
+                         // category (Salary, Bonus, etc. are tracked via notes,
+                         // not category tags). Transfers get a canonical
+                         // "Transfer" tag. Expenses carry the user-picked
+                         // category.
+                         category:
+                           txType === "Transfer"
+                             ? "Transfer"
+                             : txType === "Income"
+                               ? ""
+                               : category,
+                         account,
+                         to_account: txType === "Transfer" ? toAccount : undefined,
+                         note,
+                         date: new Date(date).toISOString(),
+                         status: txType === "Income" ? status : "cleared",
+                         is_claimable: txType === "Expense" ? isClaimable : false,
+                         claim_status: txType === "Expense" && isClaimable ? "pending" : "none",
+                         // Per-row velocity override. Only persisted when the
+                         // user explicitly set it — otherwise we leave it null
+                         // so the category auto-rule applies retroactively if
+                         // the category is later renamed / reclassified.
+                         exclude_from_velocity:
+                           txType === "Expense" ? excludeFromVelocity : null,
+                      };
+
+                      if (editTransactionId) {
+                         const updateRes = await updateTransaction(editTransactionId, payload);
+                         if (updateRes.success) {
+                           triggerToast(`✅ ${txType} updated successfully!`);
+                           if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(50);
+                           handleClose();
+                         } else {
+                           triggerToast(`❌ Update failed: ${updateRes.error || "Please try again."}`);
+                           // Input preserved — modal remains open
+                         }
+                      } else {
+                         const saveRes = await addTransaction(payload);
+                         if (saveRes.success) {
+                           if (saveRes.status === "synced") {
+                             triggerToast(`✅ ${txType} saved!`);
+                           } else {
+                             triggerToast(`⏳ ${txType} saved offline (Pending Sync)`);
+                           }
+                           if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(50);
+                           handleClose();
+                         } else {
+                           triggerToast(`❌ Save failed: ${saveRes.error || "Please try again."}`);
+                           // Input preserved — modal remains open
+                         }
+                      }
+                    } catch (err) {
+                      console.error("Save transaction error:", err);
+                      triggerToast("❌ An unexpected error occurred while saving.");
+                    } finally {
+                      setIsSubmitting(false);
                     }
-
-                    if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(50);
-                    handleClose();
                   }}
                 >
-                  {editTransactionId ? "Update Record" : `Save ${txType}`}
+                  {isSubmitting
+                    ? "Saving..."
+                    : editTransactionId
+                      ? "Update Record"
+                      : `Save ${txType}`}
                 </button>
               </div>
             </div>
