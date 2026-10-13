@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, ChevronLeft, ChevronRight, Calendar, Sparkles } from "lucide-react";
+import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { NativeHaptics } from "@/lib/haptics";
 
 const MONTH_NAMES = [
@@ -11,6 +11,17 @@ const MONTH_NAMES = [
 ];
 
 const WEEK_DAYS = ["M", "T", "W", "T", "F", "S", "S"];
+
+type DateRangePresetKey = "today" | "thisWeek" | "thisMonth" | "lastMonth" | "last30" | "thisYear";
+
+const PRESETS: Array<{ id: DateRangePresetKey; label: string }> = [
+  { id: "today", label: "Today" },
+  { id: "thisWeek", label: "This Week" },
+  { id: "thisMonth", label: "This Month" },
+  { id: "lastMonth", label: "Last Month" },
+  { id: "last30", label: "30 Days" },
+  { id: "thisYear", label: "This Year" },
+];
 
 interface CustomDateRangeModalProps {
   isOpen: boolean;
@@ -27,14 +38,27 @@ export const CustomDateRangeModal = React.memo(function CustomDateRangeModal({
   endDate,
   onClose,
   onApply,
-  accentColor = "#10b981",
+  accentColor: _accentColor = "#10b981",
 }: CustomDateRangeModalProps) {
-  const [tempStartDate, setTempStartDate] = useState<string>("");
-  const [tempEndDate, setTempEndDate] = useState<string>("");
-  const [pickerMonth, setPickerMonth] = useState<number>(() => new Date().getMonth());
-  const [pickerYear, setPickerYear] = useState<number>(() => new Date().getFullYear());
+  const [tempStartDate, setTempStartDate] = useState<string>(startDate);
+  const [tempEndDate, setTempEndDate] = useState<string>(endDate);
+  const [pickerMonth, setPickerMonth] = useState<number>(() => {
+    const baseDate = startDate ? new Date(startDate + "T00:00:00") : new Date();
+    return !isNaN(baseDate.getTime()) ? baseDate.getMonth() : new Date().getMonth();
+  });
+  const [pickerYear, setPickerYear] = useState<number>(() => {
+    const baseDate = startDate ? new Date(startDate + "T00:00:00") : new Date();
+    return !isNaN(baseDate.getTime()) ? baseDate.getFullYear() : new Date().getFullYear();
+  });
 
-  useEffect(() => {
+  // Adjust state during render when modal opens or dates change
+  const [prevOpenState, setPrevOpenState] = useState({ isOpen, startDate, endDate });
+  if (
+    prevOpenState.isOpen !== isOpen ||
+    prevOpenState.startDate !== startDate ||
+    prevOpenState.endDate !== endDate
+  ) {
+    setPrevOpenState({ isOpen, startDate, endDate });
     if (isOpen) {
       setTempStartDate(startDate);
       setTempEndDate(endDate);
@@ -44,7 +68,7 @@ export const CustomDateRangeModal = React.memo(function CustomDateRangeModal({
         setPickerYear(baseDate.getFullYear());
       }
     }
-  }, [isOpen, startDate, endDate]);
+  }
 
   const calendarDays = useMemo(() => {
     const daysInMonth = new Date(pickerYear, pickerMonth + 1, 0).getDate();
@@ -204,18 +228,11 @@ export const CustomDateRangeModal = React.memo(function CustomDateRangeModal({
 
             {/* Quick Preset Buttons */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 hide-scrollbar">
-              {[
-                { id: "today", label: "Today" },
-                { id: "thisWeek", label: "This Week" },
-                { id: "thisMonth", label: "This Month" },
-                { id: "lastMonth", label: "Last Month" },
-                { id: "last30", label: "30 Days" },
-                { id: "thisYear", label: "This Year" },
-              ].map((p) => (
+              {PRESETS.map((p) => (
                 <button
                   key={p.id}
                   type="button"
-                  onClick={() => applyPreset(p.id as any)}
+                  onClick={() => applyPreset(p.id)}
                   className="px-2.5 py-1 rounded-xl bg-muted/60 hover:bg-muted text-[11px] font-bold text-muted-foreground hover:text-foreground shrink-0 border border-border/30 active:scale-95 transition-all"
                 >
                   {p.label}

@@ -511,7 +511,7 @@ export default function SalaryPlanner() {
                     </label>
                     <CustomSelect
                       value={editKind}
-                      onChange={(val) => setEditKind(val as any)}
+                      onChange={(val) => setEditKind(val as "subscriptions" | "fixedBills" | "utilities")}
                       options={[
                         { value: "subscriptions", label: "Subscription" },
                         { value: "fixedBills", label: "Fixed Bill" },

@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { UtensilsCrossed } from "lucide-react";
 import { useAppContext } from "@/lib/context";
+import { roundCurrency } from "@/lib/utils";
 
 export default function FoodBudgetCard() {
   const { currency, transactions, foodDailyLimit, foodMonthlyLimit, accentColor } = useAppContext();
@@ -20,19 +21,19 @@ export default function FoodBudgetCard() {
       if (!tx.category?.toLowerCase().includes("food")) return;
       const d = new Date(tx.date);
       if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()) {
-        monthly += Number(tx.amount);
+        monthly += Number(tx.amount || 0);
         const txTime = d.getTime();
         if (txTime >= startOfToday && txTime < startOfTomorrow) {
-          daily += Number(tx.amount);
+          daily += Number(tx.amount || 0);
         }
       }
     });
 
-    return { spentToday: daily, spentThisMonth: monthly };
+    return { spentToday: roundCurrency(daily), spentThisMonth: roundCurrency(monthly) };
   }, [transactions]);
 
-  const dailyRemaining = foodDailyLimit - spentToday;
-  const monthlyRemaining = foodMonthlyLimit - spentThisMonth;
+  const dailyRemaining = roundCurrency(foodDailyLimit - spentToday);
+  const monthlyRemaining = roundCurrency(foodMonthlyLimit - spentThisMonth);
   const dailyPct = foodDailyLimit > 0 ? Math.min((spentToday / foodDailyLimit) * 100, 100) : 0;
   const monthlyPct = foodMonthlyLimit > 0 ? Math.min((spentThisMonth / foodMonthlyLimit) * 100, 100) : 0;
 
@@ -59,7 +60,10 @@ export default function FoodBudgetCard() {
         <div className="flex justify-between items-baseline">
           <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Daily</span>
           <span className={`text-sm font-black ${dailyRemaining < 0 ? "text-rose-500" : "text-foreground"}`}>
-            {currency} {dailyRemaining.toFixed(2)} <span className="text-muted-foreground font-medium text-xs">remaining</span>
+            {currency} {Math.abs(dailyRemaining).toFixed(2)}{" "}
+            <span className="text-muted-foreground font-medium text-xs">
+              {dailyRemaining < 0 ? "over budget" : "remaining"}
+            </span>
           </span>
         </div>
         <div className="h-3 bg-muted rounded-full overflow-hidden">
@@ -81,7 +85,10 @@ export default function FoodBudgetCard() {
         <div className="flex justify-between items-baseline">
           <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Monthly</span>
           <span className={`text-sm font-black ${monthlyRemaining < 0 ? "text-rose-500" : "text-foreground"}`}>
-            {currency} {monthlyRemaining.toFixed(2)} <span className="text-muted-foreground font-medium text-xs">remaining</span>
+            {currency} {Math.abs(monthlyRemaining).toFixed(2)}{" "}
+            <span className="text-muted-foreground font-medium text-xs">
+              {monthlyRemaining < 0 ? "over budget" : "remaining"}
+            </span>
           </span>
         </div>
         <div className="h-3 bg-muted rounded-full overflow-hidden">

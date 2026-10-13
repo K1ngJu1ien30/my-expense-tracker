@@ -17,14 +17,11 @@ import {
 } from "recharts";
 import { useAppContext } from "@/lib/context";
 import {
-  Sparkles,
   Receipt,
   Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
   X,
-  TrendingDown,
-  TrendingUp,
   Wallet,
   ArrowUpRight,
   ArrowDownRight,
@@ -869,7 +866,7 @@ export default function AnalyticsPage() {
           </div>
 
           {/* ─── 4 KPI SCORECARDS ─────────────────────────────────────────── */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
             {/* 1. Total Expenses */}
             <div className="bg-card p-4 rounded-3xl border border-border/40 shadow-soft space-y-2">
               <div className="flex items-center justify-between">
@@ -1495,16 +1492,18 @@ export default function AnalyticsPage() {
             </div>
 
             <div className="grid grid-cols-3 gap-2">
-              {[
-                { id: "MONTH", label: "Month vs Month" },
-                { id: "QUARTER", label: "Quarter vs Quarter" },
-                { id: "CUSTOM", label: "Custom Range" },
-              ].map((preset) => (
+              {(
+                [
+                  { id: "MONTH", label: "Month vs Month" },
+                  { id: "QUARTER", label: "Quarter vs Quarter" },
+                  { id: "CUSTOM", label: "Custom Range" },
+                ] as const
+              ).map((preset) => (
                 <button
                   key={preset.id}
                   type="button"
                   onClick={() => {
-                    setComparePreset(preset.id as any);
+                    setComparePreset(preset.id);
                     NativeHaptics.lightTick();
                   }}
                   className={`py-2 px-2 rounded-2xl text-xs font-bold transition-all text-center border active:scale-95 ${

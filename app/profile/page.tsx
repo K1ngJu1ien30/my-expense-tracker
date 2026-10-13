@@ -1,6 +1,6 @@
 "use client";
 
-import { Trash2, Tags, Moon, ChevronRight, Edit2, Check, CircleDollarSign, ShieldAlert, Palette, Database, LogOut, Lock, Wallet, PiggyBank, UtensilsCrossed, TrendingUp, Fingerprint, Package, Radio, CreditCard, FileSpreadsheet, Sparkles, Upload } from "lucide-react";
+import { Trash2, Tags, Moon, ChevronRight, Edit2, Check, CircleDollarSign, ShieldAlert, Palette, Database, LogOut, Lock, Wallet, PiggyBank, UtensilsCrossed, TrendingUp, Fingerprint, Package, CreditCard, FileSpreadsheet, Upload } from "lucide-react";
 import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
 import { useAppContext } from "@/lib/context";
@@ -201,7 +201,7 @@ export default function ProfilePage() {
 
 
   return (
-    <div className="p-6 animate-in fade-in duration-500 space-y-8 pb-[120px] overflow-x-hidden min-h-screen relative">
+    <div className="p-6 animate-in fade-in duration-500 space-y-8 pb-[120px] overflow-x-hidden min-h-screen relative max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold pt-2 mb-6 text-foreground">Profile</h1>
 
       {/* User Info Section */}

@@ -162,7 +162,7 @@ export default function CalendarPage() {
   const selectedDayData = selectedDayKey ? dailyExpensesMap.get(selectedDayKey) : null;
 
   return (
-    <div className="p-6 space-y-6 pb-32 animate-in fade-in duration-500 min-h-[100dvh]">
+    <div className="p-6 space-y-6 pb-32 animate-in fade-in duration-500 min-h-[100dvh] max-w-4xl mx-auto">
       {/* Top Bar Navigation */}
       <div className="flex items-center justify-between pt-2">
         <Link

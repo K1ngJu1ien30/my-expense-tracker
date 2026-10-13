@@ -186,24 +186,24 @@ export default function HubPage() {
         <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
           Modules &amp; Tools
         </h2>
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {modules.map((m) => {
             if (!m.enabled) return null;
             return (
               <Link
                 key={m.href}
                 href={m.href}
-                className="bg-card p-4 rounded-3xl shadow-soft border border-border/40 flex items-center justify-between hover:border-border transition-all active:scale-[0.98] group"
+                className="bg-card p-5 rounded-3xl shadow-soft border border-border/40 flex items-center justify-between hover:border-border hover:shadow-md transition-all active:scale-[0.98] group"
               >
                 <div className="flex items-center gap-3.5 min-w-0">
-                  <div className={`w-11 h-11 rounded-2xl ${m.color} flex items-center justify-center text-xl shrink-0`}>
+                  <div className={`w-12 h-12 rounded-2xl ${m.color} flex items-center justify-center text-2xl shrink-0`}>
                     {m.icon}
                   </div>
                   <div className="min-w-0">
-                    <p className="font-bold text-foreground text-sm leading-tight">{m.title}</p>
+                    <p className="font-bold text-foreground text-sm leading-tight group-hover:text-primary transition-colors">{m.title}</p>
                     <p className="text-xs text-muted-foreground font-medium truncate mt-0.5">{m.description}</p>
                     {m.sub.length > 0 && (
-                      <div className="flex items-center gap-1.5 mt-1">
+                      <div className="flex items-center gap-1.5 mt-1.5">
                         {m.sub.map((s, i) => (
                           <span key={i} className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
                             {s}

@@ -250,11 +250,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch {
       triggerToast("Undo failed.");
     }
-  }, [
-    deletedItemCacheRef,
-    clearCacheTimeout,
-    showSharkUndo,
-    triggerPhoenixAlert,
     // Intentionally excluded from the dep array:
     //   - setTransactions / setGoals / setAssets: React state
     //     setters are guaranteed-stable for the component's lifetime.
@@ -265,6 +260,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // The ref-mirror pattern below means even if any of these somehow changed
     // identity, the accelerometer listener still picks up the latest version.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    deletedItemCacheRef,
+    clearCacheTimeout,
+    showSharkUndo,
+    triggerPhoenixAlert,
   ]);
 
   // Ref mirror so the mount-once accelerometer listener can call the current

@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect, useId } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
 import { NativeHaptics } from "@/lib/haptics";
 
 export interface CustomDatePickerProps {
@@ -38,15 +38,17 @@ export default function CustomDatePicker({
     return new Date();
   });
 
-  // When value changes from outside, sync pickerMonth
-  useEffect(() => {
+  // When value changes from outside, adjust pickerDate during render
+  const [prevValue, setPrevValue] = useState(value);
+  if (value !== prevValue) {
+    setPrevValue(value);
     if (value) {
       const parsed = new Date(value + "T00:00:00");
       if (!isNaN(parsed.getTime())) {
         setPickerDate(parsed);
       }
     }
-  }, [value]);
+  }
 
   // Click outside listener
   useEffect(() => {
@@ -79,10 +81,18 @@ export default function CustomDatePicker({
   const startOffset = firstDay === 0 ? 6 : firstDay - 1;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
-    now.getDate()
-  ).padStart(2, "0")}`;
+  const { todayStr, yesterdayStr } = React.useMemo(() => {
+    const n = new Date();
+    const t = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(
+      n.getDate()
+    ).padStart(2, "0")}`;
+    const y = new Date(n);
+    y.setDate(n.getDate() - 1);
+    const yStr = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, "0")}-${String(
+      y.getDate()
+    ).padStart(2, "0")}`;
+    return { todayStr: t, yesterdayStr: yStr };
+  }, []);
 
   const formattedDate = React.useMemo(() => {
     if (!value) return placeholder;
@@ -93,12 +103,6 @@ export default function CustomDatePicker({
       return `Today, ${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
     }
 
-    const yesterday = new Date(now);
-    yesterday.setDate(now.getDate() - 1);
-    const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(
-      2,
-      "0"
-    )}-${String(yesterday.getDate()).padStart(2, "0")}`;
     if (value === yesterdayStr) {
       return `Yesterday, ${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
     }
@@ -109,7 +113,7 @@ export default function CustomDatePicker({
       month: "short",
       year: "numeric",
     });
-  }, [value, todayStr, placeholder, now]);
+  }, [value, todayStr, yesterdayStr, placeholder]);
 
   const handleToggle = () => {
     if (disabled) return;

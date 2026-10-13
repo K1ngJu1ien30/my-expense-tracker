@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { motion, AnimatePresence, PanInfo } from "framer-motion";
-import { X, ArrowRight, Calendar, ChevronLeft, ChevronRight, Sparkles, ChevronDown, SlidersHorizontal } from "lucide-react";
+import { X, ArrowRight, Sparkles, ChevronDown, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect } from "react";
 
@@ -337,7 +337,6 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
     }
     // Only depend on isActuallyOpen / editTransactionId — we want this
     // to fire exactly once per "open as fresh add" transition.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActuallyOpen, editTransactionId]);
 
   // Load the predictor model once when the modal opens. Reload on every open

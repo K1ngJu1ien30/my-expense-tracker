@@ -35,7 +35,7 @@ export default function CustomSelect({
   placeholder = "Select an option...",
   label,
   icon,
-  accentColor = "#3b82f6",
+  accentColor: _accentColor = "#3b82f6",
   className = "",
   dropdownClassName = "",
   disabled = false,
@@ -74,19 +74,24 @@ export default function CustomSelect({
     );
   }, [normalizedOptions, searchTerm]);
 
+  const closeDropdown = () => {
+    setIsOpen(false);
+    setSearchTerm("");
+  };
+
   // Click outside listener
   useEffect(() => {
     if (!isOpen) return;
 
     function handleClickOutside(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
+        closeDropdown();
       }
     }
 
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        setIsOpen(false);
+        closeDropdown();
       }
     }
 
@@ -101,24 +106,27 @@ export default function CustomSelect({
   // Focus search input when open
   useEffect(() => {
     if (isOpen && shouldSearch) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         searchInputRef.current?.focus();
       }, 50);
-    } else {
-      setSearchTerm("");
+      return () => clearTimeout(timer);
     }
   }, [isOpen, shouldSearch]);
 
   const handleToggle = () => {
     if (disabled) return;
     NativeHaptics.lightTick();
-    setIsOpen((prev) => !prev);
+    if (isOpen) {
+      closeDropdown();
+    } else {
+      setIsOpen(true);
+    }
   };
 
   const handleSelect = (optValue: string) => {
     NativeHaptics.lightTick();
     onChange(optValue);
-    setIsOpen(false);
+    closeDropdown();
   };
 
   const sizeClasses = {
@@ -144,6 +152,7 @@ export default function CustomSelect({
         type="button"
         role="combobox"
         aria-expanded={isOpen}
+        aria-controls={isOpen ? `${id}-listbox` : undefined}
         aria-haspopup="listbox"
         disabled={disabled}
         onClick={handleToggle}
@@ -219,7 +228,11 @@ export default function CustomSelect({
             )}
 
             {/* Options List */}
-            <div className="overflow-y-auto space-y-0.5 hide-scrollbar flex-1">
+            <div
+              id={`${id}-listbox`}
+              role="listbox"
+              className="overflow-y-auto space-y-0.5 hide-scrollbar flex-1"
+            >
               {filteredOptions.length === 0 ? (
                 <div className="py-4 px-3 text-center text-xs text-muted-foreground font-medium">
                   No matching options

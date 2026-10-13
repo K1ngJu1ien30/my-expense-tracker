@@ -288,12 +288,22 @@ export default function HistoryPage() {
     // effect runs once (empty deps) and the scroll parent is effectively
     // immutable for the page's lifetime.
     const main = document.querySelector("main");
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (main instanceof HTMLElement) setScrollParent(main);
+    if (main instanceof HTMLElement) {
+      const handle = requestAnimationFrame(() => setScrollParent(main));
+      return () => cancelAnimationFrame(handle);
+    }
+  }, []);
+
+  const { todayDateStr, yesterdayDateStr } = useMemo(() => {
+    const d = new Date();
+    const today = d.toDateString();
+    const y = new Date(d);
+    y.setDate(d.getDate() - 1);
+    return { todayDateStr: today, yesterdayDateStr: y.toDateString() };
   }, []);
 
   return (
-    <div className="animate-in fade-in duration-500 pb-[120px] overflow-x-hidden">
+    <div className="animate-in fade-in duration-500 pb-[120px] overflow-x-hidden max-w-4xl mx-auto">
       <div className="px-6 pt-2">
         <div className="flex justify-between items-center mb-4">
           <div>
@@ -447,8 +457,8 @@ export default function HistoryPage() {
               const prevDate = prevTx ? new Date(prevTx.date).toDateString() : null;
               const showDateHeader = index === 0 || txDate !== prevDate;
 
-              const isToday = txDate === new Date().toDateString();
-              const isYesterday = txDate === new Date(Date.now() - 86400000).toDateString();
+              const isToday = txDate === todayDateStr;
+              const isYesterday = txDate === yesterdayDateStr;
               const dateLabel = isToday ? "Today" : isYesterday ? "Yesterday" : new Date(tx.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 
               return (

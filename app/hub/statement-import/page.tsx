@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { ArrowLeft, Copy, Check, Clipboard, FileText, CheckCircle2, AlertCircle, ArrowRight, Upload } from "lucide-react";
 import Link from "next/link";
-import { motion, AnimatePresence } from "framer-motion";
 import { useAppContext } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
 import type { Transaction } from "@/lib/types";
@@ -111,7 +110,7 @@ export default function StatementImportPage() {
     const desc = (descStr || "").toLowerCase();
 
     // If category is in 'Parent > Subcategory' format, extract Parent
-    let cat = rawCat.includes(">") ? rawCat.split(">")[0].trim() : rawCat;
+    const cat = rawCat.includes(">") ? rawCat.split(">")[0].trim() : rawCat;
 
     // Check exact match in active categories
     const exactMatch = categories.find((c) => c.toLowerCase() === cat.toLowerCase());
@@ -184,7 +183,15 @@ export default function StatementImportPage() {
         setStatementInfo(parsed.statement);
       }
 
-      const mappedItems: ParsedImportItem[] = rawTxs.map((row: any, idx: number) => {
+      interface RawStatementRow {
+        date?: string;
+        description?: string;
+        amount?: number | string;
+        category?: string;
+        account?: string;
+      }
+
+      const mappedItems: ParsedImportItem[] = (rawTxs as RawStatementRow[]).map((row, idx) => {
         const rawAmount = Number(row.amount || 0);
         // Negative amount = Expense, Positive amount = Income
         const isExpense = rawAmount < 0;
@@ -222,9 +229,10 @@ export default function StatementImportPage() {
       setParsedItems(mappedItems);
       NativeHaptics.successMedium();
       triggerToast(`✅ Parsed ${mappedItems.length} transactions!`);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setParseError(`JSON Parsing Error: ${err.message || "Invalid JSON format"}. Make sure to paste valid JSON.`);
+      const errMsg = err instanceof Error ? err.message : "Invalid JSON format";
+      setParseError(`JSON Parsing Error: ${errMsg}. Make sure to paste valid JSON.`);
     }
   };
 
@@ -241,7 +249,11 @@ export default function StatementImportPage() {
   };
 
   // Update item field
-  const updateItemField = (id: string, field: keyof ParsedImportItem, value: any) => {
+  const updateItemField = <K extends keyof ParsedImportItem>(
+    id: string,
+    field: K,
+    value: ParsedImportItem[K]
+  ) => {
     setParsedItems((prev) =>
       prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
     );

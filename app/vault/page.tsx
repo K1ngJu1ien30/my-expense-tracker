@@ -6,6 +6,7 @@ import { Plus, Trash2, X, Package, ChevronDown } from "lucide-react";
 import { useAppContext } from "@/lib/context";
 import AssetDetailOverlay from "@/components/AssetDetailOverlay";
 import CustomDatePicker from "@/components/CustomDatePicker";
+import { roundCurrency } from "@/lib/utils";
 
 const EMOJI_OPTIONS = ["📱", "💻", "📸", "👟", "⌚", "🎧", "🎮", "🚗", "🏠", "🛋️", "🧳", "👜", "📦", "🔧", "🎸"];
 
@@ -32,16 +33,17 @@ export default function VaultPage() {
     return assets.filter(a => a.category === activeFilter);
   }, [assets, activeFilter]);
 
-  const totalValue = useMemo(() => filteredAssets.reduce((sum, a) => sum + Number(a.purchase_price || 0), 0), [filteredAssets]);
+  const totalValue = useMemo(() => roundCurrency(filteredAssets.reduce((sum, a) => sum + Number(a.purchase_price || 0), 0)), [filteredAssets]);
 
   const avgCostPerDay = useMemo(() => {
-    return filteredAssets.reduce((sum, a) => {
+    const totalDaily = filteredAssets.reduce((sum, a) => {
       const price = Number(a.purchase_price || 0);
       if (price === 0) return sum;
       const now = new Date();
       const days = Math.max(1, Math.floor((now.getTime() - new Date(a.purchase_date).getTime()) / 86400000));
       return sum + price / days;
     }, 0);
+    return roundCurrency(totalDaily);
   }, [filteredAssets]);
 
   const existingCategories = useMemo(() => [...new Set(assets.map(a => a.category).filter(Boolean))], [assets]);
@@ -79,18 +81,18 @@ export default function VaultPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-card p-4 rounded-2xl shadow-soft border border-border/40">
-          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Total Value</p>
-          <p className="text-lg font-black text-foreground">{currency} {totalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+      <div className="grid grid-cols-3 gap-3 lg:gap-6">
+        <div className="bg-card p-4 lg:p-6 rounded-2xl shadow-soft border border-border/40">
+          <p className="text-[10px] lg:text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Total Value</p>
+          <p className="text-lg lg:text-2xl font-black text-foreground">{currency} {totalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
         </div>
-        <div className="bg-card p-4 rounded-2xl shadow-soft border border-border/40">
-          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Items</p>
-          <p className="text-lg font-black text-foreground">{filteredAssets.length}</p>
+        <div className="bg-card p-4 lg:p-6 rounded-2xl shadow-soft border border-border/40">
+          <p className="text-[10px] lg:text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Items</p>
+          <p className="text-lg lg:text-2xl font-black text-foreground">{filteredAssets.length}</p>
         </div>
-        <div className="bg-card p-4 rounded-2xl shadow-soft border border-border/40">
-          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Cost / Day</p>
-          <p className="text-lg font-black" style={{ color: accentColor }}>{currency} {avgCostPerDay.toFixed(2)}</p>
+        <div className="bg-card p-4 lg:p-6 rounded-2xl shadow-soft border border-border/40">
+          <p className="text-[10px] lg:text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Cost / Day</p>
+          <p className="text-lg lg:text-2xl font-black" style={{ color: accentColor }}>{currency} {avgCostPerDay.toFixed(2)}</p>
         </div>
       </div>
 
@@ -121,7 +123,7 @@ export default function VaultPage() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
           {filteredAssets.map(asset => (
             <div key={asset.id} onClick={() => setSelectedAssetId(asset.id)} className="block cursor-pointer">
               <motion.div
@@ -134,7 +136,7 @@ export default function VaultPage() {
                     e.stopPropagation();
                     confirmAction("Delete Asset", `Remove "${asset.name}"?`, () => deleteAsset(asset.id));
                   }}
-                  className="absolute top-2 right-2 p-1.5 text-muted-foreground hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                  className="absolute top-2 right-2 p-1.5 text-muted-foreground hover:text-red-500 opacity-60 hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>

@@ -385,9 +385,8 @@ export default function Dashboard() {
   }, [derryActive]);
 
   return (
-    <div className="p-6 space-y-8 animate-in fade-in duration-500">
-      {/* 🎈 Derry Horror Overlay — purely decorative easter egg, hidden from
-          screen readers so they don't read the horror copy aloud. */}
+    <div className="p-4 sm:p-6 lg:p-0 space-y-6 lg:space-y-8 animate-in fade-in duration-500">
+      {/* 🎈 Derry Horror Overlay — purely decorative easter egg */}
       <AnimatePresence>
         {derryActive && (
           <motion.div
@@ -398,10 +397,7 @@ export default function Dashboard() {
             aria-hidden="true"
             className="fixed inset-0 z-[9999] overflow-hidden pointer-events-none"
           >
-            {/* Phase 1: Blackout with blood vignette */}
             <div className="absolute inset-0 horror-blackout" />
-
-            {/* Phase 1 text: "We all float down here..." */}
             {derryPhase >= 1 && derryPhase < 3 && (
               <motion.p
                 initial={{ opacity: 0, y: 10 }}
@@ -413,13 +409,9 @@ export default function Dashboard() {
                 We all float down here...
               </motion.p>
             )}
-
-            {/* Phase 2: Blood drip */}
             {derryPhase >= 2 && (
               <div className="absolute top-0 left-0 right-0 blood-drip" />
             )}
-
-            {/* Phase 3: Jump scare — massive emoji flash */}
             {derryPhase === 3 && (
               <div
                 className="absolute inset-0 flex items-center justify-center"
@@ -431,7 +423,8 @@ export default function Dashboard() {
           </motion.div>
         )}
       </AnimatePresence>
-      {/* Matrix Konami Effect — decorative god-mode flash, hidden from AT. */}
+
+      {/* Matrix Konami Effect */}
       <AnimatePresence>
         {matrixFlash && (
           <motion.div
@@ -456,297 +449,290 @@ export default function Dashboard() {
         )}
       </AnimatePresence>
 
-      {/* Header — wrapped in a bold time-of-day gradient that shifts through
-          the 8 buckets (deep-night → dawn → morning → noon → afternoon →
-          dusk → evening → late-night). The gradient is intentionally high-
-          contrast — you should immediately notice that 3 AM looks different
-          to 2 PM. */}
-      <div
-        className="relative rounded-3xl px-4 py-4 -mx-2 mt-2 transition-colors duration-700 overflow-hidden"
-        style={{
-          background: timeTheme.gradient,
-        }}
-        data-time-bucket={timeTheme.bucket}
-      >
-        <div className="flex justify-between items-center gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-muted-foreground font-semibold text-sm flex items-center gap-1.5">
-              <span aria-hidden="true" className="text-base">{timeTheme.icon}</span>
-              <span className="truncate">{displayGreeting}</span>
-            </p>
-            <h1 className="text-2xl font-bold truncate">{userName}</h1>
-          </div>
-
-          <button
-            type="button"
-            aria-label="User avatar"
-            onClick={handleAvatarTap}
-            className="w-10 h-10 rounded-full bg-primary/10 overflow-hidden flex items-center justify-center border-2 border-primary/20 shadow-sm active:scale-95 transition-transform shrink-0"
-            style={{ boxShadow: `0 0 18px ${timeTheme.accent}` }}
-          >
-            <span className="font-bold text-primary">{userName.charAt(0).toUpperCase()}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* AI Smart Insight is now merged into the greeting above */}
-
-      {/*
-        Monthly-Recap Auto-Prompt — first week of each month only, dismissible
-        per month. Tap to open the full receipt viewer. Receipt rendering +
-        share flow live in `components/MonthlyReceiptModal`.
-      */}
-      <AnimatePresence>
-        {showRecapPrompt && (
-          <motion.div
-            initial={{ opacity: 0, y: -10, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -10, scale: 0.97 }}
-            transition={{ type: "spring", damping: 26, stiffness: 300 }}
-            className="relative rounded-3xl border border-amber-400/40 p-4 flex items-center gap-3 overflow-hidden"
-            style={{
-              background:
-                "linear-gradient(135deg, rgba(253, 248, 235, 0.95) 0%, rgba(248, 241, 222, 0.95) 100%)",
-              color: "#3a3a37",
-            }}
-          >
-            <div className="w-11 h-11 rounded-2xl bg-amber-500/20 flex items-center justify-center shrink-0">
-              <Receipt className="w-5 h-5 text-amber-700" aria-hidden="true" />
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowReceiptModal(true)}
-              className="flex-1 text-left active:scale-[0.99] transition-transform"
-              aria-label="Open last month's receipt"
-            >
-              <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">
-                Your monthly receipt is ready
-              </p>
-              <p className="text-sm font-bold mt-0.5">Tap to view & share →</p>
-            </button>
-            <button
-              type="button"
-              aria-label="Dismiss recap prompt"
-              onClick={dismissRecapPrompt}
-              className="p-1.5 text-stone-500 hover:text-stone-800 transition-colors shrink-0 text-lg leading-none font-bold"
-            >
-              <span aria-hidden="true">×</span>
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       <MonthlyReceiptModal
         isOpen={showReceiptModal}
         onClose={() => setShowReceiptModal(false)}
       />
 
-      {/* Main Wallet Card — acts as a button for keyboard users (role + tabIndex
-          + Enter/Space support) so the reveal interaction is not mouse-only. */}
-      <motion.div
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        onClick={handleRevealBalance}
-        role="button"
-        tabIndex={0}
-        aria-label={balanceRevealed ? "Hide account balances" : "Reveal account balances"}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            handleRevealBalance();
-          }
-        }}
-        className="bg-primary text-primary-foreground py-3 px-4 rounded-[2rem] shadow-heavy shadow-primary/20 relative overflow-hidden dark:bg-zinc-900 dark:text-zinc-100 border border-transparent dark:border-white/5 cursor-pointer"
-      >
-        <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full blur-xl -ml-8 -mb-8 pointer-events-none" />
-        
-        {derryActive ? (
-          <>
-            <p className="text-primary-foreground/70 font-medium mb-1 relative z-10 text-sm">🎈</p>
-            <h2 className="text-4xl font-black mb-4 relative z-10 tracking-tight text-red-600">YOU&rsquo;LL FLOAT TOO.</h2>
-          </>
-        ) : (
-          <>
-            {/* Per-account balances — compact horizontal carousel */}
-            <div className="relative z-10 -mx-1 px-1 flex overflow-x-auto snap-x hide-scrollbar gap-3 pb-1 mb-2">
-              {orderedAccountCards.map(({ name, balance }) => (
-                <div key={name} className="flex-shrink-0 w-fit min-w-[130px] p-3 pr-8 bg-gray-800/60 rounded-xl snap-start border border-gray-700/50">
-                  <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider block">{name}</span>
-                  <span className={`text-lg font-bold tracking-tight block mt-0.5 ${balance < 0 ? 'text-rose-400' : 'text-white'}`}>
-                    {isGodMode
-                      ? `${getCurrencyPrefix(name)} 99,999.00`
-                      : balanceRevealed
-                        ? <AnimatedCurrency value={balance} format={(n) => formatAccountBalance(name, n)} />
-                        : `${getCurrencyPrefix(name)} •••••`
-                    }
-                  </span>
-                </div>
-              ))}
-              {orderedAccountCards.length === 0 && (
-                <p className="text-gray-500 text-sm font-medium min-w-full text-center py-2">No active accounts</p>
-              )}
-            </div>
+      {/* Responsive Grid: 2 columns on desktop (8 cols left, 4 cols right) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+        {/* ─── LEFT COLUMN: Header, Accounts Wallet & Trends ──────────────── */}
+        <div className="lg:col-span-7 xl:col-span-8 space-y-6">
+          {/* Header Banner with Time-of-Day theme */}
+          <div
+            className="relative rounded-3xl px-5 py-4 transition-colors duration-700 overflow-hidden shadow-soft border border-border/30"
+            style={{
+              background: timeTheme.gradient,
+            }}
+            data-time-bucket={timeTheme.bucket}
+          >
+            <div className="flex justify-between items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-muted-foreground font-semibold text-sm flex items-center gap-1.5">
+                  <span aria-hidden="true" className="text-base">{timeTheme.icon}</span>
+                  <span className="truncate">{displayGreeting}</span>
+                </p>
+                <h1 className="text-2xl lg:text-3xl font-bold truncate mt-0.5">{userName}</h1>
+              </div>
 
-            {/* Net Total — subtle, animated on change. Decorative flourishes:
-                 • rich-mode sparkle glow when balance exceeds 1,000,000
-                 • broke-mode glitch shake when balance dips below zero
-                These are layered ON TOP of the existing reveal/hidden logic
-                so they never interfere with Zen Mode. */}
-            <div
-              className={`relative z-10 pt-2 border-t border-white/[0.06] flex items-center justify-between ${
-                !isGodMode && balanceRevealed && totalBalance < 0 ? "animate-glitch" : ""
-              }`}
-            >
-              <span className="text-gray-500 text-[10px] font-bold uppercase tracking-wider">Net Total</span>
-              <span
-                className={`text-sm font-bold tracking-tight ${
-                  !isGodMode && balanceRevealed && totalBalance > 1_000_000
-                    ? "rich-sparkle text-amber-300"
-                    : "text-gray-300"
-                }`}
+              <button
+                type="button"
+                aria-label="User avatar"
+                onClick={handleAvatarTap}
+                className="w-11 h-11 rounded-full bg-primary/10 overflow-hidden flex items-center justify-center border-2 border-primary/20 shadow-sm active:scale-95 transition-transform shrink-0 cursor-pointer"
+                style={{ boxShadow: `0 0 18px ${timeTheme.accent}` }}
               >
-                {isGodMode
-                  ? `${currency} 99,999,999.00`
-                  : balanceRevealed
-                    ? <AnimatedCurrency value={totalBalance} format={formatCurrency} />
-                    : `${currency} •••••`}
-              </span>
-            </div>
-          </>
-        )}
-        
-        {pendingIncome > 0 && !derryActive && (
-          <div className="relative z-10 mt-2">
-            <div className="flex items-center gap-2 bg-amber-400/20 px-3 py-1 rounded-full backdrop-blur-md w-fit">
-              <Clock className="w-3 h-3 text-amber-400" aria-hidden="true" />
-              <span className="text-[10px] font-bold text-amber-300">{formatCurrency(pendingIncome)} Pending</span>
-              <button type="button" aria-label="About pending funds" aria-expanded={showPendingTip} onClick={(e) => { e.stopPropagation(); setShowPendingTip(!showPendingTip); }} className="pointer-events-auto">
-                <HelpCircle className="w-3 h-3 text-amber-400/60" aria-hidden="true" />
+                <span className="font-bold text-primary text-base">{userName.charAt(0).toUpperCase()}</span>
               </button>
             </div>
-            {showPendingTip && (
-              <div className="absolute left-0 top-full mt-1.5 bg-foreground text-background text-[10px] font-medium px-3 py-2 rounded-xl shadow-heavy max-w-[250px] leading-snug pointer-events-auto z-20" onClick={(e) => { e.stopPropagation(); setShowPendingTip(false); }}>
-                Pending funds do not affect your total balance until marked as cleared.
+          </div>
+
+          {/* Main Wallet Card */}
+          <motion.div
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            onClick={handleRevealBalance}
+            role="button"
+            tabIndex={0}
+            aria-label={balanceRevealed ? "Hide account balances" : "Reveal account balances"}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                handleRevealBalance();
+              }
+            }}
+            className="bg-primary text-primary-foreground p-5 rounded-[2rem] shadow-heavy shadow-primary/20 relative overflow-hidden dark:bg-zinc-900 dark:text-zinc-100 border border-transparent dark:border-white/5 cursor-pointer"
+          >
+            <div className="absolute top-0 right-0 w-48 h-48 bg-white/5 rounded-full blur-2xl -mr-16 -mt-16 pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-32 h-32 bg-white/5 rounded-full blur-xl -ml-12 -mb-12 pointer-events-none" />
+            
+            {derryActive ? (
+              <>
+                <p className="text-primary-foreground/70 font-medium mb-1 relative z-10 text-sm">🎈</p>
+                <h2 className="text-4xl font-black mb-4 relative z-10 tracking-tight text-red-600">YOU&rsquo;LL FLOAT TOO.</h2>
+              </>
+            ) : (
+              <>
+                {/* Per-account balances — carousel on mobile, responsive grid on desktop */}
+                <div className="relative z-10 -mx-1 px-1 flex lg:grid lg:grid-cols-2 xl:grid-cols-3 overflow-x-auto lg:overflow-x-visible snap-x hide-scrollbar gap-3 pb-2 mb-3">
+                  {orderedAccountCards.map(({ name, balance }) => (
+                    <div key={name} className="flex-shrink-0 w-fit min-w-[140px] lg:w-full lg:min-w-0 p-3.5 pr-6 bg-gray-800/60 rounded-2xl snap-start border border-gray-700/50 hover:border-gray-600 transition-colors">
+                      <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider block truncate">{name}</span>
+                      <span className={`text-lg font-bold tracking-tight block mt-0.5 ${balance < 0 ? 'text-rose-400' : 'text-white'}`}>
+                        {isGodMode
+                          ? `${getCurrencyPrefix(name)} 99,999.00`
+                          : balanceRevealed
+                            ? <AnimatedCurrency value={balance} format={(n) => formatAccountBalance(name, n)} />
+                            : `${getCurrencyPrefix(name)} •••••`
+                        }
+                      </span>
+                    </div>
+                  ))}
+                  {orderedAccountCards.length === 0 && (
+                    <p className="text-gray-500 text-sm font-medium min-w-full text-center py-2">No active accounts</p>
+                  )}
+                </div>
+
+                {/* Net Total */}
+                <div
+                  className={`relative z-10 pt-3 border-t border-white/[0.08] flex items-center justify-between ${
+                    !isGodMode && balanceRevealed && totalBalance < 0 ? "animate-glitch" : ""
+                  }`}
+                >
+                  <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Net Total</span>
+                  <span
+                    className={`text-base font-bold tracking-tight ${
+                      !isGodMode && balanceRevealed && totalBalance > 1_000_000
+                        ? "rich-sparkle text-amber-300"
+                        : "text-gray-200"
+                    }`}
+                  >
+                    {isGodMode
+                      ? `${currency} 99,999,999.00`
+                      : balanceRevealed
+                        ? <AnimatedCurrency value={totalBalance} format={formatCurrency} />
+                        : `${currency} •••••`}
+                  </span>
+                </div>
+              </>
+            )}
+            
+            {pendingIncome > 0 && !derryActive && (
+              <div className="relative z-10 mt-3">
+                <div className="flex items-center gap-2 bg-amber-400/20 px-3 py-1 rounded-full backdrop-blur-md w-fit">
+                  <Clock className="w-3 h-3 text-amber-400" aria-hidden="true" />
+                  <span className="text-[10px] font-bold text-amber-300">{formatCurrency(pendingIncome)} Pending</span>
+                  <button type="button" aria-label="About pending funds" aria-expanded={showPendingTip} onClick={(e) => { e.stopPropagation(); setShowPendingTip(!showPendingTip); }} className="pointer-events-auto cursor-pointer">
+                    <HelpCircle className="w-3 h-3 text-amber-400/60" aria-hidden="true" />
+                  </button>
+                </div>
+                {showPendingTip && (
+                  <div className="absolute left-0 top-full mt-1.5 bg-foreground text-background text-[10px] font-medium px-3 py-2 rounded-xl shadow-heavy max-w-[250px] leading-snug pointer-events-auto z-20" onClick={(e) => { e.stopPropagation(); setShowPendingTip(false); }}>
+                    Pending funds do not affect your total balance until marked as cleared.
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        )}
-      </motion.div>
+          </motion.div>
 
-      {/* Insights Row */}
-      <div className="grid grid-cols-2 gap-4">
-        <Link href="/history" className="bg-card w-full text-left p-5 rounded-3xl shadow-soft border border-border/40 hover:scale-[1.02] active:scale-95 transition-transform cursor-pointer block">
-          <div className="bg-primary/5 w-8 h-8 rounded-full flex items-center justify-center mb-3">
-            <Wallet className="w-4 h-4 text-primary" aria-hidden="true" />
-          </div>
-          <p className="text-muted-foreground text-xs font-bold uppercase tracking-wider mb-1">Today</p>
-          {todayTransactions.length === 0 ? (
-            <p className="text-sm font-medium text-muted-foreground">No transactions today!</p>
-          ) : (
-            <p className="text-lg font-black dark:text-foreground">{formatCurrency(todayTotal)}</p>
-          )}
-        </Link>
-        <Link href="/history" className="bg-card w-full text-left p-5 rounded-3xl shadow-soft border border-border/40 hover:scale-[1.02] active:scale-95 transition-transform cursor-pointer block">
-          <div className="bg-rose-500/10 w-8 h-8 rounded-full flex items-center justify-center mb-3">
-            <TrendingUp className="w-4 h-4 text-rose-500" aria-hidden="true" />
-          </div>
-          <p className="text-muted-foreground text-xs font-bold uppercase tracking-wider mb-1">Weekly</p>
-          <p className="text-lg font-black dark:text-foreground">{formatCurrency(weeklyTotal)}</p>
-        </Link>
-      </div>
-
-      {/*
-        Split-Bill Widget — surfaces unclaimed reimbursable expenses so they
-        don't drift into "forgotten" territory. Only renders when the Claims
-        module is enabled AND there's something actually pending.
-      */}
-      {claimsSummary && (
-        <Link
-          href="/hub/claims"
-          className="bg-card p-4 rounded-3xl shadow-soft border border-amber-500/30 flex items-center gap-4 hover:scale-[1.01] active:scale-[0.99] transition-transform"
-        >
-          <div className="bg-amber-500/10 w-11 h-11 rounded-2xl flex items-center justify-center shrink-0">
-            <Receipt className="w-5 h-5 text-amber-500" aria-hidden="true" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-wider text-amber-500">Unclaimed</p>
-            <p className="text-base font-black text-foreground leading-tight">
-              {formatCurrency(claimsSummary.total)}
-            </p>
-            <p className="text-[11px] text-muted-foreground font-medium mt-0.5">
-              {claimsSummary.count} expense{claimsSummary.count !== 1 ? "s" : ""}
-              {claimsSummary.distinctPayees > 0 && ` · ${claimsSummary.distinctPayees} payee${claimsSummary.distinctPayees !== 1 ? "s" : ""}`}
-            </p>
-          </div>
-          <span className="text-[10px] font-bold text-amber-500/80 uppercase tracking-wider shrink-0">Review →</span>
-        </Link>
-      )}
-
-      {/* Savings Goals Section */}
-      <div>
-        <div className="flex justify-between items-center mb-4 px-2">
-          <h3 className="font-bold text-foreground">Savings Goals</h3>
-          <Link href="/goals" className="text-xs font-bold text-primary uppercase hover:opacity-80 transition-opacity">View All</Link>
-        </div>
-        <div className="space-y-4">
-          {pinnedGoals.length === 0 && (
-             <div className="bg-card p-5 rounded-3xl shadow-soft border border-border/40 text-center">
-                 <p className="text-muted-foreground text-sm font-medium">No blocked goals pinned. Add them in Goals!</p>
-             </div>
-          )}
-          {pinnedGoals.map(g => (
-            <div key={`${g.id}-${g.current}`} className="bg-card p-5 rounded-3xl shadow-soft border border-border/40 relative">
-              <div className="flex justify-between items-end mb-3">
-                <div className="flex items-center gap-2">
-                  <div className={`${g.bg} p-2 rounded-xl`}>
-                    <Target className={`w-5 h-5 ${g.color.replace('bg-', 'text-')}`} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-foreground">{g.title}</p>
-                    <p className="text-xs text-muted-foreground font-medium">{g.subtitle}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs font-bold text-primary">{currency} {g.current.toLocaleString()} <span className="text-muted-foreground font-medium">/ {g.target >= 1000 ? `${g.target/1000}k` : g.target}</span></p>
-                </div>
-              </div>
-              <div className="h-2.5 bg-muted rounded-full overflow-hidden">
-                <motion.div 
-                  initial={{ width: 0 }}
-                  animate={{ width: `${Math.min((g.current / g.target) * 100, 100)}%` }}
-                  transition={{ duration: 1, ease: "easeOut", delay: 0.1 }}
-                  className={`h-full ${g.color} rounded-full`}
-                />
-              </div>
+          {/* Spending Trend Chart */}
+          <div className="bg-card p-6 rounded-3xl shadow-soft border border-border/40">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-foreground text-base">Spending Trend</h3>
+              <span className="text-xs font-semibold text-muted-foreground">Past 7 Days</span>
             </div>
-          ))}
+            <div className="h-[140px] lg:h-[220px] w-full" style={{ minWidth: 0 }}>
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                <LineChart data={dynamicTrendData}>
+                  <Line 
+                    type="monotone" 
+                    dataKey="value" 
+                    stroke="var(--foreground)" 
+                    strokeWidth={3} 
+                    dot={false}
+                    activeDot={{ r: 6, fill: "var(--foreground)" }} 
+                  />
+                  <Tooltip 
+                    content={<CustomTooltip />}
+                    cursor={{ stroke: 'var(--border)', strokeWidth: 2, strokeDasharray: '4 4', fill: 'transparent' }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex justify-between text-xs text-muted-foreground font-medium px-2 mt-3 pt-2 border-t border-border/30">
+              {dynamicTrendData.map((d, i) => <span key={i}>{d.name}</span>)}
+            </div>
+          </div>
         </div>
-      </div>
 
-      {/* Spending Trend Chart */}
-      <div className="bg-card p-5 rounded-3xl shadow-soft border border-border/40 mb-10">
-        <h3 className="font-bold text-foreground mb-4">Spending Trend</h3>
-        <div className="h-[120px] w-full" style={{ minWidth: 0 }}>
-          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-            <LineChart data={dynamicTrendData}>
-              <Line 
-                type="monotone" 
-                dataKey="value" 
-                stroke="var(--foreground)" 
-                strokeWidth={3} 
-                dot={false}
-                activeDot={{ r: 6, fill: "var(--foreground)" }} 
-              />
-              <Tooltip 
-                content={<CustomTooltip />}
-                cursor={{ stroke: 'var(--border)', strokeWidth: 2, strokeDasharray: '4 4', fill: 'transparent' }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="flex justify-between text-xs text-muted-foreground font-medium px-2 mt-2">
-          {dynamicTrendData.map((d, i) => <span key={i}>{d.name}</span>)}
+        {/* ─── RIGHT COLUMN: Insights, Claims & Goals ─────────────────────── */}
+        <div className="lg:col-span-5 xl:col-span-4 space-y-6">
+          {/* Insights Row */}
+          <div className="grid grid-cols-2 gap-4">
+            <Link href="/history" className="bg-card w-full text-left p-5 rounded-3xl shadow-soft border border-border/40 hover:scale-[1.02] active:scale-95 transition-all cursor-pointer block group">
+              <div className="bg-primary/5 w-9 h-9 rounded-2xl flex items-center justify-center mb-3 group-hover:bg-primary/10 transition-colors">
+                <Wallet className="w-4 h-4 text-primary" aria-hidden="true" />
+              </div>
+              <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-1">Today</p>
+              {todayTransactions.length === 0 ? (
+                <p className="text-xs font-medium text-muted-foreground">No transactions</p>
+              ) : (
+                <p className="text-lg font-black dark:text-foreground">{formatCurrency(todayTotal)}</p>
+              )}
+            </Link>
+            <Link href="/history" className="bg-card w-full text-left p-5 rounded-3xl shadow-soft border border-border/40 hover:scale-[1.02] active:scale-95 transition-all cursor-pointer block group">
+              <div className="bg-rose-500/10 w-9 h-9 rounded-2xl flex items-center justify-center mb-3 group-hover:bg-rose-500/20 transition-colors">
+                <TrendingUp className="w-4 h-4 text-rose-500" aria-hidden="true" />
+              </div>
+              <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-1">Weekly</p>
+              <p className="text-lg font-black dark:text-foreground">{formatCurrency(weeklyTotal)}</p>
+            </Link>
+          </div>
+
+          {/* Monthly-Recap Auto-Prompt */}
+          <AnimatePresence>
+            {showRecapPrompt && (
+              <motion.div
+                initial={{ opacity: 0, y: -10, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 0.97 }}
+                transition={{ type: "spring", damping: 26, stiffness: 300 }}
+                className="relative rounded-3xl border border-amber-400/40 p-4 flex items-center gap-3 overflow-hidden shadow-soft"
+                style={{
+                  background:
+                    "linear-gradient(135deg, rgba(253, 248, 235, 0.95) 0%, rgba(248, 241, 222, 0.95) 100%)",
+                  color: "#3a3a37",
+                }}
+              >
+                <div className="w-11 h-11 rounded-2xl bg-amber-500/20 flex items-center justify-center shrink-0">
+                  <Receipt className="w-5 h-5 text-amber-700" aria-hidden="true" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowReceiptModal(true)}
+                  className="flex-1 text-left active:scale-[0.99] transition-transform cursor-pointer"
+                  aria-label="Open last month's receipt"
+                >
+                  <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">
+                    Your monthly receipt is ready
+                  </p>
+                  <p className="text-sm font-bold mt-0.5">Tap to view & share →</p>
+                </button>
+                <button
+                  type="button"
+                  aria-label="Dismiss recap prompt"
+                  onClick={dismissRecapPrompt}
+                  className="p-1.5 text-stone-500 hover:text-stone-800 transition-colors shrink-0 text-lg leading-none font-bold cursor-pointer"
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Split-Bill Widget */}
+          {claimsSummary && (
+            <Link
+              href="/hub/claims"
+              className="bg-card p-4 rounded-3xl shadow-soft border border-amber-500/30 flex items-center gap-4 hover:border-amber-500/60 active:scale-[0.99] transition-all cursor-pointer"
+            >
+              <div className="bg-amber-500/10 w-11 h-11 rounded-2xl flex items-center justify-center shrink-0">
+                <Receipt className="w-5 h-5 text-amber-500" aria-hidden="true" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-wider text-amber-500">Unclaimed</p>
+                <p className="text-base font-black text-foreground leading-tight">
+                  {formatCurrency(claimsSummary.total)}
+                </p>
+                <p className="text-[11px] text-muted-foreground font-medium mt-0.5">
+                  {claimsSummary.count} expense{claimsSummary.count !== 1 ? "s" : ""}
+                  {claimsSummary.distinctPayees > 0 && ` · ${claimsSummary.distinctPayees} payee${claimsSummary.distinctPayees !== 1 ? "s" : ""}`}
+                </p>
+              </div>
+              <span className="text-[10px] font-bold text-amber-500/80 uppercase tracking-wider shrink-0">Review →</span>
+            </Link>
+          )}
+
+          {/* Savings Goals Section */}
+          <div className="space-y-3">
+            <div className="flex justify-between items-center px-1">
+              <h3 className="font-bold text-foreground text-sm">Savings Goals</h3>
+              <Link href="/goals" className="text-xs font-bold text-primary uppercase hover:underline transition-all">View All</Link>
+            </div>
+            <div className="space-y-3">
+              {pinnedGoals.length === 0 && (
+                <div className="bg-card p-5 rounded-3xl shadow-soft border border-border/40 text-center">
+                  <p className="text-muted-foreground text-xs font-medium">No pinned goals yet. Pin them in Goals!</p>
+                </div>
+              )}
+              {pinnedGoals.map(g => (
+                <div key={`${g.id}-${g.current}`} className="bg-card p-4 rounded-2xl shadow-soft border border-border/40 relative space-y-2">
+                  <div className="flex justify-between items-end">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={`${g.bg} p-2 rounded-xl shrink-0`}>
+                        <Target className={`w-4 h-4 ${g.color.replace('bg-', 'text-')}`} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-foreground truncate">{g.title}</p>
+                        <p className="text-[10px] text-muted-foreground font-medium truncate">{g.subtitle}</p>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-xs font-bold text-primary">{currency} {g.current.toLocaleString()} <span className="text-muted-foreground font-medium text-[10px]">/ {g.target >= 1000 ? `${g.target/1000}k` : g.target}</span></p>
+                    </div>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${Math.min((g.current / g.target) * 100, 100)}%` }}
+                      transition={{ duration: 1, ease: "easeOut", delay: 0.1 }}
+                      className={`h-full ${g.color} rounded-full`}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>

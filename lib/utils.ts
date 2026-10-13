@@ -42,3 +42,13 @@ export function getCategoryColor(categoryName: string): string {
   const hue = Math.abs(hash) % 360;
   return `hsl(${hue}, 75%, 60%)`;
 }
+
+/**
+ * Accurately rounds a currency number to 2 decimal places to eliminate IEEE 754 binary floating-point drift.
+ * (e.g. 0.1 + 0.2 = 0.30000000000000004 -> 0.3)
+ */
+export function roundCurrency(amount: number): number {
+  if (isNaN(amount) || !isFinite(amount)) return 0;
+  return Math.round((amount + Number.EPSILON) * 100) / 100;
+}
+

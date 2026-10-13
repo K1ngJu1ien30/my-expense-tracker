@@ -10,10 +10,32 @@ import AuthGate from "./AuthGate";
 import { useAppContext } from "@/lib/context";
 import { AnimatePresence, motion } from "framer-motion";
 
+import DesktopSidebar from "./DesktopSidebar";
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { toast, session, authLoading, showTransactionModal, setShowTransactionModal } = useAppContext();
   const pathname = usePathname();
   const router = useRouter();
+
+  // Global desktop keyboard shortcut: Press "N" to quickly add transaction
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        e.target instanceof HTMLSelectElement ||
+        (e.target as HTMLElement)?.isContentEditable
+      ) {
+        return;
+      }
+      if ((e.key === "n" || e.key === "N") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        setShowTransactionModal(true);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [setShowTransactionModal]);
 
   // Capacitor hardware back button — uses Next.js router
   useEffect(() => {
@@ -81,10 +103,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           if (!isActive) {
             backgroundedAt = Date.now();
           } else if (backgroundedAt != null) {
-            // If the app was in the background for > 5 minutes, treat
-            // resume like a cold-open and force a fresh greeting on the
-            // next dashboard render.
             const awayMs = Date.now() - backgroundedAt;
+            if (awayMs > 5 * 60 * 1000) {
+              try { localStorage.removeItem("ai_greeting_cache"); } catch {}
+            }
             backgroundedAt = null;
           }
         });
@@ -94,21 +116,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return () => { if (cleanup) cleanup(); };
   }, []);
 
-  if (authLoading) return <div className="h-[100dvh] flex items-center justify-center bg-background max-w-md mx-auto"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"/></div>;
+  if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-background"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"/></div>;
 
   if (!session) return (
-    <div className="relative mx-auto w-full max-w-md h-[100dvh] lg:min-h-0 lg:h-[844px] lg:my-8 bg-background shadow-2xl flex flex-col overflow-x-hidden overflow-y-hidden lg:rounded-[3rem] lg:border-[12px] lg:border-white/10 ring-1 ring-black/5 dark:ring-white/10">
+    <div className="relative w-full min-h-screen bg-background flex items-center justify-center p-4 overflow-x-hidden">
       <AuthScreen />
       <InstallPrompt />
-      {/*
-        Toast lives in an ARIA live region so screen readers announce it
-        without stealing focus. `aria-live="polite"` waits for the user to
-        finish their current task before reading it; `role="status"` makes
-        this explicit for older assistive tech.
-      */}
       <AnimatePresence>
         {toast && (
-          <motion.div initial={{ y: -50, opacity: 0}} animate={{ y: 0, opacity: 1}} exit={{ y: -50, opacity: 0 }} role="status" aria-live="polite" aria-atomic="true" className="absolute pt-12 top-0 left-0 right-0 z-[10000] flex justify-center px-4 pointer-events-none">
+          <motion.div initial={{ y: -50, opacity: 0}} animate={{ y: 0, opacity: 1}} exit={{ y: -50, opacity: 0 }} role="status" aria-live="polite" aria-atomic="true" className="fixed pt-6 lg:pt-8 top-0 left-0 right-0 z-[10000] flex justify-center px-4 pointer-events-none">
             <div className="bg-foreground text-background px-6 py-3 rounded-full shadow-heavy font-bold text-sm tracking-wide flex gap-2 items-center text-center">
                <span className="text-emerald-400" aria-hidden="true">⚡</span> {toast.message}
             </div>
@@ -120,26 +136,35 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthGate>
-    <div className="relative mx-auto w-full max-w-md h-[100dvh] lg:min-h-0 lg:h-[844px] lg:my-8 bg-background shadow-2xl flex flex-col overflow-x-hidden overflow-y-hidden lg:rounded-[3rem] lg:border-[12px] lg:border-white/10 ring-1 ring-black/5 dark:ring-white/10">
-      <AnimatePresence>
-        {toast && (
-          <motion.div initial={{ y: -50, opacity: 0}} animate={{ y: 0, opacity: 1}} exit={{ y: -50, opacity: 0 }} role="status" aria-live="polite" aria-atomic="true" className="absolute pt-12 top-0 left-0 right-0 z-[100] flex justify-center px-4 pointer-events-none">
-            <div className="bg-foreground text-background px-6 py-3 rounded-full shadow-heavy font-bold text-sm tracking-wide flex gap-2 items-center text-center">
-               <span className="text-emerald-400" aria-hidden="true">✅</span> {toast.message}
+      <div className="relative w-full min-h-screen bg-background flex flex-col lg:flex-row overflow-x-hidden">
+        {/* Global Toast live region (fixed top center) */}
+        <AnimatePresence>
+          {toast && (
+            <motion.div initial={{ y: -50, opacity: 0}} animate={{ y: 0, opacity: 1}} exit={{ y: -50, opacity: 0 }} role="status" aria-live="polite" aria-atomic="true" className="fixed pt-6 lg:pt-8 top-0 left-0 right-0 z-[10000] flex justify-center px-4 pointer-events-none">
+              <div className="bg-foreground text-background px-6 py-3 rounded-full shadow-heavy font-bold text-sm tracking-wide flex gap-2 items-center text-center">
+                 <span className="text-emerald-400" aria-hidden="true">✅</span> {toast.message}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Desktop Sidebar (hidden on mobile, visible on lg+) */}
+        <DesktopSidebar onOpenAdd={() => setShowTransactionModal(true)} />
+
+        {/* Main Content Canvas */}
+        <div className="flex-1 min-w-0 flex flex-col min-h-screen">
+          <main className="flex-1 w-full overflow-y-auto hide-scrollbar relative pb-28 lg:pb-12">
+            <div className="w-full max-w-7xl mx-auto">
+              {children}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      
-      <main className="flex-1 overflow-x-hidden overflow-y-auto hide-scrollbar relative pb-28">
-        {children}
-      </main>
-      
-      <InstallPrompt />
-      <TransactionModal isOpen={showTransactionModal} onClose={() => setShowTransactionModal(false)} />
-      <BottomNav onOpenAdd={() => setShowTransactionModal(true)} />
-      <div id="app-privacy-blur" aria-hidden="true" style={{ display: 'none' }} className="fixed inset-0 z-[10000] bg-background/80 backdrop-blur-2xl pointer-events-none" />
-    </div>
+          </main>
+        </div>
+
+        <InstallPrompt />
+        <TransactionModal isOpen={showTransactionModal} onClose={() => setShowTransactionModal(false)} />
+        <BottomNav onOpenAdd={() => setShowTransactionModal(true)} />
+        <div id="app-privacy-blur" aria-hidden="true" style={{ display: 'none' }} className="fixed inset-0 z-[10000] bg-background/80 backdrop-blur-2xl pointer-events-none" />
+      </div>
     </AuthGate>
   );
 }
