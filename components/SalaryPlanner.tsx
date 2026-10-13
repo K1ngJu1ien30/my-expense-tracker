@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAppContext } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
 import type { Subscription } from "@/lib/types";
+import CustomSelect from "@/components/CustomSelect";
 
 const getItemSubtext = (items: Array<{ name: string }>) => {
   if (!items || items.length === 0) return "No items added yet.";
@@ -255,15 +256,14 @@ export default function SalaryPlanner() {
                   className="w-full bg-transparent text-xs font-bold text-foreground outline-none"
                 />
               </div>
-              <select
+              <CustomSelect
                 value={newSourceAccount}
-                onChange={(e) => setNewSourceAccount(e.target.value)}
-                className="bg-muted/40 border border-border/50 rounded-xl px-2 py-2 text-xs font-semibold text-foreground outline-none"
-              >
-                {accounts.map((acc) => (
-                  <option key={acc} value={acc}>{acc}</option>
-                ))}
-              </select>
+                onChange={setNewSourceAccount}
+                options={accounts}
+                placeholder="Account"
+                size="sm"
+                accentColor={accentColor}
+              />
             </div>
             <div className="flex gap-2 justify-end pt-1">
               <button
@@ -509,30 +509,33 @@ export default function SalaryPlanner() {
                     <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">
                       Category
                     </label>
-                    <select
+                    <CustomSelect
                       value={editKind}
-                      onChange={(e) => setEditKind(e.target.value as any)}
-                      className="w-full bg-muted/40 border border-border/50 rounded-xl px-2 py-2 text-xs font-semibold text-foreground outline-none"
-                    >
-                      <option value="subscriptions">Subscription</option>
-                      <option value="fixedBills">Fixed Bill</option>
-                      <option value="utilities">Utility</option>
-                    </select>
+                      onChange={(val) => setEditKind(val as any)}
+                      options={[
+                        { value: "subscriptions", label: "Subscription" },
+                        { value: "fixedBills", label: "Fixed Bill" },
+                        { value: "utilities", label: "Utility" },
+                      ]}
+                      size="sm"
+                      accentColor={accentColor}
+                    />
                   </div>
 
                   <div>
                     <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">
                       Billing Day
                     </label>
-                    <select
-                      value={editBillingDay}
-                      onChange={(e) => setEditBillingDay(e.target.value)}
-                      className="w-full bg-muted/40 border border-border/50 rounded-xl px-2 py-2 text-xs font-semibold text-foreground outline-none"
-                    >
-                      {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
-                        <option key={d} value={d}>Day {d}</option>
-                      ))}
-                    </select>
+                    <CustomSelect
+                      value={String(editBillingDay)}
+                      onChange={setEditBillingDay}
+                      options={Array.from({ length: 28 }, (_, i) => ({
+                        value: String(i + 1),
+                        label: `Day ${i + 1}`,
+                      }))}
+                      size="sm"
+                      accentColor={accentColor}
+                    />
                   </div>
                 </div>
 
@@ -540,15 +543,14 @@ export default function SalaryPlanner() {
                   <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">
                     Source Account
                   </label>
-                  <select
+                  <CustomSelect
                     value={editSourceAccount}
-                    onChange={(e) => setEditSourceAccount(e.target.value)}
-                    className="w-full bg-muted/40 border border-border/50 rounded-xl px-2 py-2 text-xs font-semibold text-foreground outline-none"
-                  >
-                    {accounts.map((acc) => (
-                      <option key={acc} value={acc}>{acc}</option>
-                    ))}
-                  </select>
+                    onChange={setEditSourceAccount}
+                    options={accounts}
+                    placeholder="Select Account"
+                    size="sm"
+                    accentColor={accentColor}
+                  />
                 </div>
 
                 <div className="flex items-center justify-between pt-1">

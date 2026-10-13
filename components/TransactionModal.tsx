@@ -10,6 +10,7 @@ import { useAppContext } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
 import { loadModel, predict, type Prediction, type PredictorModel } from "@/lib/categoryPredictor";
 import { AUTO_EXCLUDE_CATEGORIES } from "@/lib/velocity";
+import CustomDatePicker from "@/components/CustomDatePicker";
 
 type TxType = "Expense" | "Income" | "Transfer";
 
@@ -185,8 +186,6 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [pickerMonth, setPickerMonth] = useState(() => new Date());
   const [status, setStatus] = useState<"cleared" | "pending">("cleared");
   const [isClaimable, setIsClaimable] = useState(false);
   // Per-transaction override for Spending Velocity.
@@ -756,67 +755,12 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                   </div>
                 )}
 
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => { setPickerMonth(new Date(date)); setShowDatePicker(!showDatePicker); }}
-                    className="w-full bg-muted text-sm px-4 py-2.5 rounded-xl border border-border/50 text-foreground font-medium mb-2 flex items-center gap-3 active:scale-[0.98] transition-all text-left"
-                  >
-                    <Calendar className="w-4 h-4 text-muted-foreground shrink-0" />
-                    {new Date(date + 'T00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
-                  </button>
-
-                  <AnimatePresence>
-                    {showDatePicker && (() => {
-                      const year = pickerMonth.getFullYear();
-                      const month = pickerMonth.getMonth();
-                      const firstDay = new Date(year, month, 1).getDay();
-                      const daysInMonth = new Date(year, month + 1, 0).getDate();
-                      const blanks = Array.from({ length: (firstDay || 7) - 1 }, (_, i) => i);
-                      const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-                      // Selected-day highlight not currently rendered — reserved
-                      // for a future visual affordance. Prefix-underscored so
-                      // the unused-var linter stays quiet.
-                      // const _selectedDay = ...
-
-                      return (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          className="overflow-hidden mb-2"
-                        >
-                          <div className="bg-card border border-border/50 rounded-2xl p-4 shadow-soft">
-                            <div className="flex items-center justify-between mb-3">
-                              <button type="button" aria-label="Previous month" onClick={() => setPickerMonth(new Date(year, month - 1, 1))} className="p-1.5 rounded-lg hover:bg-muted transition-colors"><ChevronLeft className="w-4 h-4 text-muted-foreground" aria-hidden="true" /></button>
-                              <p className="text-sm font-bold text-foreground">{pickerMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
-                              <button type="button" aria-label="Next month" onClick={() => setPickerMonth(new Date(year, month + 1, 1))} className="p-1.5 rounded-lg hover:bg-muted transition-colors"><ChevronRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" /></button>
-                            </div>
-                            <div className="grid grid-cols-7 gap-1 text-center">
-                              {['M','T','W','T','F','S','S'].map((d, i) => <span key={i} className="text-[10px] font-bold text-muted-foreground py-1">{d}</span>)}
-                              {blanks.map(i => <div key={`b-${i}`} />)}
-                              {days.map(d => {
-                                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-                                const isSelected = date === dateStr;
-                                const isToday = dateStr === new Date().toISOString().split('T')[0];
-                                return (
-                                  <button
-                                    key={d}
-                                    type="button"
-                                    onClick={() => { setDate(dateStr); setShowDatePicker(false); }}
-                                    style={isSelected ? { backgroundColor: accentColor, color: '#fff' } : {}}
-                                    className={`h-9 rounded-xl text-xs font-bold transition-all ${isSelected ? 'shadow-sm scale-105' : isToday ? 'bg-muted font-black text-foreground' : 'text-foreground hover:bg-muted/50'}`}
-                                  >
-                                    {d}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        </motion.div>
-                      );
-                    })()}
-                  </AnimatePresence>
+                <div className="space-y-2">
+                  <CustomDatePicker
+                    value={date}
+                    onChange={setDate}
+                    accentColor={accentColor}
+                  />
 
                   <input
                     type="text"

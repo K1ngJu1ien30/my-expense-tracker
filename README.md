@@ -13,8 +13,6 @@ A production-grade, offline-first personal finance application built with Next.j
 - **Next.js 16** — App Router, React 19, TypeScript (strict), static export
 - **Tailwind CSS v4** — Utility-first styling with custom design tokens
 - **Supabase** — PostgreSQL backend, Row Level Security, real-time auth
-- **Google Gemini** — AI assistant + personalised greetings + AI-driven recipe generation (free tier: `gemini-2.0-flash-lite`)
-- **Leaflet / react-leaflet** — Interactive map for WanderPlan travel planner
 - **date-fns** — Lightweight date manipulation for itinerary, countdowns, and history grouping
 - **LocalForage** — IndexedDB-backed offline cache with localStorage fallback
 - **Capacitor 8** — Native Android shell (App, Haptics, Filesystem, Share, Biometric Auth, Motion, Network, Preferences)
@@ -245,38 +243,30 @@ npx cap run android
 
 ```
 app/                   Next.js App Router pages
-  ├─ page.tsx          Dashboard / Hub
-  ├─ ai/               AI Assistant chat
-  ├─ analytics/        Charts + velocity + smart insights
-  ├─ cookmate/         CookMate (AI recipes, pantry, shopping, AI chef)
-  ├─ goals/            Financial Planning (goals, subs, utilities)
-  ├─ history/          Transaction log with date separators + filters
-  ├─ hub/              Module grid (radar, claims, trading, vault)
-  ├─ profile/          Settings, security, AI key, data export
-  ├─ trading/          Buy-low / sell-high ledger
+  ├─ page.tsx          Dashboard / Home
+  ├─ analytics/        Charts + velocity + KPI scorecard + smart insights
+  ├─ goals/            Financial Planning (goals, salary planner, food budget)
+  ├─ history/          Transaction log with virtualized list + filters
+  ├─ hub/              Module grid (claims, statement import, heatmap calendar)
+  ├─ profile/          Settings, security, data export
   ├─ vault/            Asset + maintenance log tracker
-  ├─ wanderplan/       WanderPlan travel planner (7 tabs)
   └─ reset-password/   Supabase password recovery
-components/            Reusable UI (TransactionModal, CustomDatePicker,
-                       MonthlyReceipt, MonthlyReceiptModal, etc.)
-  ├─ profile/          Extracted Profile-page modals
-  └─ wanderplan/       WanderPlan widgets (countdown, day spend, etc.)
+components/            Reusable UI (TransactionModal, CustomDatePicker, CustomSelect,
+                       CustomDateRangeModal, MonthlyReceipt, etc.)
+  └─ profile/          Extracted Profile-page modals
 lib/
   ├─ context.tsx       App-wide context facade
   ├─ types.ts          Shared TypeScript types
   ├─ supabase.ts       Supabase client singleton
   ├─ haptics.ts        Capacitor haptics wrapper
-  ├─ ai/               Gemini service + greeting generator
-  ├─ cookmate/         CookMate types + context (AI recipes, preferences)
-  ├─ wanderplanConstants.ts  WanderPlan categories, currencies, templates
   ├─ exportUtils.ts    CSV generation + Filesystem handoff
   ├─ receiptData.ts    Monthly-recap data deriver
   ├─ receiptShare.ts   html-to-image + Capacitor Share for receipt PNG
   ├─ searchParser.ts   Power-search tokenizer + filter engine
   ├─ quickTemplates.ts Long-press FAB template deriver
   ├─ categoryPredictor.ts  Client-side category auto-suggest model
-  ├─ utils.ts          `cn()` helper (tailwind-merge)
-  └─ hooks/            Domain hooks (money, sync, preferences, WanderPlan, etc.)
+  ├─ utils.ts          `cn()` helper + getCategoryColor
+  └─ hooks/            Domain hooks (money, sync, preferences, UI, etc.)
 supabase/migrations/   Ordered SQL migration files
 android/               Capacitor native project (gitignored)
 public/                Manifest + app icon

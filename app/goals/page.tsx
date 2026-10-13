@@ -4,7 +4,6 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Target, Plus, ShieldAlert, Pin, Trash2, X, Check, Edit2, CreditCard, Zap, MonitorPlay, Music, Wifi, Smartphone, Droplet } from "lucide-react";
 import { useAppContext } from "@/lib/context";
-import type { Subscription } from "@/lib/context";
 import FoodBudgetCard from "@/components/FoodBudgetCard";
 import SalaryPlanner from "@/components/SalaryPlanner";
 
@@ -25,9 +24,7 @@ export default function GoalsPage() {
   const { 
     goals, addGoal, updateGoal, deleteGoal, confirmAction, 
     enableFoodBudget, enableSalaryPlanner, currency, 
-    subscriptions, addSubscription, deleteSubscription, updateSubscription,
-    utilities, addUtility, deleteUtility, updateUtility,
-    formatCurrency, accentColor, accounts, triggerToast
+    formatCurrency, accentColor, triggerToast
   } = useAppContext();
   
   // Goal modals state
@@ -36,37 +33,6 @@ export default function GoalsPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newTarget, setNewTarget] = useState("");
-
-  // Sub/Util CRUD state
-  const [showAddModal, setShowAddModal] = useState<"Sub" | "Util" | null>(null);
-  const [editItemId, setEditItemId] = useState<string | null>(null);
-  const [newItemName, setNewItemName] = useState("");
-  const [newItemCost, setNewItemCost] = useState("");
-  const [autoDeduct, setAutoDeduct] = useState(true);
-  const [billingDay, setBillingDay] = useState("15");
-  const [sourceAcc, setSourceAcc] = useState("Bank");
-
-  const openAddModal = (type: "Sub" | "Util") => {
-    setShowAddModal(type); setEditItemId(null); setNewItemName(""); setNewItemCost("");
-    setAutoDeduct(true); setBillingDay("15"); setSourceAcc(accounts[0] || "Bank");
-  };
-  const openEditModal = (type: "Sub" | "Util", item: Subscription) => {
-    setShowAddModal(type); setEditItemId(item.id); setNewItemName(item.name); setNewItemCost(String(item.cost));
-    setAutoDeduct(item.autoDeduct ?? true); setBillingDay(String(item.billingDay || 15)); setSourceAcc(item.sourceAccount || accounts[0] || "Bank");
-  };
-  const handleSave = () => {
-    if (!newItemName || !newItemCost) return;
-    const payload = { name: newItemName, cost: Number(newItemCost), autoDeduct, billingDay: Number(billingDay), sourceAccount: sourceAcc };
-    if (editItemId) {
-      if (showAddModal === "Sub") updateSubscription(editItemId, payload); else updateUtility(editItemId, payload);
-      triggerToast("Updated successfully!");
-    } else {
-      const newItem = { ...payload, icon: showAddModal === "Sub" ? "CreditCard" : "Zap", bg: "bg-muted", color: "text-foreground" };
-      if (showAddModal === "Sub") addSubscription(newItem); else addUtility(newItem);
-      triggerToast(`${newItemName} added!`);
-    }
-    setShowAddModal(null);
-  };
 
   const handleAddFunds = (id: string, currentAmount: number) => {
     if (!fundAmount) return;

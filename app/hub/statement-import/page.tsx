@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAppContext } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
 import type { Transaction } from "@/lib/types";
+import CustomSelect from "@/components/CustomSelect";
 
 export const STATEMENT_PROMPT_STRING = `Parse the uploaded bank statement(s) into JSON. One or more files may be attached.
 
@@ -496,34 +497,24 @@ export default function StatementImportPage() {
                       <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground block mb-0.5">
                         Category
                       </label>
-                      <select
+                      <CustomSelect
                         value={item.category}
-                        onChange={(e) => updateItemField(item.id, "category", e.target.value)}
-                        className="w-full bg-card border border-border/50 rounded-xl px-2 py-1 text-xs font-semibold text-foreground outline-none"
-                      >
-                        {categories.map((cat) => (
-                          <option key={cat} value={cat}>
-                            {cat}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(val) => updateItemField(item.id, "category", val)}
+                        options={categories}
+                        size="sm"
+                      />
                     </div>
 
                     <div>
                       <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground block mb-0.5">
                         Account
                       </label>
-                      <select
+                      <CustomSelect
                         value={item.account}
-                        onChange={(e) => updateItemField(item.id, "account", e.target.value)}
-                        className="w-full bg-card border border-border/50 rounded-xl px-2 py-1 text-xs font-semibold text-foreground outline-none"
-                      >
-                        {accounts.map((acc) => (
-                          <option key={acc} value={acc}>
-                            {acc}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(val) => updateItemField(item.id, "account", val)}
+                        options={accounts}
+                        size="sm"
+                      />
                     </div>
                   </div>
                 )}

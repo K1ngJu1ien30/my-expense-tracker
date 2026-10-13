@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, Calendar, Sparkles } from "lucide-react";
 import { NativeHaptics } from "@/lib/haptics";
 
 const MONTH_NAMES = [
@@ -18,6 +18,7 @@ interface CustomDateRangeModalProps {
   endDate: string;
   onClose: () => void;
   onApply: (startDate: string, endDate: string) => void;
+  accentColor?: string;
 }
 
 export const CustomDateRangeModal = React.memo(function CustomDateRangeModal({
@@ -26,6 +27,7 @@ export const CustomDateRangeModal = React.memo(function CustomDateRangeModal({
   endDate,
   onClose,
   onApply,
+  accentColor = "#10b981",
 }: CustomDateRangeModalProps) {
   const [tempStartDate, setTempStartDate] = useState<string>("");
   const [tempEndDate, setTempEndDate] = useState<string>("");
@@ -36,7 +38,7 @@ export const CustomDateRangeModal = React.memo(function CustomDateRangeModal({
     if (isOpen) {
       setTempStartDate(startDate);
       setTempEndDate(endDate);
-      const baseDate = startDate ? new Date(startDate) : new Date();
+      const baseDate = startDate ? new Date(startDate + "T00:00:00") : new Date();
       if (!isNaN(baseDate.getTime())) {
         setPickerMonth(baseDate.getMonth());
         setPickerYear(baseDate.getFullYear());
@@ -55,8 +57,8 @@ export const CustomDateRangeModal = React.memo(function CustomDateRangeModal({
       days.push(null);
     }
     for (let d = 1; d <= daysInMonth; d++) {
-      const monthStr = String(pickerMonth + 1).padStart(2, '0');
-      const dayStr = String(d).padStart(2, '0');
+      const monthStr = String(pickerMonth + 1).padStart(2, "0");
+      const dayStr = String(d).padStart(2, "0");
       days.push({
         dateKey: `${pickerYear}-${monthStr}-${dayStr}`,
         dayNum: d,
@@ -72,6 +74,7 @@ export const CustomDateRangeModal = React.memo(function CustomDateRangeModal({
       setTempEndDate("");
     } else if (tempStartDate && !tempEndDate) {
       if (dateKey < tempStartDate) {
+        setTempEndDate(tempStartDate);
         setTempStartDate(dateKey);
       } else {
         setTempEndDate(dateKey);
@@ -101,13 +104,67 @@ export const CustomDateRangeModal = React.memo(function CustomDateRangeModal({
 
   const handleApply = () => {
     NativeHaptics.successMedium();
-    onApply(tempStartDate, tempEndDate);
+    const finalStart = tempStartDate || new Date().toISOString().split("T")[0];
+    const finalEnd = tempEndDate || finalStart;
+    onApply(finalStart, finalEnd);
+  };
+
+  // Quick Preset Handlers
+  const applyPreset = (preset: "today" | "thisWeek" | "thisMonth" | "lastMonth" | "last30" | "thisYear") => {
+    NativeHaptics.lightTick();
+    const now = new Date();
+    const fmt = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+    if (preset === "today") {
+      const t = fmt(now);
+      setTempStartDate(t);
+      setTempEndDate(t);
+      setPickerMonth(now.getMonth());
+      setPickerYear(now.getFullYear());
+    } else if (preset === "thisWeek") {
+      const day = now.getDay() || 7;
+      const start = new Date(now);
+      start.setDate(now.getDate() - day + 1);
+      setTempStartDate(fmt(start));
+      setTempEndDate(fmt(now));
+      setPickerMonth(now.getMonth());
+      setPickerYear(now.getFullYear());
+    } else if (preset === "thisMonth") {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      setTempStartDate(fmt(start));
+      setTempEndDate(fmt(end));
+      setPickerMonth(now.getMonth());
+      setPickerYear(now.getFullYear());
+    } else if (preset === "lastMonth") {
+      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const end = new Date(now.getFullYear(), now.getMonth(), 0);
+      setTempStartDate(fmt(start));
+      setTempEndDate(fmt(end));
+      setPickerMonth(start.getMonth());
+      setPickerYear(start.getFullYear());
+    } else if (preset === "last30") {
+      const start = new Date(now);
+      start.setDate(now.getDate() - 30);
+      setTempStartDate(fmt(start));
+      setTempEndDate(fmt(now));
+      setPickerMonth(now.getMonth());
+      setPickerYear(now.getFullYear());
+    } else if (preset === "thisYear") {
+      const start = new Date(now.getFullYear(), 0, 1);
+      const end = new Date(now.getFullYear(), 11, 31);
+      setTempStartDate(fmt(start));
+      setTempEndDate(fmt(end));
+      setPickerMonth(now.getMonth());
+      setPickerYear(now.getFullYear());
+    }
   };
 
   const subtitleText = useMemo(() => {
-    if (!tempStartDate) return "Click dates to select range";
-    if (tempEndDate) return `${tempStartDate} to ${tempEndDate}`;
-    return `From ${tempStartDate} (pick end date)`;
+    if (!tempStartDate) return "Click any date to start";
+    if (tempEndDate) return `${tempStartDate} → ${tempEndDate}`;
+    return `Selected ${tempStartDate} (now tap end date)`;
   }, [tempStartDate, tempEndDate]);
 
   return (
@@ -126,23 +183,44 @@ export const CustomDateRangeModal = React.memo(function CustomDateRangeModal({
             initial={{ scale: 0.95, opacity: 0, y: 10 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 10 }}
-            className="relative z-10 w-full max-w-sm bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl p-5 space-y-4 text-white overflow-hidden"
+            className="relative z-10 w-full max-w-sm bg-card border border-border/70 rounded-3xl shadow-heavy p-5 space-y-4 text-foreground overflow-hidden"
           >
             {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="flex items-center justify-between border-b border-border/50 pb-3">
               <div>
-                <h3 className="font-black text-white text-base">Select Date Range</h3>
-                <p className="text-[11px] text-slate-400 font-semibold mt-0.5">
+                <h3 className="font-black text-foreground text-base">Select Date Range</h3>
+                <p className="text-[11px] text-muted-foreground font-semibold mt-0.5">
                   {subtitleText}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={onClose}
-                className="p-1.5 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+                className="p-1.5 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
+            </div>
+
+            {/* Quick Preset Buttons */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 hide-scrollbar">
+              {[
+                { id: "today", label: "Today" },
+                { id: "thisWeek", label: "This Week" },
+                { id: "thisMonth", label: "This Month" },
+                { id: "lastMonth", label: "Last Month" },
+                { id: "last30", label: "30 Days" },
+                { id: "thisYear", label: "This Year" },
+              ].map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => applyPreset(p.id as any)}
+                  className="px-2.5 py-1 rounded-xl bg-muted/60 hover:bg-muted text-[11px] font-bold text-muted-foreground hover:text-foreground shrink-0 border border-border/30 active:scale-95 transition-all"
+                >
+                  {p.label}
+                </button>
+              ))}
             </div>
 
             {/* Month/Year Navigation */}
@@ -150,19 +228,19 @@ export const CustomDateRangeModal = React.memo(function CustomDateRangeModal({
               <button
                 type="button"
                 onClick={handlePrevMonth}
-                className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                className="p-1.5 rounded-xl bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
 
-              <span className="text-xs font-black text-white">
+              <span className="text-xs font-black text-foreground">
                 {MONTH_NAMES[pickerMonth]} {pickerYear}
               </span>
 
               <button
                 type="button"
                 onClick={handleNextMonth}
-                className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                className="p-1.5 rounded-xl bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
@@ -171,7 +249,7 @@ export const CustomDateRangeModal = React.memo(function CustomDateRangeModal({
             {/* Days Header */}
             <div className="grid grid-cols-7 gap-1 text-center">
               {WEEK_DAYS.map((d, i) => (
-                <span key={i} className="text-[10px] font-bold text-slate-500 uppercase">
+                <span key={i} className="text-[10px] font-bold text-muted-foreground/80 uppercase">
                   {d}
                 </span>
               ))}
@@ -191,11 +269,12 @@ export const CustomDateRangeModal = React.memo(function CustomDateRangeModal({
                   tempStartDate && tempEndDate && dateKey > tempStartDate && dateKey < tempEndDate
                 );
 
-                let cellClass = "hover:bg-slate-800 text-slate-300 rounded-xl font-medium";
+                let cellClass = "hover:bg-muted/70 text-foreground rounded-xl font-medium";
                 if (isStart || isEnd) {
-                  cellClass = "bg-emerald-500 text-white font-black shadow-md shadow-emerald-500/30 rounded-xl scale-[1.05]";
+                  cellClass =
+                    "bg-primary text-primary-foreground font-black shadow-md rounded-xl scale-[1.05] ring-2 ring-primary/20";
                 } else if (isInRange) {
-                  cellClass = "bg-emerald-500/20 text-emerald-300 rounded-lg font-bold";
+                  cellClass = "bg-primary/15 text-primary rounded-lg font-bold";
                 }
 
                 return (
@@ -203,7 +282,7 @@ export const CustomDateRangeModal = React.memo(function CustomDateRangeModal({
                     key={dateKey}
                     type="button"
                     onClick={() => handleDateClick(dateKey)}
-                    className={`h-9 text-xs flex items-center justify-center transition-all ${cellClass}`}
+                    className={`h-9 text-xs flex items-center justify-center transition-all select-none ${cellClass}`}
                   >
                     {dayNum}
                   </button>
@@ -212,18 +291,19 @@ export const CustomDateRangeModal = React.memo(function CustomDateRangeModal({
             </div>
 
             {/* Footer Action Buttons */}
-            <div className="flex items-center gap-2 pt-2 border-slate-800 border-t">
+            <div className="flex items-center gap-2 pt-2 border-border/50 border-t">
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition-colors"
+                className="flex-1 py-2.5 rounded-2xl bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground font-bold text-xs transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleApply}
-                className="flex-1 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs shadow-md shadow-emerald-500/20 transition-all"
+                disabled={!tempStartDate}
+                className="flex-1 py-2.5 rounded-2xl bg-primary hover:opacity-90 text-primary-foreground font-bold text-xs shadow-md shadow-primary/20 transition-all disabled:opacity-50"
               >
                 Apply Range
               </button>

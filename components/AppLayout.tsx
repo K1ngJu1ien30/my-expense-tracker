@@ -118,11 +118,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     </div>
   );
 
-  // Routes that have their own sub-navigation — hide the main bottom nav
-  // and transaction FAB to avoid double-bar. These modules render their
-  // own tab bar inside their layout.tsx.
-  const hasOwnNav = pathname.startsWith("/wanderplan");
-
   return (
     <AuthGate>
     <div className="relative mx-auto w-full max-w-md h-[100dvh] lg:min-h-0 lg:h-[844px] lg:my-8 bg-background shadow-2xl flex flex-col overflow-x-hidden overflow-y-hidden lg:rounded-[3rem] lg:border-[12px] lg:border-white/10 ring-1 ring-black/5 dark:ring-white/10">
@@ -136,13 +131,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         )}
       </AnimatePresence>
       
-      <main className={`flex-1 overflow-x-hidden overflow-y-auto hide-scrollbar relative ${hasOwnNav ? "pb-0" : "pb-28"}`}>
+      <main className="flex-1 overflow-x-hidden overflow-y-auto hide-scrollbar relative pb-28">
         {children}
       </main>
       
       <InstallPrompt />
-      {!hasOwnNav && <TransactionModal isOpen={showTransactionModal} onClose={() => setShowTransactionModal(false)} />}
-      {!hasOwnNav && <BottomNav onOpenAdd={() => setShowTransactionModal(true)} />}
+      <TransactionModal isOpen={showTransactionModal} onClose={() => setShowTransactionModal(false)} />
+      <BottomNav onOpenAdd={() => setShowTransactionModal(true)} />
       <div id="app-privacy-blur" aria-hidden="true" style={{ display: 'none' }} className="fixed inset-0 z-[10000] bg-background/80 backdrop-blur-2xl pointer-events-none" />
     </div>
     </AuthGate>

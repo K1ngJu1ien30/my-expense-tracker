@@ -23,8 +23,7 @@ export default function BottomNav({ onOpenAdd }: { onOpenAdd: () => void }) {
   const isHub =
     pathname.startsWith("/hub") ||
     pathname.startsWith("/vault") ||
-    pathname.startsWith("/goals") ||
-    pathname.startsWith("/wanderplan");
+    pathname.startsWith("/goals");
   const isProfile = pathname.startsWith("/profile");
 
   // ─── Long-press detection for the + FAB ────────────────────────────────

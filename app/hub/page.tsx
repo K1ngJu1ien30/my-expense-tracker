@@ -9,7 +9,7 @@ import { getHeatmapTileStyle } from "../calendar/page";
 export default function HubPage() {
   const {
     accentColor, enableFoodBudget, enableSalaryPlanner, isVaultEnabled,
-    isClaimsEnabled, isWanderPlanEnabled, transactions
+    isClaimsEnabled, transactions
   } = useAppContext();
 
   // ─── Heatmap Calendar Data Derivation ──────────────────────────────────────
@@ -93,15 +93,6 @@ export default function HubPage() {
       description: "Parse & import PDF/image bank statements using AI",
       color: "bg-purple-500/10",
       enabled: true,
-      sub: [],
-    },
-    {
-      href: "/wanderplan",
-      icon: "✈️",
-      title: "WanderPlan",
-      description: "Trip planner, itinerary, budget & on-trip companion",
-      color: "bg-sky-500/10",
-      enabled: isWanderPlanEnabled,
       sub: [],
     },
   ];

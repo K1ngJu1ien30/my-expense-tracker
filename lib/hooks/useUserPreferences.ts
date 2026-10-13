@@ -12,7 +12,7 @@ import { supabase } from "../supabase";
  *   1. Profile preferences — userName, currency, accent.
  *   2. Money behaviour flags — includeSavings, foodBudget, salaryPlanner.
  *   3. Security flags — isPinEnabled, isBiometricEnabled.
- *   4. Module flags — vault / radar / claims / trading / wanderplan / cookmate.
+ *   4. Module flags — vault / claims.
  *
  * Every setter writes to Supabase IFF a session is provided. The caller (the
  * provider) passes the current `session` down so this hook stays decoupled
@@ -38,10 +38,8 @@ export function useUserPreferences(session: Session | null) {
   const [isPinEnabled, setIsPinEnabledRaw] = useState(false);
   const [isBiometricEnabled, setIsBiometricEnabledRaw] = useState(false);
 
-  // ─── Module flags ───────────────────────────────────────────────────────
   const [isVaultEnabled, setIsVaultEnabledRaw] = useState(false);
   const [isClaimsEnabled, setIsClaimsEnabledRaw] = useState(false);
-  const [isWanderPlanEnabled, setIsWanderPlanEnabledRaw] = useState(false);
 
   // ─── Easter-egg flags ───────────────────────────────────────────────────
   // Greeting-line swap at different hours (2 AM owl, 5 AM early-bird, etc.).
@@ -152,14 +150,6 @@ export function useUserPreferences(session: Session | null) {
     [persist]
   );
 
-  const toggleWanderPlan = useCallback(
-    async (val: boolean) => {
-      setIsWanderPlanEnabledRaw(val);
-      await persist({ wanderplan_enabled: val });
-    },
-    [persist]
-  );
-
   const toggleTimeBasedGreeting = useCallback(
     async (val: boolean) => {
       setEnableTimeBasedGreetingRaw(val);
@@ -200,7 +190,6 @@ export function useUserPreferences(session: Session | null) {
       setIsBiometricEnabledRaw(meta.biometric_enabled === true);
       setIsVaultEnabledRaw(meta.vault_enabled === true);
       setIsClaimsEnabledRaw(meta.claims_enabled === true);
-      setIsWanderPlanEnabledRaw(meta.wanderplan_enabled === true);
       // Greeting is ON by default unless user explicitly opted out.
       setEnableTimeBasedGreetingRaw(
         meta.enable_time_based_greeting === false ? false : true
@@ -223,7 +212,6 @@ export function useUserPreferences(session: Session | null) {
     setIsBiometricEnabledRaw(false);
     setIsVaultEnabledRaw(false);
     setIsClaimsEnabledRaw(false);
-    setIsWanderPlanEnabledRaw(false);
     setEnableTimeBasedGreetingRaw(true);
     setEnableFridayThe13thRaw(false);
   }, []);
@@ -257,8 +245,6 @@ export function useUserPreferences(session: Session | null) {
     toggleVault,
     isClaimsEnabled,
     toggleClaims,
-    isWanderPlanEnabled,
-    toggleWanderPlan,
     // Easter-egg flags
     enableTimeBasedGreeting,
     toggleTimeBasedGreeting,

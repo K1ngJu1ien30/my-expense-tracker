@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useAppContext } from "@/lib/context";
 import { supabase } from "@/lib/supabase";
 import type { AssetLog } from "@/lib/context";
+import CustomDatePicker from "@/components/CustomDatePicker";
 
 const EMOJI_OPTIONS = ["📱", "💻", "📸", "👟", "⌚", "🎧", "🎮", "🚗", "🏠", "🛋️", "🧳", "👜", "📦", "🔧", "🎸"];
 
@@ -255,7 +256,7 @@ export default function AssetDetailPage() {
                 <button type="button" aria-label="Close" onClick={() => setShowAddLog(false)} className="p-1 px-2 bg-muted hover:bg-border rounded-full transition-colors"><X className="w-5 h-5 text-muted-foreground" aria-hidden="true" /></button>
               </div>
               <input value={logDesc} onChange={e => setLogDesc(e.target.value)} placeholder="Description (e.g. Replaced battery)" className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" autoFocus />
-              <input type="date" value={logDate} onChange={e => setLogDate(e.target.value)} className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" />
+              <CustomDatePicker value={logDate} onChange={setLogDate} accentColor={accentColor} />
               <div className="flex items-center gap-2 bg-muted/60 rounded-xl px-4 py-3 border border-border">
                 <span className="font-bold text-muted-foreground text-sm">RM</span>
                 <input value={logCost} onChange={e => setLogCost(e.target.value)} type="number" placeholder="0.00 (optional)" className="flex-1 bg-transparent text-sm font-bold outline-none text-foreground" />
@@ -301,7 +302,7 @@ export default function AssetDetailPage() {
                   {existingCategories.map(c => <option key={c} value={c} />)}
                 </datalist>
               </div>
-              <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" />
+              <CustomDatePicker value={editDate} onChange={setEditDate} accentColor={accentColor} />
               <div className="flex items-center gap-2 bg-muted/60 rounded-xl px-4 py-3 border border-border">
                 <span className="font-bold text-muted-foreground text-sm">RM</span>
                 <input value={editPrice} onChange={e => setEditPrice(e.target.value)} type="number" placeholder="0.00" className="flex-1 bg-transparent text-sm font-bold outline-none text-foreground" />
