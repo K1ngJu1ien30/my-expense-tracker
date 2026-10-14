@@ -20,6 +20,9 @@ import type {
   CreditCardStatement,
   CreditCardPayment,
   CreditCardPaymentType,
+  CardRewardsConfig,
+  CashbackDestination,
+  CashbackRecord,
 } from "./types";
 import { useEasterEggsUI } from "./hooks/useEasterEggsUI";
 import { useUIState } from "./hooks/useUIState";
@@ -30,6 +33,7 @@ import { useMoneyState } from "./hooks/useMoneyState";
 import { usePlanningState } from "./hooks/usePlanningState";
 import { useModulesData } from "./hooks/useModulesData";
 import { useCreditCardPayments } from "./hooks/useCreditCardPayments";
+import { useCashbackRewards } from "./hooks/useCashbackRewards";
 
 // Re-export for backward compatibility — existing pages import from "@/lib/context".
 // Keeping this until we move everything to direct type imports from "@/lib/types".
@@ -196,6 +200,17 @@ type AppContextType = {
     paymentType: CreditCardPaymentType;
     note?: string;
   }) => Promise<{ success: boolean; paymentId?: string; status?: "synced" | "pending_sync"; error?: string }>;
+  rewardsConfigs: Record<string, CardRewardsConfig>;
+  cashbackRecords: CashbackRecord[];
+  saveRewardsConfig: (config: CardRewardsConfig) => Promise<void>;
+  recordConfirmedCashback: (params: {
+    card: Account;
+    destinationAccount: Account;
+    creditDestination: CashbackDestination;
+    amount: number;
+    date: string;
+    note?: string;
+  }) => Promise<{ success: boolean; error?: string; record?: CashbackRecord }>;
 };
 
 export const AppContext = createContext<AppContextType | null>(null);
@@ -497,6 +512,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setActivePaymentCardId(null);
   }, []);
 
+  // ─── Credit Card Cashback & Rewards (Phase 3B) ──────────────────────────
+  const {
+    rewardsConfigs,
+    cashbackRecords,
+    saveRewardsConfig,
+    recordConfirmedCashback,
+  } = useCashbackRewards({
+    session,
+    isOfflineRef,
+    accountObjects,
+    addTransaction,
+    triggerToast,
+  });
+
   // Theming: accentColor is owned by useUserPreferences (see top of provider)
 
   // Currency formatter — integer math to avoid floating-point errors.
@@ -724,6 +753,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       activePaymentCardId, openCreditCardPayment, closeCreditCardPayment,
       statements, creditCardPayments,
       addCreditCardStatement, recordCreditCardPayment,
+      rewardsConfigs, cashbackRecords,
+      saveRewardsConfig, recordConfirmedCashback,
       isOffline,
       isGodMode, whaleAlert, sharkUndo, derryActive, triggerDerry,
       penguinAlert, dragonAlert, phoenixAlert,

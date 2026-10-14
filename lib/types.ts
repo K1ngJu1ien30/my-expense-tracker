@@ -354,3 +354,63 @@ export type AccountReconciliation = {
   isBalanced: boolean;
 };
 
+// -------------------------------------------------------------------------
+// Credit Card Rewards & Cashback types (Phase 3B)
+// -------------------------------------------------------------------------
+
+export type CardRewardRule = {
+  category: string;
+  ratePct: number;
+};
+
+export type CardRewardsConfig = {
+  accountId: string;
+  isEnabled: boolean;
+  rules: CardRewardRule[];
+  monthlyCap?: number | null;
+  minSpendThreshold?: number | null;
+  notes?: string;
+};
+
+export type CashbackDestination = "card_statement_credit" | "bank_deposit";
+
+export type CashbackRecord = {
+  id: string;
+  userId?: string;
+  cardId: string;
+  cardName: string;
+  amount: number;
+  creditDestination: CashbackDestination;
+  destinationAccountId: string;
+  destinationAccountName: string;
+  date: string;
+  transactionId?: string;
+  note?: string;
+  createdAt?: string;
+};
+
+export type RawCashbackRecordRow = {
+  id: string;
+  user_id: string;
+  account_id: string;
+  destination_account_id: string;
+  destination_type: string;
+  amount: number | string;
+  transaction_id: string | null;
+  reward_date: string;
+  note: string | null;
+  created_at?: string;
+};
+
+export type RawRewardConfigRow = {
+  account_id: string;
+  user_id: string;
+  is_enabled: boolean;
+  rules: CardRewardRule[] | string;
+  monthly_cap: number | string | null;
+  min_spend_threshold: number | string | null;
+  notes: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+

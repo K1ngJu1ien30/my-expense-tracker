@@ -12,6 +12,9 @@ import {
   Percent,
   Bell,
   AlertTriangle,
+  Gift,
+  Sliders,
+  Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 import { useAppContext } from "@/lib/context";
@@ -24,6 +27,11 @@ import {
 } from "@/lib/hooks/useCreditCardPayments";
 import type { CreditCardStatement, Transaction } from "@/lib/types";
 import { deriveCreditCardReminders } from "@/lib/creditCardReminders";
+import {
+  calculateEstimatedCashback,
+  calculateConfirmedCashback,
+} from "@/lib/cashbackEngine";
+import CreditCardCashbackModal from "@/components/CreditCardCashbackModal";
 
 export default function CreditCardsDashboardPage() {
   const {
@@ -36,7 +44,13 @@ export default function CreditCardsDashboardPage() {
     openCreditCardPayment,
     updateCreditCardDetails,
     triggerToast,
+    rewardsConfigs,
+    cashbackRecords,
+    saveRewardsConfig,
+    recordConfirmedCashback,
   } = useAppContext();
+
+  const [showCashbackModal, setShowCashbackModal] = useState(false);
 
   // ─── Filter credit card accounts ─────────────────────────────────────────
   const creditCards = useMemo(
@@ -81,6 +95,31 @@ export default function CreditCardsDashboardPage() {
     );
   }, [activeCard, allReminders]);
 
+  // Active card rewards config & derivations (Phase 3B)
+  const activeCardRewardsConfig = useMemo(() => {
+    if (!activeCard) return null;
+    const cardId = activeCard.id || activeCard.name;
+    return rewardsConfigs[cardId] || rewardsConfigs[activeCard.name] || null;
+  }, [activeCard, rewardsConfigs]);
+
+  const estimatedCashback = useMemo(() => {
+    if (!activeCard) return null;
+    return calculateEstimatedCashback({
+      activeCard,
+      transactions,
+      config: activeCardRewardsConfig,
+      latestStatementDate: null,
+    });
+  }, [activeCard, transactions, activeCardRewardsConfig]);
+
+  const confirmedCashback = useMemo(() => {
+    if (!activeCard) return null;
+    return calculateConfirmedCashback({
+      cardIdOrName: activeCard.id || activeCard.name,
+      cashbackRecords,
+    });
+  }, [activeCard, cashbackRecords]);
+
   // ─── Consolidated Totals across all credit cards ──────────────────────────
   const consolidated = useMemo(() => {
     let totalDebt = 0;
@@ -113,6 +152,42 @@ export default function CreditCardsDashboardPage() {
       hasLimit: cardsWithLimitCount > 0,
     };
   }, [creditCards, balancesData]);
+
+  // Consolidated Cashback across all cards (Phase 3B)
+  const consolidatedCashback = useMemo(() => {
+    let totalEstimated = 0;
+    creditCards.forEach((card) => {
+      const cfg = rewardsConfigs[card.id || card.name] || rewardsConfigs[card.name];
+      const est = calculateEstimatedCashback({
+        activeCard: card,
+        transactions,
+        config: cfg,
+      });
+      totalEstimated += est.totalEstimated;
+    });
+
+    const now = new Date();
+    const curMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const curYear = String(now.getFullYear());
+
+    let thisMonthConfirmed = 0;
+    let ytdConfirmed = 0;
+    let lifetimeConfirmed = 0;
+
+    cashbackRecords.forEach((r) => {
+      const amt = Number(r.amount || 0);
+      lifetimeConfirmed += amt;
+      if (r.date.startsWith(curMonth)) thisMonthConfirmed += amt;
+      if (r.date.startsWith(curYear)) ytdConfirmed += amt;
+    });
+
+    return {
+      totalEstimated: Math.round(totalEstimated * 100) / 100,
+      thisMonthConfirmed: Math.round(thisMonthConfirmed * 100) / 100,
+      ytdConfirmed: Math.round(ytdConfirmed * 100) / 100,
+      lifetimeConfirmed: Math.round(lifetimeConfirmed * 100) / 100,
+    };
+  }, [creditCards, rewardsConfigs, transactions, cashbackRecords]);
 
   // ─── Active Card Metrics ──────────────────────────────────────────────────
   const activeCardMetrics = useMemo(() => {
@@ -507,6 +582,48 @@ export default function CreditCardsDashboardPage() {
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Consolidated Cashback Summary Banner (Phase 3B) */}
+              <div className="p-5 rounded-3xl bg-gradient-to-r from-purple-950/40 via-card to-pink-950/30 border border-purple-500/20 shadow-soft flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white shrink-0 shadow-sm">
+                    <Gift className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                      <span>Consolidated Cashback & Rewards</span>
+                      <Sparkles className="w-3 h-3 text-amber-400" />
+                    </h3>
+                    <div className="flex items-baseline gap-3 mt-0.5">
+                      <span className="text-lg font-black font-mono text-purple-400">
+                        {currency} {consolidatedCashback.totalEstimated.toFixed(2)}
+                      </span>
+                      <span className="text-xs text-muted-foreground font-medium">
+                        Estimated Pending
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 text-xs font-medium border-t sm:border-t-0 sm:border-l border-border/60 pt-3 sm:pt-0 sm:pl-4">
+                  <div>
+                    <span className="text-[10px] text-muted-foreground uppercase font-bold block">
+                      Confirmed (This Month)
+                    </span>
+                    <span className="font-mono font-bold text-emerald-500 text-sm">
+                      +{currency} {consolidatedCashback.thisMonthConfirmed.toFixed(2)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-muted-foreground uppercase font-bold block">
+                      Confirmed YTD
+                    </span>
+                    <span className="font-mono font-bold text-emerald-500 text-sm">
+                      +{currency} {consolidatedCashback.ytdConfirmed.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
               </div>
 
               {/* Cards Grid */}
@@ -962,6 +1079,166 @@ export default function CreditCardsDashboardPage() {
                 </div>
               </div>
 
+              {/* ─── Cashback & Rewards Tracking (Phase 3B) ─────────────────── */}
+              <div className="p-5 bg-card rounded-3xl border border-border/60 shadow-soft space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Gift className="w-4 h-4 text-purple-500" />
+                    <div>
+                      <h3 className="font-bold text-sm text-foreground flex items-center gap-1.5">
+                        <span>Cashback & Rewards</span>
+                        {estimatedCashback?.isCapped && (
+                          <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-500">
+                            Capped
+                          </span>
+                        )}
+                      </h3>
+                      <p className="text-[10px] text-muted-foreground">
+                        Estimated pending rewards vs. confirmed payouts
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCashbackModal(true);
+                        NativeHaptics.lightTick();
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                    >
+                      <Sliders className="w-3.5 h-3.5" />
+                      <span>Rules</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCashbackModal(true);
+                        NativeHaptics.lightTick();
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl bg-primary text-white text-xs font-bold shadow-soft hover:opacity-90 transition-all flex items-center gap-1 cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Credit Cashback</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Metrics 2-column grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Estimated Rewards Card */}
+                  <div className="p-4 rounded-2xl bg-muted/20 border border-border/50 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase font-bold text-muted-foreground">
+                        Estimated Pending Rewards
+                      </span>
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                        Current Cycle
+                      </span>
+                    </div>
+
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-2xl font-black font-mono text-purple-500">
+                        {currency} {(estimatedCashback?.totalEstimated ?? 0).toFixed(2)}
+                      </span>
+                      {estimatedCashback?.isCapped && (
+                        <span className="text-[10px] text-amber-500 font-semibold">
+                          (Max {currency} {estimatedCashback.monthlyCap?.toFixed(2)} cap)
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Spend & Min Threshold */}
+                    <div className="text-[10px] text-muted-foreground pt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span>
+                        Qualifying Spend: {currency}{" "}
+                        {(estimatedCashback?.qualifyingSpend ?? 0).toFixed(2)}
+                      </span>
+                      {estimatedCashback?.minSpendThreshold && (
+                        <span
+                          className={cn(
+                            "font-semibold",
+                            estimatedCashback.qualifiesForMinSpend
+                              ? "text-emerald-500"
+                              : "text-amber-500"
+                          )}
+                        >
+                          •{" "}
+                          {estimatedCashback.qualifiesForMinSpend
+                            ? "Min spend reached ✓"
+                            : `Needs ${currency} ${estimatedCashback.minSpendThreshold} min`}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Category Breakdown Chips */}
+                    {estimatedCashback?.breakdown && estimatedCashback.breakdown.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1.5 border-t border-border/40">
+                        {estimatedCashback.breakdown.map((b) => (
+                          <span
+                            key={b.category}
+                            className="text-[10px] font-medium px-2 py-0.5 rounded-lg bg-card border border-border/60 text-foreground flex items-center gap-1"
+                          >
+                            <span className="text-muted-foreground">
+                              {b.category} ({b.ratePct}%):
+                            </span>
+                            <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                              +{currency} {b.cashback.toFixed(2)}
+                            </span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Confirmed Cashback Card */}
+                  <div className="p-4 rounded-2xl bg-muted/20 border border-border/50 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase font-bold text-muted-foreground">
+                        Confirmed Cashback
+                      </span>
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                        Ledger Payouts
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-0.5">
+                      <div>
+                        <span className="text-[10px] text-muted-foreground block">
+                          This Month
+                        </span>
+                        <span className="text-xl font-black font-mono text-emerald-500 block mt-0.5">
+                          +{currency}{" "}
+                          {(confirmedCashback?.confirmedThisMonth ?? 0).toFixed(2)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-muted-foreground block">
+                          Year-To-Date
+                        </span>
+                        <span className="text-xl font-black font-mono text-foreground block mt-0.5">
+                          +{currency} {(confirmedCashback?.confirmedYTD ?? 0).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="text-[10px] text-muted-foreground pt-1 border-t border-border/40 flex items-center justify-between">
+                      <span>{confirmedCashback?.recordsCount ?? 0} total payouts credited</span>
+                      <span className="font-mono font-bold text-foreground">
+                        Lifetime: +{currency}{" "}
+                        {(confirmedCashback?.totalCredited ?? 0).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Explainer Tip */}
+                <p className="text-[10px] text-muted-foreground/80 leading-snug">
+                  💡 Estimated rewards are derived from your card&apos;s spending rules and stay separate from your net worth until confirmed. Payouts post directly as statement credits or bank deposits.
+                </p>
+              </div>
+
               {/* ─── New Purchases Since Statement Closing ───────────────────── */}
               <div className="p-5 bg-card rounded-3xl border border-border/60 shadow-soft space-y-3">
                 <div className="flex items-center justify-between">
@@ -1070,6 +1347,22 @@ export default function CreditCardsDashboardPage() {
             </div>
           ) : null}
         </>
+      )}
+
+      {/* Credit Card Cashback Modal (Phase 3B) */}
+      {showCashbackModal && activeCard && (
+        <CreditCardCashbackModal
+          isOpen={showCashbackModal}
+          onClose={() => setShowCashbackModal(false)}
+          card={activeCard}
+          accountObjects={accountObjects}
+          currency={currency}
+          accentColor={accentColor}
+          config={activeCardRewardsConfig}
+          cashbackRecords={cashbackRecords}
+          onSaveConfig={saveRewardsConfig}
+          onRecordCashback={recordConfirmedCashback}
+        />
       )}
     </div>
   );

@@ -24,6 +24,14 @@ export function getUserCreditCardPaymentsKey(userId?: string): string {
   return userId ? `tracker_cc_payments_${userId}` : "tracker_cc_payments_anon";
 }
 
+export function getUserCashbackConfigsKey(userId?: string): string {
+  return userId ? `tracker_cc_cashback_configs_${userId}` : "tracker_cc_cashback_configs_anon";
+}
+
+export function getUserCashbackRecordsKey(userId?: string): string {
+  return userId ? `tracker_cc_cashback_records_${userId}` : "tracker_cc_cashback_records_anon";
+}
+
 /**
  * Migrates legacy un-scoped cache data to the authenticated user's isolated key.
  * Ensures existing users do not lose their offline cache while preventing another
