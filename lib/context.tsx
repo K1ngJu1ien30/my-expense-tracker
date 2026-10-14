@@ -128,7 +128,10 @@ type AppContextType = {
   updateAccount: (nameOrId: string, patch: Partial<Account>) => void;
   updateCreditCardDetails: (accountId: string, patch: Partial<CreditCardDetails>) => Promise<void>;
   renameAccount: (old: string, next: string) => void;
-  deleteAccount: (acc: string) => void;
+  deleteAccount: (
+    acc: string,
+    options?: { dependencyCheck?: () => { canDelete: boolean; reason?: string } }
+  ) => Promise<{ success: boolean; error?: string }>;
   toggleArchiveAccount: (name: string) => void;
   accentColor: string;
   setAccentColor: (val: string) => void;

@@ -374,15 +374,97 @@ export function useAccountsState(session: Session | null) {
   );
 
   const deleteAccount = useCallback(
-    (acc: string) => {
+    async (
+      acc: string,
+      options?: {
+        dependencyCheck?: () => { canDelete: boolean; reason?: string };
+      }
+    ): Promise<{ success: boolean; error?: string }> => {
       const target = accountObjects.find(a => a.name === acc || a.id === acc);
-      if (target?.id && session?.user?.id) {
-        supabase.from("user_accounts").delete().eq("id", target.id).eq("user_id", session.user.id).then();
-        if (target.kind === "credit_card") {
-          supabase.from("credit_card_details").delete().eq("account_id", target.id).eq("user_id", session.user.id).then();
+      if (!target) {
+        return { success: false, error: "Account not found." };
+      }
+
+      // 1. Client-side dependency check
+      if (options?.dependencyCheck) {
+        const check = options.dependencyCheck();
+        if (!check.canDelete) {
+          return {
+            success: false,
+            error:
+              check.reason ||
+              "Cannot delete account with existing financial history. Please archive instead.",
+          };
         }
       }
-      return handleUpdateAccounts(accountObjects.filter(a => a.name !== acc && a.id !== acc));
+
+      // 2. Database-level safe delete (RPC or restricted delete)
+      if (target.id && session?.user?.id) {
+        try {
+          const { error: rpcErr } = await supabase.rpc("delete_user_account", {
+            p_account_id: target.id,
+          });
+
+          if (rpcErr) {
+            // Check for dependency violation or foreign key restriction
+            if (
+              rpcErr.code === "23503" ||
+              rpcErr.message?.includes("ACCOUNT_HAS_DEPENDENCIES") ||
+              rpcErr.message?.includes("violates foreign key constraint")
+            ) {
+              return {
+                success: false,
+                error:
+                  "Cannot delete this account because it has linked financial records. Please archive it instead.",
+              };
+            }
+
+            // Fallback if migration 010 RPC not yet applied in Supabase: direct table delete
+            if (rpcErr.code === "42883" || rpcErr.message?.includes("delete_user_account")) {
+              const { error: directErr } = await supabase
+                .from("user_accounts")
+                .delete()
+                .eq("id", target.id)
+                .eq("user_id", session.user.id);
+
+              if (directErr) {
+                if (
+                  directErr.code === "23503" ||
+                  directErr.message?.includes("foreign key")
+                ) {
+                  return {
+                    success: false,
+                    error:
+                      "Cannot delete this account because it has linked financial records. Please archive it instead.",
+                  };
+                }
+                return { success: false, error: directErr.message };
+              }
+
+              if (target.kind === "credit_card") {
+                await supabase
+                  .from("credit_card_details")
+                  .delete()
+                  .eq("account_id", target.id)
+                  .eq("user_id", session.user.id);
+              }
+            } else {
+              return { success: false, error: rpcErr.message };
+            }
+          }
+        } catch (err) {
+          console.error("[deleteAccount] Deletion exception:", err);
+          return {
+            success: false,
+            error: err instanceof Error ? err.message : "Failed to delete account.",
+          };
+        }
+      }
+
+      // 3. Update local state and storage
+      const nextAccounts = accountObjects.filter(a => a.name !== acc && a.id !== acc);
+      await handleUpdateAccounts(nextAccounts);
+      return { success: true };
     },
     [accountObjects, handleUpdateAccounts, session]
   );

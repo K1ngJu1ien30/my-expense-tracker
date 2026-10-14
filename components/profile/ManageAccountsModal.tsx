@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { motion, Reorder } from "framer-motion";
+import { motion, Reorder, AnimatePresence } from "framer-motion";
 import {
   X,
   GripVertical,
@@ -16,10 +16,16 @@ import {
   PiggyBank,
   CreditCard,
   TrendingUp,
+  ShieldAlert,
 } from "lucide-react";
 import type { Account, AccountKind, CreditCardDetails } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { NativeHaptics } from "@/lib/haptics";
+import { useAppContext } from "@/lib/context";
+import {
+  checkAccountDependencies,
+  AccountDependencyResult,
+} from "@/lib/accountIntegrity";
 
 const CURRENCIES = ["RM", "SGD", "USD", "JPY"] as const;
 
@@ -51,7 +57,7 @@ export function ManageAccountsModal({
   addAccount,
   addCreditCardAccount,
   updateCreditCardDetails,
-  confirmAction,
+  confirmAction: _confirmAction,
   triggerToast,
   accentColor,
   onClose,
@@ -61,7 +67,7 @@ export function ManageAccountsModal({
   reorderAccounts: (next: string[]) => Promise<void>;
   renameAccount: (oldName: string, next: string) => void;
   toggleArchiveAccount: (name: string) => void;
-  deleteAccount: (name: string) => void;
+  deleteAccount: (name: string) => Promise<{ success: boolean; error?: string }> | void;
   addAccount: (name: string, currency?: string, kind?: AccountKind, openingBalance?: number) => void;
   addCreditCardAccount?: (params: {
     name: string;
@@ -100,7 +106,63 @@ export function ManageAccountsModal({
   const [apr, setApr] = useState("");
   const [reminderDaysBefore, setReminderDaysBefore] = useState("3");
 
+  // Context financial dependencies for safe deletion validation (Stage C)
+  const {
+    transactions,
+    statements,
+    creditCardPayments,
+    subscriptions,
+    utilities,
+    cashbackRecords,
+  } = useAppContext();
+
+  // Deletion protection state
+  const [blockedDep, setBlockedDep] = useState<{
+    account: Account;
+    dep: AccountDependencyResult;
+  } | null>(null);
+  const [emptyDeleteTarget, setEmptyDeleteTarget] = useState<Account | null>(null);
+  const [isDeletingEmpty, setIsDeletingEmpty] = useState(false);
+
   const archived = accountObjects.filter((a) => a.isArchived);
+
+  // Safe deletion gatekeeper
+  const handleDeleteClick = (targetAcc: Account) => {
+    NativeHaptics.lightTick();
+    const dep = checkAccountDependencies(targetAcc, {
+      transactions,
+      statements,
+      creditCardPayments,
+      subscriptions,
+      utilities,
+      cashbackRecords,
+    });
+
+    if (dep.hasDependencies) {
+      NativeHaptics.errorShake();
+      setBlockedDep({ account: targetAcc, dep });
+    } else {
+      setEmptyDeleteTarget(targetAcc);
+    }
+  };
+
+  const handleExecuteEmptyDelete = async () => {
+    if (!emptyDeleteTarget) return;
+    setIsDeletingEmpty(true);
+    try {
+      const res = await deleteAccount(emptyDeleteTarget.name);
+      if (res && !res.success) {
+        NativeHaptics.errorShake();
+        triggerToast(res.error || "Failed to delete account");
+      } else {
+        NativeHaptics.successMedium();
+        triggerToast(`"${emptyDeleteTarget.name}" deleted.`);
+      }
+    } finally {
+      setIsDeletingEmpty(false);
+      setEmptyDeleteTarget(null);
+    }
+  };
 
   const submitNew = async () => {
     setNameError(null);
@@ -352,6 +414,11 @@ export function ManageAccountsModal({
                       <button
                         type="button"
                         aria-label={`Archive ${accName}`}
+                        title={
+                          accObj && checkAccountDependencies(accObj, { transactions, statements, creditCardPayments, subscriptions, utilities, cashbackRecords }).hasDependencies
+                            ? `Archive ${accName} (Preserves financial history)`
+                            : `Archive ${accName}`
+                        }
                         onClick={() => { toggleArchiveAccount(accName); triggerToast(`"${accName}" archived`); }}
                         className="text-muted-foreground hover:text-amber-500 transition-colors p-1.5"
                       >
@@ -360,15 +427,10 @@ export function ManageAccountsModal({
                       <button
                         type="button"
                         aria-label={`Delete ${accName}`}
+                        title={`Delete ${accName}`}
                         onClick={() => {
-                          confirmAction(
-                            "Delete Account",
-                            `Are you sure you want to remove "${accName}"?`,
-                            () => {
-                              deleteAccount(accName);
-                              triggerToast(`"${accName}" removed.`);
-                            }
-                          );
+                          const target = accObj || { name: accName, currencyCode: "RM", isArchived: false };
+                          handleDeleteClick(target);
                         }}
                         className="text-muted-foreground hover:text-red-500 transition-colors p-1.5"
                       >
@@ -426,13 +488,24 @@ export function ManageAccountsModal({
                           </div>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => { toggleArchiveAccount(acc.name); triggerToast(`"${acc.name}" restored`); }}
-                        className="text-xs font-bold px-3 py-1 rounded-lg bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
-                      >
-                        Restore
-                      </button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => { toggleArchiveAccount(acc.name); triggerToast(`"${acc.name}" restored`); }}
+                          className="text-xs font-bold px-3 py-1 rounded-lg bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          Restore
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Delete ${acc.name}`}
+                          title={`Delete ${acc.name}`}
+                          onClick={() => handleDeleteClick(acc)}
+                          className="p-1.5 text-muted-foreground hover:text-red-500 transition-colors rounded-lg"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -692,6 +765,142 @@ export function ManageAccountsModal({
           </div>
         </div>
       </motion.div>
-    </div>
+
+        {/* ─── Blocked Deletion Alert Modal (Stage C) ────────────────────────── */}
+        <AnimatePresence>
+          {blockedDep && (
+            <div
+              className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="blocked-dep-title"
+              aria-describedby="blocked-dep-desc"
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                className="bg-card w-full max-w-sm rounded-[2rem] shadow-heavy border border-amber-500/30 p-6 space-y-4 text-foreground relative overflow-hidden"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0">
+                    <ShieldAlert className="w-5 h-5" aria-hidden="true" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full inline-block mb-0.5">
+                      Financial History Protected
+                    </span>
+                    <h3 id="blocked-dep-title" className="text-base font-bold leading-tight">
+                      Cannot Delete &quot;{blockedDep.account.name}&quot;
+                    </h3>
+                  </div>
+                </div>
+
+                <div id="blocked-dep-desc" className="space-y-2.5 text-xs text-muted-foreground leading-relaxed">
+                  <p>
+                    This account is linked to <strong className="text-foreground">{blockedDep.dep.breakdownText}</strong>. Permanently deleting it would break your transaction ledger, expense charts, and financial reports.
+                  </p>
+                  <div className="p-3 bg-muted/40 rounded-xl border border-border/50 text-[11px] space-y-1">
+                    <span className="font-bold text-foreground block">
+                      💡 Why Archive is Recommended:
+                    </span>
+                    <p>
+                      Archiving safely hides this account from daily spending, transaction forms, and your active wallet while keeping all past records 100% accurate.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2 pt-1">
+                  {!blockedDep.account.isArchived && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        toggleArchiveAccount(blockedDep.account.name);
+                        triggerToast(`"${blockedDep.account.name}" archived`);
+                        setBlockedDep(null);
+                      }}
+                      className="w-full py-2.5 px-4 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
+                    >
+                      <Archive className="w-3.5 h-3.5" />
+                      <span>Archive &quot;{blockedDep.account.name}&quot; (Recommended)</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setBlockedDep(null)}
+                    className="w-full py-2 px-4 bg-muted hover:bg-border/60 text-muted-foreground hover:text-foreground rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                  >
+                    Keep Account
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* ─── Empty Account Deletion Confirmation Modal (Stage C) ──────────── */}
+        <AnimatePresence>
+          {emptyDeleteTarget && (
+            <div
+              className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="empty-del-title"
+              aria-describedby="empty-del-desc"
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                className="bg-card w-full max-w-sm rounded-[2rem] shadow-heavy border border-rose-500/30 p-6 space-y-4 text-foreground relative overflow-hidden"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-rose-500/10 text-rose-500 flex items-center justify-center shrink-0">
+                    <Trash2 className="w-5 h-5" aria-hidden="true" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-rose-500 bg-rose-500/10 px-2 py-0.5 rounded-full inline-block mb-0.5">
+                      Empty Account Verified
+                    </span>
+                    <h3 id="empty-del-title" className="text-base font-bold leading-tight">
+                      Delete &quot;{emptyDeleteTarget.name}&quot;?
+                    </h3>
+                  </div>
+                </div>
+
+                <p id="empty-del-desc" className="text-xs text-muted-foreground leading-relaxed">
+                  This account has 0 transactions, 0 statements, and 0 recurring bills. It can be safely deleted without affecting any historical reports.
+                </p>
+
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    disabled={isDeletingEmpty}
+                    onClick={() => setEmptyDeleteTarget(null)}
+                    className="flex-1 py-2.5 bg-muted hover:bg-border/60 text-muted-foreground hover:text-foreground rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDeletingEmpty}
+                    onClick={handleExecuteEmptyDelete}
+                    className="flex-1 py-2.5 bg-rose-500 hover:bg-rose-600 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {isDeletingEmpty ? (
+                      <span>Deleting...</span>
+                    ) : (
+                      <>
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+      </div>
   );
 }
