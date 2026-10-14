@@ -8,6 +8,7 @@ import { migrateAccounts } from "./useAccountsState";
 import { loadModel, rebuildFromHistory } from "../categoryPredictor";
 import { getOfflineQueueForUser, removeAcknowledgedOfflineTxs } from "../offlineQueue";
 import { getUserDataCacheKey, migrateLegacyCacheToUser } from "../cacheKeys";
+import { fetchPaginatedTransactions } from "../transactionPagination";
 import type {
   Account,
   Asset,
@@ -85,9 +86,9 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
 
       try {
         console.log("[refreshData] Fetching live data...");
-        const [txs, gls, subs, plannerRes, assetsRes, accountsRes, categoriesRes, cardDetailsRes] =
+        const [parsedTransactions, gls, subs, plannerRes, assetsRes, accountsRes, categoriesRes, cardDetailsRes] =
           await Promise.all([
-            supabase.from("transactions").select("*").eq("user_id", currentUser.id).order("date", { ascending: false }),
+            fetchPaginatedTransactions(currentUser.id),
             supabase.from("goals").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false }),
             supabase.from("subscriptions").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false }),
             supabase.from("salary_planner").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false }),
@@ -102,15 +103,15 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
         // NOTE: we intentionally do NOT include accountsRes/categoriesRes
         // in this fatal-error check. If those are missing we fall back to
         // user_metadata (old-APK compatible).
-        if (txs.error || gls.error || subs.error || plannerRes.error || assetsRes.error) {
+        if (gls.error || subs.error || plannerRes.error || assetsRes.error) {
           console.log("[refreshData] Supabase returned error objects:", {
-            txs: txs.error, gls: gls.error, subs: subs.error,
+            gls: gls.error, subs: subs.error,
             planner: plannerRes.error, assets: assetsRes.error,
           });
           throw new Error("Supabase fetch returned errors");
         }
 
-        if (!txs.data || !gls.data || !subs.data || !plannerRes.data || !assetsRes.data) {
+        if (!parsedTransactions || !gls.data || !subs.data || !plannerRes.data || !assetsRes.data) {
           console.log("[refreshData] Supabase returned null data arrays — treating as offline");
           throw new Error("Supabase returned null data");
         }
@@ -202,7 +203,7 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
         }
 
         // ─── Parse responses ──────────────────────────────────────────────
-        const parsedTransactions = txs.data as Transaction[];
+        // parsedTransactions is already safely paginated and typed from fetchPaginatedTransactions
         const parsedGoals: Goal[] = (gls.data as RawGoalRow[]).map(g => ({
           id: g.id,
           title: g.title,
