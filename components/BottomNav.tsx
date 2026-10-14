@@ -122,7 +122,7 @@ export default function BottomNav({ onOpenAdd }: { onOpenAdd: () => void }) {
     <>
       <nav
         aria-label="Primary"
-        className="lg:hidden fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-50 bg-white dark:bg-zinc-950 pb-safe border-t border-border shadow-up rounded-t-3xl px-5 py-2.5 sm:py-3.5 flex justify-around items-center bg-opacity-90 dark:bg-opacity-90 backdrop-blur-xl"
+        className="lg:hidden fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-50 bg-white dark:bg-zinc-950 pb-safe border-t border-border shadow-up rounded-t-3xl px-6 py-4 flex justify-around items-center bg-opacity-90 dark:bg-opacity-90 backdrop-blur-xl"
       >
         <Link
           href="/"
@@ -130,11 +130,11 @@ export default function BottomNav({ onOpenAdd }: { onOpenAdd: () => void }) {
           aria-current={isHome ? "page" : undefined}
           style={isHome ? { color: activeColor } : {}}
           className={cn(
-            "flex flex-col items-center gap-0.5 sm:gap-1 transition-colors",
+            "flex flex-col items-center gap-1 transition-colors",
             !isHome && "text-muted-foreground hover:text-foreground"
           )}
         >
-          <Home className="w-5 h-5 sm:w-6 sm:h-6" strokeWidth={isHome ? 2.5 : 2} aria-hidden="true" />
+          <Home className="w-6 h-6" strokeWidth={isHome ? 2.5 : 2} aria-hidden="true" />
           <span className="text-[10px] font-semibold">Home</span>
         </Link>
 
@@ -144,15 +144,15 @@ export default function BottomNav({ onOpenAdd }: { onOpenAdd: () => void }) {
           aria-current={isStats ? "page" : undefined}
           style={isStats ? { color: activeColor } : {}}
           className={cn(
-            "flex flex-col items-center gap-0.5 sm:gap-1 transition-colors",
+            "flex flex-col items-center gap-1 transition-colors",
             !isStats && "text-muted-foreground hover:text-foreground"
           )}
         >
-          <PieChart className="w-5 h-5 sm:w-6 sm:h-6" strokeWidth={isStats ? 2.5 : 2} aria-hidden="true" />
+          <PieChart className="w-6 h-6" strokeWidth={isStats ? 2.5 : 2} aria-hidden="true" />
           <span className="text-[10px] font-medium">Stats</span>
         </Link>
 
-        <div className="relative -top-4 sm:-top-5">
+        <div className="relative -top-6">
           <button
             type="button"
             aria-label="Add transaction — hold for quick templates"
@@ -164,11 +164,11 @@ export default function BottomNav({ onOpenAdd }: { onOpenAdd: () => void }) {
             onContextMenu={(e) => e.preventDefault()}
             style={{
               backgroundColor: activeColor,
-              boxShadow: `0 0 16px ${activeColor}55`,
+              boxShadow: `0 0 20px ${activeColor}60`,
             }}
-            className="text-white p-3 sm:p-3.5 rounded-full hover:scale-105 active:scale-95 transition-transform select-none touch-none"
+            className="text-white p-4 rounded-full hover:scale-105 active:scale-95 transition-transform select-none touch-none"
           >
-            <Plus className="w-6 h-6 sm:w-7 sm:h-7" strokeWidth={3} aria-hidden="true" />
+            <Plus className="w-8 h-8" strokeWidth={3} aria-hidden="true" />
           </button>
         </div>
 
@@ -178,11 +178,11 @@ export default function BottomNav({ onOpenAdd }: { onOpenAdd: () => void }) {
           aria-current={isHub ? "page" : undefined}
           style={isHub ? { color: activeColor } : {}}
           className={cn(
-            "flex flex-col items-center gap-0.5 sm:gap-1 transition-colors",
+            "flex flex-col items-center gap-1 transition-colors",
             !isHub && "text-muted-foreground hover:text-foreground"
           )}
         >
-          <LayoutGrid className="w-5 h-5 sm:w-6 sm:h-6" strokeWidth={isHub ? 2.5 : 2} aria-hidden="true" />
+          <LayoutGrid className="w-6 h-6" strokeWidth={isHub ? 2.5 : 2} aria-hidden="true" />
           <span className="text-[10px] font-medium">Hub</span>
         </Link>
 
@@ -192,11 +192,11 @@ export default function BottomNav({ onOpenAdd }: { onOpenAdd: () => void }) {
           aria-current={isProfile ? "page" : undefined}
           style={isProfile ? { color: activeColor } : {}}
           className={cn(
-            "flex flex-col items-center gap-0.5 sm:gap-1 transition-colors",
+            "flex flex-col items-center gap-1 transition-colors",
             !isProfile && "text-muted-foreground hover:text-foreground"
           )}
         >
-          <User className="w-5 h-5 sm:w-6 sm:h-6" strokeWidth={isProfile ? 2.5 : 2} aria-hidden="true" />
+          <User className="w-6 h-6" strokeWidth={isProfile ? 2.5 : 2} aria-hidden="true" />
           <span className="text-[10px] font-medium">Profile</span>
         </Link>
       </nav>

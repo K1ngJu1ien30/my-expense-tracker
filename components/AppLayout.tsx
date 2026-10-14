@@ -197,7 +197,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         {/* Main Content Canvas */}
         <div className="flex-1 min-w-0 flex flex-col min-h-screen">
-          <main className="flex-1 w-full overflow-y-auto hide-scrollbar relative pb-[calc(5.25rem+env(safe-area-inset-bottom,0px))] lg:pb-12">
+          <main className="flex-1 w-full overflow-y-auto hide-scrollbar relative pb-[calc(7rem+env(safe-area-inset-bottom,0px))] lg:pb-12">
             <div className="w-full max-w-7xl mx-auto">
               {children}
             </div>
