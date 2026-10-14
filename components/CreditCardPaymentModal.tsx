@@ -43,6 +43,7 @@ export default function CreditCardPaymentModal({
     triggerToast,
     statements,
     creditCardPayments,
+    creditCardAllocations,
     addCreditCardStatement,
     recordCreditCardPayment,
   } = useAppContext();
@@ -164,23 +165,33 @@ export default function CreditCardPaymentModal({
     if (!selectedStatementId) {
       // Find oldest unsettled statement or latest statement
       const unsettled = cardStatements.find(
-        (s) => !s.isSettled && calculateStatementRemaining(s, creditCardPayments) > 0
+        (s) =>
+          !s.isSettled &&
+          calculateStatementRemaining(s, creditCardPayments, creditCardAllocations) > 0
       );
       return unsettled || cardStatements[0] || null;
     }
     return cardStatements.find((s) => s.id === selectedStatementId) || null;
-  }, [cardStatements, selectedStatementId, creditCardPayments]);
+  }, [cardStatements, selectedStatementId, creditCardPayments, creditCardAllocations]);
 
   // Statement calculations
   const statementRemaining = useMemo(() => {
     if (!activeStatement) return 0;
-    return calculateStatementRemaining(activeStatement, creditCardPayments);
-  }, [activeStatement, creditCardPayments]);
+    return calculateStatementRemaining(
+      activeStatement,
+      creditCardPayments,
+      creditCardAllocations
+    );
+  }, [activeStatement, creditCardPayments, creditCardAllocations]);
 
   const minimumRemaining = useMemo(() => {
     if (!activeStatement) return 0;
-    return calculateMinimumRemaining(activeStatement, creditCardPayments);
-  }, [activeStatement, creditCardPayments]);
+    return calculateMinimumRemaining(
+      activeStatement,
+      creditCardPayments,
+      creditCardAllocations
+    );
+  }, [activeStatement, creditCardPayments, creditCardAllocations]);
 
   // Is statement overdue?
   const isStatementOverdue = useMemo(() => {
@@ -258,6 +269,13 @@ export default function CreditCardPaymentModal({
   // Confirm and execute payment
   const handleConfirmPayment = async () => {
     if (!currentCard || !currentSource) return;
+    if (isOffline) {
+      NativeHaptics.errorShake();
+      setErrorMessage(
+        "Credit card repayments require an active connection. Please connect to the internet."
+      );
+      return;
+    }
     setIsSubmitting(true);
     setErrorMessage(null);
 
@@ -486,19 +504,36 @@ export default function CreditCardPaymentModal({
                         const src = accountObjects.find(
                           (a) => a.id === p.sourceAccountId || a.name === p.sourceAccountId
                         );
+                        const paymentAllocations = creditCardAllocations.filter(
+                          (a) => a.paymentId === p.id
+                        );
+                        const totalAllocated = paymentAllocations.reduce(
+                          (sum, a) => sum + Number(a.allocatedAmount || 0),
+                          0
+                        );
+                        const unbilledAmount = Math.max(
+                          0,
+                          Math.round((Number(p.amount) - totalAllocated) * 100) / 100
+                        );
+
                         return (
                           <div
                             key={p.id}
                             className="bg-card p-3.5 rounded-2xl border border-border/60 flex items-center justify-between shadow-sm"
                           >
                             <div className="space-y-1">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-xs font-bold text-foreground">
                                   From {src?.name || "Bank Account"}
                                 </span>
                                 <span className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded bg-primary/10 text-primary">
                                   {p.paymentType.replace("_", " ")}
                                 </span>
+                                {p.transactionId && (
+                                  <span className="text-[9px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1 rounded">
+                                    Ledger Linked
+                                  </span>
+                                )}
                               </div>
                               <p className="text-[11px] text-muted-foreground">
                                 {new Date(p.paymentDate).toLocaleDateString(undefined, {
@@ -508,6 +543,14 @@ export default function CreditCardPaymentModal({
                                 })}
                                 {p.note ? ` • ${p.note}` : ""}
                               </p>
+                              {paymentAllocations.length > 0 && (
+                                <p className="text-[10px] text-muted-foreground font-medium">
+                                  Allocated to statement: {currency} {totalAllocated.toFixed(2)}
+                                  {unbilledAmount > 0.01
+                                    ? ` • Unbilled: ${currency} ${unbilledAmount.toFixed(2)}`
+                                    : ""}
+                                </p>
+                              )}
                             </div>
                             <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">
                               +{currency} {Number(p.amount).toFixed(2)}
@@ -640,11 +683,18 @@ export default function CreditCardPaymentModal({
                   </button>
                   <button
                     type="button"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || isOffline}
                     onClick={handleConfirmPayment}
-                    className="flex-1 py-3 text-xs font-bold text-white bg-primary rounded-xl transition-all shadow-soft flex items-center justify-center gap-2 disabled:opacity-50"
+                    className={cn(
+                      "flex-1 py-3 text-xs font-bold rounded-xl transition-all shadow-soft flex items-center justify-center gap-2",
+                      isOffline
+                        ? "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
+                        : "bg-primary text-white hover:opacity-95 cursor-pointer disabled:opacity-50"
+                    )}
                   >
-                    {isSubmitting ? (
+                    {isOffline ? (
+                      <span>Offline — Connect to Submit</span>
+                    ) : isSubmitting ? (
                       <>
                         <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                         <span>Posting...</span>
@@ -801,7 +851,7 @@ export default function CreditCardPaymentModal({
                       >
                         {cardStatements.map((st) => (
                           <option key={st.id} value={st.id}>
-                            Stmt: {st.statementDate} (Due {st.dueDate}) — {st.isSettled ? "Settled" : `RM ${st.closingBalance}`}
+                            Stmt: {st.statementDate} (Due {st.dueDate}) — {st.isSettled ? "Settled" : `${currency} ${st.closingBalance}`}
                           </option>
                         ))}
                       </select>
@@ -1114,6 +1164,19 @@ export default function CreditCardPaymentModal({
                   </div>
                 </div>
 
+                {/* Offline Notice Banner */}
+                {isOffline && (
+                  <div
+                    role="status"
+                    className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-amber-600 dark:text-amber-400 text-xs font-medium flex items-center gap-2.5 animate-in fade-in slide-in-from-top-1 duration-200"
+                  >
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />
+                    <span>
+                      You are currently offline. Credit card repayments require an active connection to ensure statement settlements and ledger balances settle atomically. All your entered details are preserved.
+                    </span>
+                  </div>
+                )}
+
                 {/* Error Banner */}
                 {errorMessage && (
                   <div role="alert" className="p-3.5 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-rose-500 text-xs font-semibold flex items-center gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
@@ -1126,11 +1189,23 @@ export default function CreditCardPaymentModal({
                 <div className="pt-2">
                   <button
                     type="button"
+                    disabled={isOffline}
                     onClick={handleProceedToReview}
-                    className="w-full py-3.5 bg-primary text-white rounded-2xl font-bold text-sm shadow-soft hover:opacity-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    className={cn(
+                      "w-full py-3.5 rounded-2xl font-bold text-sm shadow-soft transition-all flex items-center justify-center gap-2",
+                      isOffline
+                        ? "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
+                        : "bg-primary text-white hover:opacity-95 cursor-pointer"
+                    )}
                   >
-                    <span>Review Payment</span>
-                    <ArrowRight className="w-4 h-4" />
+                    {isOffline ? (
+                      <span>Offline — Connect to Submit</span>
+                    ) : (
+                      <>
+                        <span>Review Payment</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
                   </button>
                 </div>
               </div>

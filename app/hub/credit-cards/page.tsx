@@ -47,6 +47,7 @@ export default function CreditCardsDashboardPage() {
     accentColor,
     statements,
     creditCardPayments,
+    creditCardAllocations,
     openCreditCardPayment,
     updateCreditCardDetails,
     triggerToast,
@@ -83,9 +84,16 @@ export default function CreditCardsDashboardPage() {
       accountObjects,
       statements,
       creditCardPayments,
+      creditCardAllocations,
       accountBalances: balancesData.balancesByName,
     });
-  }, [accountObjects, statements, creditCardPayments, balancesData.balancesByName]);
+  }, [
+    accountObjects,
+    statements,
+    creditCardPayments,
+    creditCardAllocations,
+    balancesData.balancesByName,
+  ]);
 
   // Find active card object
   const activeCard = useMemo(
@@ -219,15 +227,25 @@ export default function CreditCardsDashboardPage() {
     // Latest statement (prefer unsettled, else latest date)
     const latestStatement: CreditCardStatement | null =
       cardStatements.find(
-        (s) => !s.isSettled && calculateStatementRemaining(s, creditCardPayments) > 0
+        (s) =>
+          !s.isSettled &&
+          calculateStatementRemaining(s, creditCardPayments, creditCardAllocations) > 0
       ) || cardStatements[0] || null;
 
     const statementRemaining = latestStatement
-      ? calculateStatementRemaining(latestStatement, creditCardPayments)
+      ? calculateStatementRemaining(
+          latestStatement,
+          creditCardPayments,
+          creditCardAllocations
+        )
       : 0;
 
     const minimumRemaining = latestStatement
-      ? calculateMinimumRemaining(latestStatement, creditCardPayments)
+      ? calculateMinimumRemaining(
+          latestStatement,
+          creditCardPayments,
+          creditCardAllocations
+        )
       : 0;
 
     // Due date calculation
@@ -295,7 +313,7 @@ export default function CreditCardsDashboardPage() {
       newPurchasesTotal: Math.round(newPurchasesTotal * 100) / 100,
       cardPayments,
     };
-  }, [activeCard, balancesData, statements, creditCardPayments, transactions]);
+  }, [activeCard, balancesData, statements, creditCardPayments, creditCardAllocations, transactions]);
 
   // Active card interest & finance charge projections (Phase 3C)
   const interestProjection = useMemo(() => {

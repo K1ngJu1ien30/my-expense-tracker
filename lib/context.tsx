@@ -19,6 +19,7 @@ import type {
   CreditCardDetails,
   CreditCardStatement,
   CreditCardPayment,
+  CreditCardPaymentAllocation,
   CreditCardPaymentType,
   CardRewardsConfig,
   CashbackDestination,
@@ -47,6 +48,7 @@ export type {
   Asset,
   AssetLog,
   Account,
+  CreditCardPaymentAllocation,
 };
 
 // Configure localforage for IndexedDB.
@@ -182,6 +184,7 @@ type AppContextType = {
   closeCreditCardPayment: () => void;
   statements: CreditCardStatement[];
   creditCardPayments: CreditCardPayment[];
+  creditCardAllocations: CreditCardPaymentAllocation[];
   addCreditCardStatement: (params: {
     accountId: string;
     statementDate: string;
@@ -488,6 +491,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const {
     statements,
     payments: creditCardPayments,
+    allocations: creditCardAllocations,
     addCreditCardStatement,
     recordCreditCardPayment,
   } = useCreditCardPayments({
@@ -496,6 +500,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     accountObjects,
     transactions,
     addTransaction,
+    setTransactions,
     triggerToast,
   });
 
@@ -751,7 +756,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       showTransactionModal, setShowTransactionModal,
       showCreditCardPaymentModal, setShowCreditCardPaymentModal,
       activePaymentCardId, openCreditCardPayment, closeCreditCardPayment,
-      statements, creditCardPayments,
+      statements, creditCardPayments, creditCardAllocations,
       addCreditCardStatement, recordCreditCardPayment,
       rewardsConfigs, cashbackRecords,
       saveRewardsConfig, recordConfirmedCashback,

@@ -2,7 +2,12 @@
 // In-App Credit Card Reminders Derivation Engine (Phase 3A)
 // ============================================================================
 
-import type { Account, CreditCardPayment, CreditCardStatement } from "./types";
+import type {
+  Account,
+  CreditCardPayment,
+  CreditCardPaymentAllocation,
+  CreditCardStatement,
+} from "./types";
 import {
   calculateStatementRemaining,
   calculateMinimumRemaining,
@@ -34,6 +39,7 @@ export function deriveCreditCardReminders(params: {
   accountObjects: Account[];
   statements: CreditCardStatement[];
   creditCardPayments: CreditCardPayment[];
+  creditCardAllocations?: CreditCardPaymentAllocation[];
   accountBalances: Record<string, number>;
   todayDateStr?: string;
 }): CreditCardReminder[] {
@@ -41,6 +47,7 @@ export function deriveCreditCardReminders(params: {
     accountObjects,
     statements,
     creditCardPayments,
+    creditCardAllocations,
     accountBalances,
     todayDateStr = new Date().toISOString().split("T")[0],
   } = params;
@@ -66,15 +73,27 @@ export function deriveCreditCardReminders(params: {
     // Find unsettled statements
     const unsettled = cardStatements.filter((s) => {
       if (s.isSettled) return false;
-      const remaining = calculateStatementRemaining(s, creditCardPayments);
+      const remaining = calculateStatementRemaining(
+        s,
+        creditCardPayments,
+        creditCardAllocations
+      );
       return remaining > 0.005;
     });
 
     if (unsettled.length > 0) {
       // Evaluate each unsettled statement
       for (const st of unsettled) {
-        const remaining = calculateStatementRemaining(st, creditCardPayments);
-        const minRemaining = calculateMinimumRemaining(st, creditCardPayments);
+        const remaining = calculateStatementRemaining(
+          st,
+          creditCardPayments,
+          creditCardAllocations
+        );
+        const minRemaining = calculateMinimumRemaining(
+          st,
+          creditCardPayments,
+          creditCardAllocations
+        );
         const dueTime = new Date(st.dueDate).getTime();
         const diffDays = Math.ceil((dueTime - todayTime) / 86400000);
 

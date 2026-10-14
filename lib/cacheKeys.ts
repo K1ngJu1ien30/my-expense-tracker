@@ -24,6 +24,10 @@ export function getUserCreditCardPaymentsKey(userId?: string): string {
   return userId ? `tracker_cc_payments_${userId}` : "tracker_cc_payments_anon";
 }
 
+export function getUserCreditCardAllocationsKey(userId?: string): string {
+  return userId ? `tracker_cc_allocations_${userId}` : "tracker_cc_allocations_anon";
+}
+
 export function getUserCashbackConfigsKey(userId?: string): string {
   return userId ? `tracker_cc_cashback_configs_${userId}` : "tracker_cc_cashback_configs_anon";
 }

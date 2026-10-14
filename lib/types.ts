@@ -148,6 +148,15 @@ export type CreditCardPayment = {
   createdAt?: string;
 };
 
+export type CreditCardPaymentAllocation = {
+  id: string;
+  userId?: string;
+  paymentId: string;
+  statementId: string;
+  allocatedAmount: number;
+  createdAt?: string;
+};
+
 export type CreditCardDetails = {
   accountId: string;
   userId?: string;
@@ -271,6 +280,15 @@ export type RawCreditCardPaymentRow = {
   amount: number | string;
   payment_type: CreditCardPaymentType;
   note: string | null;
+  created_at?: string;
+};
+
+export type RawCreditCardPaymentAllocationRow = {
+  id: string;
+  user_id: string;
+  payment_id: string;
+  statement_id: string;
+  allocated_amount: number | string;
   created_at?: string;
 };
 

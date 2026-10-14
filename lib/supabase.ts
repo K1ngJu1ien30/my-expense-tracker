@@ -15,4 +15,3 @@ if (!supabaseUrl.startsWith("https://")) {
 }
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
-
