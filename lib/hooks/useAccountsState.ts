@@ -340,9 +340,9 @@ export function useAccountsState(session: Session | null) {
   const updateCreditCardDetails = useCallback(
     async (accountId: string, patch: Partial<CreditCardDetails>) => {
       const updatedAccounts = accountObjects.map(a => {
-        if (a.id === accountId) {
+        if (a.id === accountId || a.name === accountId) {
           const updatedCardDetails: CreditCardDetails = {
-            accountId,
+            accountId: a.id || accountId,
             userId: session?.user?.id,
             statementDay: a.statementDay || 15,
             gracePeriodDays: 20,

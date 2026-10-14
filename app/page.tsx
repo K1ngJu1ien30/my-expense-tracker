@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from "framer-motion";
-import { TrendingUp, Wallet, Target, Clock, HelpCircle, Receipt, CreditCard } from "lucide-react";
+import { TrendingUp, Wallet, Target, Clock, HelpCircle, Receipt, CreditCard, AlertTriangle } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer, Tooltip } from "recharts";
 import Link from "next/link";
 import { useAppContext } from "@/lib/context";
@@ -11,6 +11,7 @@ import { getTimeTheme } from "@/lib/timeTheme";
 import MonthlyReceiptModal from "@/components/MonthlyReceiptModal";
 import { calculateFinancialPosition } from "@/lib/balance";
 import { cn } from "@/lib/utils";
+import { deriveCreditCardReminders } from "@/lib/creditCardReminders";
 
 /**
  * Currency value that smoothly animates from its previous value to the new
@@ -84,6 +85,8 @@ export default function Dashboard() {
     isClaimsEnabled,
     enableTimeBasedGreeting,
     openCreditCardPayment,
+    statements,
+    creditCardPayments,
   } = useAppContext();
   const pinnedGoals = isGodMode ? goals.map(g => ({ ...g, current: g.target })) : goals.filter(g => g.isPinned);
 
@@ -312,6 +315,18 @@ export default function Dashboard() {
     };
   }, [accountObjects, accountBalances]);
 
+  // In-app credit card reminders (Phase 3A)
+  const creditCardReminders = useMemo(() => {
+    return deriveCreditCardReminders({
+      accountObjects,
+      statements,
+      creditCardPayments,
+      accountBalances,
+    });
+  }, [accountObjects, statements, creditCardPayments, accountBalances]);
+
+  const urgentReminder = creditCardReminders[0] || null;
+
   // Ordered account list: official order first, ghost accounts appended
   const orderedAccountCards = useMemo(() => {
     const activeAccounts = includeSavings
@@ -456,6 +471,75 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
         {/* ─── LEFT COLUMN: Header, Accounts Wallet & Trends ──────────────── */}
         <div className="lg:col-span-7 xl:col-span-8 space-y-6">
+          {/* Credit Card In-App Reminder Alert (Phase 3A) */}
+          {urgentReminder && (
+            <motion.div
+              initial={{ y: -10, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              className={cn(
+                "p-4 rounded-3xl border shadow-soft flex items-center justify-between gap-3 transition-all",
+                urgentReminder.urgency === "overdue"
+                  ? "bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400"
+                  : urgentReminder.urgency === "due_today"
+                  ? "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400"
+                  : "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400"
+              )}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div
+                  className={cn(
+                    "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-sm text-white",
+                    urgentReminder.urgency === "overdue"
+                      ? "bg-rose-500 animate-pulse"
+                      : urgentReminder.urgency === "due_today"
+                      ? "bg-amber-500"
+                      : "bg-blue-500"
+                  )}
+                >
+                  {urgentReminder.urgency === "overdue" ? (
+                    <AlertTriangle className="w-5 h-5" />
+                  ) : (
+                    <Clock className="w-5 h-5" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-black/10 dark:bg-white/10">
+                      {urgentReminder.urgency === "overdue"
+                        ? `Overdue (${Math.abs(urgentReminder.daysRemaining)}d)`
+                        : urgentReminder.urgency === "due_today"
+                        ? "Due Today"
+                        : `Due in ${urgentReminder.daysRemaining}d`}
+                    </span>
+                    <span className="text-xs font-bold truncate text-foreground">
+                      {urgentReminder.cardName}
+                    </span>
+                  </div>
+                  <p className="text-xs font-semibold text-foreground mt-0.5">
+                    {formatCurrency(urgentReminder.remainingBalance)} Statement Due
+                    {urgentReminder.minimumPayment > 0 &&
+                      ` · Min ${formatCurrency(urgentReminder.minimumPayment)}`}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => openCreditCardPayment(urgentReminder.cardId)}
+                  className={cn(
+                    "px-3.5 py-2 rounded-xl text-xs font-bold text-white shadow-soft transition-all cursor-pointer",
+                    urgentReminder.urgency === "overdue"
+                      ? "bg-rose-600 hover:bg-rose-700"
+                      : "bg-primary hover:opacity-90"
+                  )}
+                >
+                  Pay Now
+                </button>
+              </div>
+            </motion.div>
+          )}
+
           {/* Header Banner with Time-of-Day theme */}
           <div
             className="relative rounded-3xl px-5 py-4 transition-colors duration-700 overflow-hidden shadow-soft border border-border/30"

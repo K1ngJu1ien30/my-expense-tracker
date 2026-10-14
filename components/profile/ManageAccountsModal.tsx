@@ -48,7 +48,7 @@ export function ManageAccountsModal({
   deleteAccount,
   addAccount,
   addCreditCardAccount,
-  updateCreditCardDetails: _updateCreditCardDetails,
+  updateCreditCardDetails,
   confirmAction,
   triggerToast,
   accentColor,
@@ -283,6 +283,26 @@ export function ManageAccountsModal({
                             <span className="text-[10px] font-mono text-muted-foreground/80 bg-muted/70 px-1.5 py-0.5 rounded">
                               Stmt: Day {accObj.statementDay || accObj.cardDetails?.statementDay || 15}
                             </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const currentDays = accObj.cardDetails?.reminderDaysBefore ?? 3;
+                                const windows = [1, 3, 5, 7, 14];
+                                const nextIdx = (windows.indexOf(currentDays) + 1) % windows.length;
+                                const nextDays = windows[nextIdx];
+                                if (updateCreditCardDetails) {
+                                  updateCreditCardDetails(accObj.id || accObj.name, {
+                                    reminderDaysBefore: nextDays,
+                                  });
+                                  triggerToast(`🔔 Alert: ${nextDays} days before due date for ${accObj.name}`);
+                                }
+                              }}
+                              title="Click to cycle reminder window (1, 3, 5, 7, 14 days)"
+                              className="text-[10px] font-mono text-primary bg-primary/10 hover:bg-primary/20 px-1.5 py-0.5 rounded transition-colors cursor-pointer"
+                            >
+                              🔔 Alert: {accObj.cardDetails?.reminderDaysBefore ?? 3}d ↻
+                            </button>
                             {accObj?.openingBalance !== undefined && Number(accObj.openingBalance) !== 0 && (
                               <span className="text-[10px] text-rose-500 font-mono font-medium">
                                 Debt: {accObj.currencyCode || "RM"} {Math.abs(Number(accObj.openingBalance)).toFixed(2)}
@@ -587,6 +607,22 @@ export function ManageAccountsModal({
                       aria-label="Payment reminder days before"
                       className="w-full bg-muted/50 rounded-lg px-2.5 py-1.5 text-xs font-medium outline-none border border-border text-foreground"
                     />
+                    <div className="flex gap-1 mt-1">
+                      {[1, 3, 5, 7, 14].map((d) => (
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => setReminderDaysBefore(String(d))}
+                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded border transition-colors ${
+                            reminderDaysBefore === String(d)
+                              ? "bg-primary text-white border-primary"
+                              : "bg-muted/50 text-muted-foreground border-border/50 hover:bg-muted"
+                          }`}
+                        >
+                          {d}d
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 

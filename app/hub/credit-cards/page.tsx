@@ -10,6 +10,8 @@ import {
   ChevronRight,
   ShieldCheck,
   Percent,
+  Bell,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 import { useAppContext } from "@/lib/context";
@@ -21,6 +23,7 @@ import {
   calculateMinimumRemaining,
 } from "@/lib/hooks/useCreditCardPayments";
 import type { CreditCardStatement, Transaction } from "@/lib/types";
+import { deriveCreditCardReminders } from "@/lib/creditCardReminders";
 
 export default function CreditCardsDashboardPage() {
   const {
@@ -31,6 +34,8 @@ export default function CreditCardsDashboardPage() {
     statements,
     creditCardPayments,
     openCreditCardPayment,
+    updateCreditCardDetails,
+    triggerToast,
   } = useAppContext();
 
   // ─── Filter credit card accounts ─────────────────────────────────────────
@@ -50,11 +55,31 @@ export default function CreditCardsDashboardPage() {
     [accountObjects, transactions]
   );
 
+  // In-app credit card reminders derivation (Phase 3A)
+  const allReminders = useMemo(() => {
+    return deriveCreditCardReminders({
+      accountObjects,
+      statements,
+      creditCardPayments,
+      accountBalances: balancesData.balancesByName,
+    });
+  }, [accountObjects, statements, creditCardPayments, balancesData.balancesByName]);
+
   // Find active card object
   const activeCard = useMemo(
     () => creditCards.find((c) => (c.id || c.name) === selectedCardId) || null,
     [creditCards, selectedCardId]
   );
+
+  const activeCardReminder = useMemo(() => {
+    if (!activeCard) return null;
+    const cardId = activeCard.id || activeCard.name;
+    return (
+      allReminders.find(
+        (r) => r.cardId === cardId || r.cardName.toLowerCase() === activeCard.name.toLowerCase()
+      ) || null
+    );
+  }, [activeCard, allReminders]);
 
   // ─── Consolidated Totals across all credit cards ──────────────────────────
   const consolidated = useMemo(() => {
@@ -316,6 +341,94 @@ export default function CreditCardsDashboardPage() {
           {/* ─── Consolidated All Cards View ───────────────────────────────── */}
           {selectedCardId === "all" ? (
             <div className="space-y-6">
+              {/* Payment Alerts / Reminders Banner (Phase 3A) */}
+              {allReminders.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between px-1">
+                    <div className="flex items-center gap-2">
+                      <Bell className="w-4 h-4 text-rose-500 animate-pulse" />
+                      <h2 className="text-sm font-bold text-foreground">
+                        Upcoming & Overdue Payment Reminders
+                      </h2>
+                    </div>
+                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-500">
+                      {allReminders.length} Action Required
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {allReminders.map((rem) => (
+                      <div
+                        key={rem.id}
+                        className={cn(
+                          "p-4 rounded-3xl border shadow-soft flex items-center justify-between gap-3 transition-all",
+                          rem.urgency === "overdue"
+                            ? "bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400"
+                            : rem.urgency === "due_today"
+                            ? "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400"
+                            : "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400"
+                        )}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div
+                            className={cn(
+                              "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-sm text-white",
+                              rem.urgency === "overdue"
+                                ? "bg-rose-500 animate-pulse"
+                                : rem.urgency === "due_today"
+                                ? "bg-amber-500"
+                                : "bg-blue-500"
+                            )}
+                          >
+                            {rem.urgency === "overdue" ? (
+                              <AlertTriangle className="w-5 h-5" />
+                            ) : (
+                              <Clock className="w-5 h-5" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-black/10 dark:bg-white/10">
+                                {rem.urgency === "overdue"
+                                  ? `Overdue (${Math.abs(rem.daysRemaining)}d)`
+                                  : rem.urgency === "due_today"
+                                  ? "Due Today"
+                                  : `Due in ${rem.daysRemaining}d`}
+                              </span>
+                              <span className="text-xs font-bold truncate text-foreground">
+                                {rem.cardName}
+                                {rem.cardLastFour ? ` •••• ${rem.cardLastFour}` : ""}
+                              </span>
+                            </div>
+                            <p className="text-xs font-semibold text-foreground mt-0.5">
+                              {currency} {rem.remainingBalance.toFixed(2)} Statement Due
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">
+                              Due: {rem.dueDate}
+                              {rem.minimumPayment > 0 &&
+                                ` · Min ${currency} ${rem.minimumPayment.toFixed(2)}`}
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => openCreditCardPayment(rem.cardId)}
+                          className={cn(
+                            "px-3.5 py-2 rounded-xl text-xs font-bold text-white shadow-soft transition-all cursor-pointer shrink-0",
+                            rem.urgency === "overdue"
+                              ? "bg-rose-600 hover:bg-rose-700"
+                              : "bg-primary hover:opacity-90"
+                          )}
+                        >
+                          Pay Now
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Consolidated Hero Card */}
               <div className="p-6 rounded-[2rem] bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-950 text-white shadow-heavy border border-white/10 space-y-5 relative overflow-hidden">
                 <div className="flex items-center justify-between">
@@ -492,6 +605,71 @@ export default function CreditCardsDashboardPage() {
           ) : activeCard && activeCardMetrics ? (
             /* ─── Individual Card Detail View ─────────────────────────────── */
             <div className="space-y-6">
+              {/* Active Card Reminder Alert Banner (Phase 3A) */}
+              {activeCardReminder && (
+                <div
+                  className={cn(
+                    "p-4 rounded-3xl border shadow-soft flex items-center justify-between gap-3 transition-all",
+                    activeCardReminder.urgency === "overdue"
+                      ? "bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400"
+                      : activeCardReminder.urgency === "due_today"
+                      ? "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400"
+                      : "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400"
+                  )}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className={cn(
+                        "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-sm text-white",
+                        activeCardReminder.urgency === "overdue"
+                          ? "bg-rose-500 animate-pulse"
+                          : activeCardReminder.urgency === "due_today"
+                          ? "bg-amber-500"
+                          : "bg-blue-500"
+                      )}
+                    >
+                      {activeCardReminder.urgency === "overdue" ? (
+                        <AlertTriangle className="w-5 h-5" />
+                      ) : (
+                        <Clock className="w-5 h-5" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-black/10 dark:bg-white/10">
+                          {activeCardReminder.urgency === "overdue"
+                            ? `Overdue (${Math.abs(activeCardReminder.daysRemaining)}d)`
+                            : activeCardReminder.urgency === "due_today"
+                            ? "Payment Due Today"
+                            : `Due in ${activeCardReminder.daysRemaining} days`}
+                        </span>
+                        <span className="text-xs font-bold text-foreground">
+                          Due {activeCardReminder.dueDate}
+                        </span>
+                      </div>
+                      <p className="text-xs font-semibold text-foreground mt-0.5">
+                        {currency} {activeCardReminder.remainingBalance.toFixed(2)} remaining to pay
+                        {activeCardReminder.minimumPayment > 0 &&
+                          ` · Min ${currency} ${activeCardReminder.minimumPayment.toFixed(2)}`}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => openCreditCardPayment(activeCardReminder.cardId)}
+                    className={cn(
+                      "px-3.5 py-2 rounded-xl text-xs font-bold text-white shadow-soft transition-all cursor-pointer shrink-0",
+                      activeCardReminder.urgency === "overdue"
+                        ? "bg-rose-600 hover:bg-rose-700"
+                        : "bg-primary hover:opacity-90"
+                    )}
+                  >
+                    Pay Now
+                  </button>
+                </div>
+              )}
+
               {/* Card Hero Banner (Physical Card Styled) */}
               <div
                 className="p-6 rounded-[2.5rem] text-white shadow-heavy relative overflow-hidden space-y-6"
@@ -712,6 +890,76 @@ export default function CreditCardsDashboardPage() {
                     </button>
                   </div>
                 )}
+              </div>
+
+              {/* ─── Statement Payment Reminders Preferences (Phase 3A) ─── */}
+              <div className="p-5 bg-card rounded-3xl border border-border/60 shadow-soft space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Bell className="w-4 h-4 text-primary" />
+                    <div>
+                      <h3 className="font-bold text-sm text-foreground">
+                        Payment Reminder Window
+                      </h3>
+                      <p className="text-[10px] text-muted-foreground">
+                        Consolidated alert triggered before statement due date
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-full bg-primary/10 text-primary">
+                    {activeCard.cardDetails?.reminderDaysBefore ?? 3} Days Notice
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-muted-foreground block">
+                    Alert me before due date:
+                  </label>
+                  <div className="grid grid-cols-5 gap-2">
+                    {[1, 3, 5, 7, 14].map((days) => {
+                      const isSelected =
+                        (activeCard.cardDetails?.reminderDaysBefore ?? 3) === days;
+                      return (
+                        <button
+                          key={days}
+                          type="button"
+                          onClick={async () => {
+                            NativeHaptics.lightTick();
+                            await updateCreditCardDetails(activeCard.id || activeCard.name, {
+                              reminderDaysBefore: days,
+                            });
+                            triggerToast(
+                              `Reminder set to ${days} day${days > 1 ? "s" : ""} before due date for ${activeCard.name}`
+                            );
+                          }}
+                          className={cn(
+                            "py-2 px-1 text-center rounded-2xl text-xs font-bold transition-all cursor-pointer border",
+                            isSelected
+                              ? "bg-primary text-white border-primary shadow-soft"
+                              : "bg-muted/40 hover:bg-muted text-muted-foreground border-border/60"
+                          )}
+                        >
+                          <span>{days}d</span>
+                          <span className="block text-[9px] font-normal opacity-75">
+                            {days === 1 ? "day" : "days"}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="p-3 bg-muted/30 rounded-2xl border border-border/50 text-[11px] text-muted-foreground leading-relaxed flex items-start gap-2.5">
+                  <Clock className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-foreground">
+                      In-App Reminders Active
+                    </p>
+                    <p className="mt-0.5">
+                      Alerts appear on your Home Dashboard and Credit Cards Hub when statements are due or overdue. Background push notifications are reserved for the native Android build.
+                    </p>
+                  </div>
+                </div>
               </div>
 
               {/* ─── New Purchases Since Statement Closing ───────────────────── */}
