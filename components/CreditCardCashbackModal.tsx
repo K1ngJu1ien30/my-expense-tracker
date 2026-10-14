@@ -24,6 +24,7 @@ import type {
 import { NativeHaptics } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 import { DEFAULT_CASHBACK_RULES } from "@/lib/cashbackEngine";
+import { useAppContext } from "@/lib/context";
 
 export type CreditCardCashbackModalProps = {
   isOpen: boolean;
@@ -57,6 +58,7 @@ export default function CreditCardCashbackModal({
   onSaveConfig,
   onRecordCashback,
 }: CreditCardCashbackModalProps) {
+  const { isOffline } = useAppContext();
   const [activeTab, setActiveTab] = useState<"record" | "rules">("record");
 
   // ─── Record Cashback State ───────────────────────────────────────────────
@@ -130,6 +132,12 @@ export default function CreditCardCashbackModal({
   const handleRecordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
+
+    if (isOffline) {
+      NativeHaptics.errorShake();
+      setFormError("⚠️ Offline: An active network connection is required to record confirmed cashback redemptions.");
+      return;
+    }
 
     const amt = parseFloat(amountStr);
     if (isNaN(amt) || amt <= 0) {
@@ -474,14 +482,26 @@ export default function CreditCardCashbackModal({
                 )}
               </div>
 
+              {/* Offline Warning Banner */}
+              {isOffline && (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-start gap-2.5 text-xs text-amber-600 dark:text-amber-400">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>
+                    <strong>Offline Mode:</strong> An active internet connection is required to atomically record cashback redemptions and synchronize your card ledger.
+                  </span>
+                </div>
+              )}
+
               {/* Submit Button */}
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || isOffline}
                 className="w-full py-3.5 rounded-2xl bg-primary text-white font-bold text-xs shadow-soft hover:opacity-95 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 {isSubmitting ? (
                   <span>Recording Cashback...</span>
+                ) : isOffline ? (
+                  <span>Offline (Network Required)</span>
                 ) : (
                   <>
                     <Check className="w-4 h-4" />

@@ -531,6 +531,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     isOfflineRef,
     accountObjects,
     addTransaction,
+    setTransactions,
     triggerToast,
   });
 

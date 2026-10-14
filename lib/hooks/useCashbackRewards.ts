@@ -26,11 +26,12 @@ export type CashbackRewardsDeps = {
   isOfflineRef: MutableRefObject<boolean>;
   accountObjects: Account[];
   addTransaction: (tx: Partial<Transaction>) => Promise<TransactionSaveResult>;
+  setTransactions?: (val: Transaction[] | ((prev: Transaction[]) => Transaction[])) => void;
   triggerToast: (msg: string) => void;
 };
 
 export function useCashbackRewards(deps: CashbackRewardsDeps) {
-  const { session, isOfflineRef, accountObjects, addTransaction, triggerToast } = deps;
+  const { session, isOfflineRef, accountObjects, addTransaction: _addTransaction, setTransactions, triggerToast } = deps;
 
   const [rewardsConfigs, setRewardsConfigs] = useState<Record<string, CardRewardsConfig>>({});
   const [cashbackRecords, setCashbackRecords] = useState<CashbackRecord[]>([]);
@@ -198,88 +199,195 @@ export function useCashbackRewards(deps: CashbackRewardsDeps) {
         return { success: false, error: "Please enter a valid positive cashback amount." };
       }
 
-      const cleanAmount = roundCurrency(amount);
-      const isStatementCredit = creditDestination === "card_statement_credit";
-
-      // 3a. Generate atomic ledger transaction
-      // Statement credit is an Income on the credit card (reducing debt).
-      // Bank deposit is an Income on the target bank account (increasing cash).
-      const targetAccountName = isStatementCredit ? card.name : destinationAccount.name;
-      const targetAccountId = isStatementCredit
-        ? card.id || card.name
-        : destinationAccount.id || destinationAccount.name;
-
-      const txPayload: Partial<Transaction> = {
-        type: "Income",
-        amount: cleanAmount,
-        account: targetAccountName,
-        account_id: targetAccountId,
-        date,
-        category: "Cashback & Rewards",
-        credit_card_tx_type: "cashback",
-        note:
-          note?.trim() ||
-          (isStatementCredit
-            ? `Statement credit cashback (${card.name})`
-            : `Cashback deposit from ${card.name}`),
-      };
-
-      const txResult = await addTransaction(txPayload);
-      if (!txResult.success) {
+      // Explicit offline check: block multi-table writes while offline to preserve ledger consistency
+      if (isOfflineRef.current) {
         return {
           success: false,
-          error: txResult.error || "Failed to record cashback in transaction ledger.",
+          error: "Offline mode: Recording confirmed cashback redemptions requires an active connection to ensure your ledger and rewards auditor stay synchronized.",
         };
       }
 
-      // 3b. Create Cashback Record
-      const newRecord: CashbackRecord = {
-        id: crypto.randomUUID(),
-        userId: session?.user?.id,
-        cardId: card.id || card.name,
-        cardName: card.name,
-        amount: cleanAmount,
-        creditDestination,
-        destinationAccountId: destinationAccount.id || destinationAccount.name,
-        destinationAccountName: destinationAccount.name,
-        date,
-        transactionId: undefined,
-        note: note?.trim() || undefined,
-        createdAt: new Date().toISOString(),
-      };
-
-      const nextRecords = [newRecord, ...recordsRef.current];
-      setCashbackRecords(nextRecords);
-      await localforage.setItem(recordsKey, nextRecords);
-
-      // 3c. Cloud persistence if online
-      if (!isOfflineRef.current && session?.user?.id) {
-        try {
-          await supabase.from("credit_card_cashback_records").insert({
-            id: newRecord.id,
-            user_id: session.user.id,
-            account_id: card.id || card.name,
-            destination_account_id: destinationAccount.id || destinationAccount.name,
-            destination_type: creditDestination,
-            amount: cleanAmount,
-            transaction_id: null,
-            reward_date: date,
-            note: note?.trim() || null,
-          });
-        } catch (err) {
-          console.warn("[useCashbackRewards] Cloud record insert bypassed:", err);
-        }
+      if (!session?.user?.id) {
+        return { success: false, error: "Please sign in to record cashback." };
       }
 
-      triggerToast(
-        isStatementCredit
-          ? `Credited ${cleanAmount.toFixed(2)} statement credit to ${card.name}!`
-          : `Deposited ${cleanAmount.toFixed(2)} cashback into ${destinationAccount.name}!`
-      );
+      const cleanAmount = roundCurrency(amount);
+      const isStatementCredit = creditDestination === "card_statement_credit";
 
-      return { success: true, record: newRecord };
+      // Resolve valid account identifiers from loaded account objects
+      const cardAcc =
+        accountObjects.find(
+          (a) => (card.id && a.id === card.id) || a.name.toLowerCase() === card.name.toLowerCase()
+        ) || card;
+      const destAcc =
+        accountObjects.find(
+          (a) =>
+            (destinationAccount.id && a.id === destinationAccount.id) ||
+            a.name.toLowerCase() === destinationAccount.name.toLowerCase()
+        ) || destinationAccount;
+
+      const cardId = cardAcc.id;
+      const destAccountId = destAcc.id;
+
+      if (!cardId || !destAccountId) {
+        return {
+          success: false,
+          error: "Unable to verify account identifiers. Please ensure accounts have valid database IDs.",
+        };
+      }
+
+      const operationId = crypto.randomUUID();
+
+      // Attempt atomic RPC call first
+      try {
+        const { data: rpcRes, error: rpcErr } = await supabase.rpc("post_credit_card_cashback", {
+          p_operation_id: operationId,
+          p_card_id: cardId,
+          p_destination_account_id: destAccountId,
+          p_destination_type: creditDestination,
+          p_amount: cleanAmount,
+          p_reward_date: date,
+          p_note: note?.trim() || null,
+        });
+
+        if (!rpcErr && rpcRes && rpcRes.success) {
+          const rpcRecord = rpcRes.record as CashbackRecord;
+          const rpcTx = rpcRes.transaction as Transaction;
+
+          // Update local state atomically
+          const nextRecords = [
+            rpcRecord,
+            ...recordsRef.current.filter((r) => r.id !== rpcRecord.id),
+          ];
+          setCashbackRecords(nextRecords);
+          await localforage.setItem(recordsKey, nextRecords);
+
+          if (setTransactions && rpcTx) {
+            setTransactions((prev) => [rpcTx, ...prev.filter((t) => t.id !== rpcTx.id)]);
+          }
+
+          triggerToast(
+            isStatementCredit
+              ? `Credited ${cleanAmount.toFixed(2)} statement credit to ${cardAcc.name}!`
+              : `Deposited ${cleanAmount.toFixed(2)} cashback into ${destAcc.name}!`
+          );
+
+          return { success: true, record: rpcRecord };
+        }
+
+        // If RPC not found (code 42883: function does not exist), fall back to coordinated 2-step write
+        if (rpcErr && rpcErr.code === "42883") {
+          console.warn("[useCashbackRewards] RPC post_credit_card_cashback not installed. Using coordinated fallback.");
+
+          const txId = crypto.randomUUID();
+          const targetAccountName = isStatementCredit ? cardAcc.name : destAcc.name;
+          const targetAccountId = isStatementCredit ? cardId : destAccountId;
+          const txCategory = isStatementCredit ? "Card Statement Credit" : "Cashback & Rewards";
+          const txNote =
+            note?.trim() ||
+            (isStatementCredit
+              ? `Statement credit cashback (${cardAcc.name})`
+              : `Cashback deposit from ${cardAcc.name}`);
+
+          // Step 1: Insert ledger transaction with predetermined UUID
+          const { data: txData, error: txErr } = await supabase
+            .from("transactions")
+            .insert({
+              id: txId,
+              user_id: session.user.id,
+              type: "Income",
+              amount: cleanAmount,
+              category: txCategory,
+              account: targetAccountName,
+              account_id: targetAccountId,
+              date,
+              note: txNote,
+              credit_card_tx_type: "cashback",
+              status: "cleared",
+            })
+            .select()
+            .single();
+
+          if (txErr || !txData) {
+            return {
+              success: false,
+              error: txErr?.message || "Failed to record cashback in transaction ledger.",
+            };
+          }
+
+          // Step 2: Insert cashback record linked to txId
+          const { data: cbData, error: cbErr } = await supabase
+            .from("credit_card_cashback_records")
+            .insert({
+              id: operationId,
+              user_id: session.user.id,
+              account_id: cardId,
+              destination_account_id: destAccountId,
+              destination_type: creditDestination,
+              amount: cleanAmount,
+              transaction_id: txId,
+              reward_date: date,
+              note: note?.trim() || null,
+            })
+            .select()
+            .single();
+
+          if (cbErr || !cbData) {
+            // Clean up ledger transaction to avoid phantom orphaned records
+            await supabase.from("transactions").delete().eq("id", txId);
+            return {
+              success: false,
+              error: cbErr?.message || "Failed to record cashback audit record in cloud.",
+            };
+          }
+
+          const fallbackRecord: CashbackRecord = {
+            id: operationId,
+            userId: session.user.id,
+            cardId,
+            cardName: cardAcc.name,
+            amount: cleanAmount,
+            creditDestination,
+            destinationAccountId: destAccountId,
+            destinationAccountName: destAcc.name,
+            date,
+            transactionId: txId,
+            note: note?.trim() || undefined,
+            createdAt: new Date().toISOString(),
+          };
+
+          const nextRecords = [fallbackRecord, ...recordsRef.current];
+          setCashbackRecords(nextRecords);
+          await localforage.setItem(recordsKey, nextRecords);
+
+          if (setTransactions) {
+            setTransactions((prev) => [txData as Transaction, ...prev]);
+          }
+
+          triggerToast(
+            isStatementCredit
+              ? `Credited ${cleanAmount.toFixed(2)} statement credit to ${cardAcc.name}!`
+              : `Deposited ${cleanAmount.toFixed(2)} cashback into ${destAcc.name}!`
+          );
+
+          return { success: true, record: fallbackRecord };
+        }
+
+        // Real RPC failure
+        console.error("[useCashbackRewards] RPC post_credit_card_cashback error:", rpcErr);
+        return {
+          success: false,
+          error: rpcErr?.message || "Failed to record cashback on cloud.",
+        };
+      } catch (err: unknown) {
+        console.error("[useCashbackRewards] Network error during cashback posting:", err);
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : "Network error recording cashback.",
+        };
+      }
     },
-    [addTransaction, recordsKey, isOfflineRef, session, triggerToast]
+    [accountObjects, isOfflineRef, recordsKey, session, setTransactions, triggerToast]
   );
 
   return {

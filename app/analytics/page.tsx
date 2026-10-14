@@ -386,7 +386,14 @@ export default function AnalyticsPage() {
 
     currentPeriodTxs.forEach((tx) => {
       if (tx.type !== targetType) return;
-      const cat = tx.category || (targetType === "Income" ? "Income" : "General");
+      let cat = tx.category || (targetType === "Income" ? "Income" : "General");
+      if (tx.type === "Income") {
+        if (tx.credit_card_tx_type === "cashback" || cat.toLowerCase().includes("statement credit")) {
+          cat = "Card Statement Credit";
+        } else if (tx.credit_card_tx_type === "refund") {
+          cat = "Card Refund";
+        }
+      }
       const amt = Number(tx.amount) || 0;
 
       if (!map[cat]) map[cat] = { total: 0, count: 0, txs: [] };
