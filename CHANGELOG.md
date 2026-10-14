@@ -6,6 +6,55 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [3.0.0] — Financial Account Architecture, Credit Card Engine & Reliability — 2026-10-14
+
+A milestone architecture upgrade focused on financial correctness, offline data safety, a complete optional credit-card module with Malaysian banking practices, intelligent rewards and finance charge projections, and high-density mobile UI optimization.
+
+### 🛡️ Phase 0 — Reliability, Data Safety & Offline Sync
+- **Atomic Transaction Pipeline**: Transaction forms await cloud persistence before dismissing; IndexedDB local storage is guaranteed on network loss with no false-positive toasts.
+- **Resilient Offline Sync**: Failed cloud synchronizations remain safely in the local queue with automatic background retry and duplicate-submission prevention on rapid taps.
+- **User Data Isolation**: Multi-user cache keys in IndexedDB and localStorage scoped by `user_id` preventing accidental cross-account data leaks upon logout/login.
+- **Account Deletion Safety**: Deleting an account prevents cascading loss of historical transactions; balances and links remain traceable.
+- **Deployment & Static Export**: Audited Next.js static export compatibility with zero missing assets or browser-only crashes during build.
+
+### 🏦 Phase 1 — Financial Account Architecture
+- **Stable Account IDs & Explicit Kinds**: Introduced `accounts(id)` UUIDs and explicit kinds (`bank`, `cash`, `e_wallet`, `savings`, `credit_card`) via additive migration `006_financial_accounts_architecture.sql`.
+- **Pure Balance Calculation Engine**: Extracted accounting math into `lib/balance.ts` with pure TypeScript functions, ensuring Home, Salary Planner, Analytics, and Hub always produce identical financial figures.
+- **Separation of Assets vs Liabilities**: Credit cards are treated as liabilities rather than cash assets; Net Financial Position computes `(Cash Assets - Credit Card Liabilities)`.
+- **Multi-Currency Safety**: Prevented arbitrary addition of different foreign currencies; the Wise-style wallet displays discrete balances per currency, with estimated conversion to the base currency.
+
+### 💳 Phase 2 — Credit Card Module (MVP)
+- **Credit Card Accounts**: Create and configure cards with issuer, credit limit, statement closing day, payment due day, and annual interest rate (APR) via migration `007_credit_card_architecture.sql`.
+- **Transaction Classification**: Added explicit credit card transaction types (`purchase`, `repayment`, `refund`, `fee`, `interest`, `cashback`) preventing double-counting in expense analytics.
+- **Credit Card Payment Modal**: Mobile-first repayment modal with 4 distinct financial presets:
+  1. *Pay Remaining Statement Balance* (pays issued statement without paying unbilled new purchases)
+  2. *Pay Minimum Due* (pays minimum without falsely marking statement as fully settled)
+  3. *Pay Custom Amount* (supports partial repayment with updated remaining balance)
+  4. *Pay Full Current Outstanding* (clears both statement and unbilled purchases)
+- **Credit Cards Dashboard (`/hub/credit-cards`)**: Real-time credit utilization progress meters, statement cycle history, unsettled balances, and one-tap repayments.
+
+### 🧠 Phase 3 — Smart Credit Card Intelligence
+- **Phase 3A — Statement Due Reminders**: Configurable in-app reminder banners (`lib/creditCardReminders.ts`) on Home and Hub warning of upcoming due dates, due today, or overdue statements with remaining amounts.
+- **Phase 3B — Cashback & Rewards Tracking**: Built-in cashback engine (`lib/cashbackEngine.ts`, `CreditCardCashbackModal.tsx`, `008_cashback_rewards.sql`) supporting category-specific rebates, monthly caps, minimum spend conditions, and tracking estimated vs confirmed rewards.
+- **Phase 3C — Interest & Finance Charge Engine**: Accurate Malaysian credit card APR projection (`lib/interestEngine.ts`, `CreditCardFinanceChargeModal.tsx`) modeling standard 15% / 17% / 18% tiers, with manual reconciliation of actual bank charges.
+
+### 🎨 Phase 4 — UI/UX, Accessibility & Native Polish
+- **Keyboard & Modal Accessibility**: Full keyboard focus management, Tab/Shift+Tab trapping, Enter/Space support on custom switches, and Escape key dismissal across all modals.
+- **Skeleton Loaders & Empty States**: Added `components/Skeleton.tsx` placeholders for initial hydration, and actionable empty states for History, Analytics, and Credit Cards Hub.
+- **Form Error Highlighting**: Real-time input validation error states with `role="alert"` for accessibility, accompanied by subtle native haptic pulses (`NativeHaptics`).
+- **Offline Sync Reassurance**: Persistent top indicator displaying offline mode and confirming local IndexedDB storage.
+
+### 📐 Mobile Density & Layout Space Optimization
+- **Homepage Vertical Rhythm**: Streamlined mobile vertical padding and spacing (`p-3.5 sm:p-5`, `space-y-3.5 sm:space-y-5`).
+- **Spending Trend Sparkline**: Sized mobile chart container to `h-[95px] sm:h-[150px]` with compact card padding, saving over 100px of vertical space to bring key metrics above the fold.
+- **KPI Cards & Widgets**: Optimized Today and Weekly scorecards and credit card preview tiles into sleek, glanceable native tiles.
+- **Bottom Navigation Dock**: Restored full touch-friendly bottom navigation bar with safe area clearance.
+
+### 📋 Phase 5 — Quality Assurance Acceptance Matrix
+- Generated comprehensive 32-case manual acceptance test checklist ([manual_acceptance_checklist.md](file:///C:/Users/Jerry/.gemini/antigravity-ide/brain/ebb71a34-f3aa-4793-ac42-33a1879f4f63/manual_acceptance_checklist.md)) covering all 10 core functional domains.
+
+---
+
 ## [1.8.0] — AI Assistant + Streamlined App — 2026-05-22
 
 The biggest release since launch. A full app-wide AI assistant with access to **all** your data, AI-powered personalised greetings, a CookMate that's 100% AI-driven (no more curated recipe pool), date-grouped history, and a deliberate trim of features that weren't earning their keep.

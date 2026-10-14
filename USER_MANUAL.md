@@ -1,280 +1,336 @@
-# Expense Tracker Pro — User Manual
+# Expense Tracker Pro — User Manual (v3.0.0)
 
-Welcome. This guide walks you through every feature of the app, from first launch to power-user tricks. No jargon, no fluff.
+Welcome to **Expense Tracker Pro**. This comprehensive manual guides you through every feature of the app, from day-one setup to advanced multi-currency financial accounting, credit card lifecycle management, automated reward optimizations, and power-user workflows.
 
-> **What's new in v1.8.0 (May 2026):** **AI Assistant** — a new tile in the Hub powered by Google Gemini that has read access to all your data (transactions, goals, assets, trades, trips, subscriptions, pantry). Ask anything: *"how am I doing this month?"*, *"which subscription should I cancel first?"*, *"plan a budget trip to Penang in July"*. Free tier (50 calls/day) by default. Plus: **AI-powered greetings** on the Home screen replace the old "Good morning" + insights card with one cohesive AI line that doubles as a smart insight ("📉 Down 70% this week — killing it!"). **CookMate is now fully AI-driven** — recipes are generated to your taste preferences, no more 24-recipe pool. **History page** now groups transactions under date headers (Today / Yesterday / etc). **Removed for focus:** Slack Arcade (11 games), Weather Theming, Daily Reminders, Billing Cycle Day, MealDB. The app feels *lighter* now.
->
-> **What's new in v1.7.1 (May 2026):** WanderPlan audit + polish: fullscreen map bug fixed (was stuck on Android), trip editing, activity editing, trip summary copy-to-clipboard, currency converter widget on budget page, day-by-day spending breakdown, documents now use custom date picker. CookMate's bottom nav redesigned to match the app's native nav bar exactly (Lucide icons, rounded-t-3xl, fixed positioning).
->
-> **What's new in v1.7.0 (May 2026):** **CookMate Smart Kitchen** — recipe discovery, Gemini AI cooking assistant, ingredient pantry with expiry tracking, shopping list, and cooking history. Enable in Profile → Modules (on by default). *(Recipe pool was overhauled to AI-only in v1.8.)*
->
-> **What's new in v1.5.0 (May 2026):** Massive new module — **WanderPlan Travel Planner**. Enable in Profile → Modules. Plan trips with itineraries, interactive maps (Leaflet + fullscreen mode), per-category budget tracking with expense-to-main-tracker bridge, saved places with Nominatim geocoding, travel document vault, packing checklists with templates, daily spending meter, and trip countdown widgets.
->
-> **What's new in v1.4.1 (May 2026 — hotfix):** Two quick polish fixes on top of v1.4 — (1) **History rows are ~40% shorter** so you see more transactions per screen without scrolling. (2) **Transaction modal no longer randomly pops up the keyboard on the wrong field** — it now does nothing on open so you tap what you want to edit; predictable every time.
->
-> **What's new in v1.4 (May 2026):** Big quality-of-life release. (1) **Spending Velocity** no longer counts your fixed bills on salary day, so the end-of-month projection finally matches reality. It auto-ignores transactions tagged Bills, Subs, Utilities, Savings, or Transfer; a compact per-transaction toggle (behind "More" in the add modal) lets you override either direction. (2) **Log-transaction modal is ~40% shorter** — horizontal-scroll category/account rows, a collapsed currency picker, and tighter spacing. Categories follow your Settings order exactly. (3) Fixed a bug where the **Claimable/Split** toggle could silently stay ON between sessions. (4) Fixed scroll rows touching the screen edges on Expense / Income / Transfer. (5) **Weather theming** now layers on top of time-of-day instead of replacing it — 3 AM rain still looks like 3 AM night with a rain veil, not generic "rain mode".
+---
+
+## What's New in Version 3.0.0
+
+Version 3.0.0 represents a major architectural milestone, elevating Expense Tracker Pro from a simple expense logger into a native-grade, enterprise-accurate financial operating system:
+
+1. **Financial Account Architecture**: Full separation of liquid assets and credit liabilities. Supports 5 explicit account kinds (`bank`, `cash`, `e_wallet`, `savings`, `credit_card`) with exact net-worth math.
+2. **Complete Credit Card Suite**: Dedicated Credit Cards Hub (`/hub/credit-cards`), card limit tracking, real-time credit utilization gauges with color-coded safety badges, statement closing countdowns, and due date tracking.
+3. **Smart 4-Preset Repayment System**: Mobile-first repayment workflow supporting Statement Balance, Minimum Due, Custom Partial, and Full Outstanding clearing with atomic cross-account transfers.
+4. **Statement Due Reminder Banners**: Proactive in-app reminder banners alerting you 5 days, 3 days, 1 day before due date, on due day, or if overdue.
+5. **Cashback & Rewards Engine**: Define category-specific reward rules (e.g., 5% Dining, 3% Petrol), set monthly rebate caps, configure minimum spend conditions, and preview cashback live as you log expenses.
+6. **Finance Charge & APR Projection Engine**: Malaysian bank tiered interest simulation (15% per annum standard tier) comparing the true cost of carrying a balance vs. paying in full.
+7. **High-Density Mobile UI**: Vertical padding, compact sparkline charts, and streamlined KPI cards tuned for seamless one-handed operation across all screen sizes without unnecessary scrolling.
+8. **Offline-First & Integer Cents Reliability**: Dual-layer architecture with IndexedDB caching and Supabase synchronization, eliminating float-precision drift through integer-cent calculations.
 
 ---
 
 ## 1. Getting Started
 
-### Installing the App
-1. Download the `app-release.apk` file (shared with you via WhatsApp or Drive).
-2. On your Android phone, tap the file. You may need to allow "Install from unknown sources" for your browser or file manager — this is a one-time prompt.
-3. Tap **Install**. The app will appear on your home screen as **Expense Tracker**.
+### Installation
+- **Android APK**: Download and open `app-release.apk`. If prompted by Android, grant permission to "Install from unknown sources" (a standard one-time Android security prompt). Tap **Install**.
+- **Desktop / Web PWA**: Navigate to the web deployment in Chrome, Edge, or Safari, and click **Install App** in the address bar.
 
-### Creating Your Account
-1. Open the app. You'll land on the sign-in screen.
-2. Tap **Sign Up**, enter your email and a password, and confirm.
-3. Check your inbox for the verification email, tap the link, then return to the app and sign in.
+### Authentication & Cloud Sync
+1. Open the app and tap **Sign Up** (or **Sign In** if you have an existing account).
+2. Enter your email and password.
+3. Once authenticated, the app automatically provisions your user space in Supabase and seeds your default accounts and categories.
+4. All data is cached locally on your device via **IndexedDB** — you have full access to your finances even in airplane mode or underground transit.
 
-### The Biometric Lock
-After your first successful sign-in, the app will ask permission to use your fingerprint or face unlock. Approve this — from now on, every time you open the app, a quick biometric check is all that stands between you and your dashboard. If biometrics fail, you'll be sent back to the password screen.
+### Biometric Security & PIN Lock
+- **Biometric Unlock**: On your first login on a supported Android or iOS device, the app requests permission to enable Fingerprint or Face ID unlock.
+- **PIN Passcode**: If your device lacks biometrics or you prefer a numeric code, go to **Profile → Security & Privacy → App Lock PIN** to configure a 4-digit or 6-digit PIN.
+- **Biometric Prompt on Wake**: Whenever the app resumes from the background, biometrics protect your private financial data from shoulder surfers.
 
-### Navigating the Hub
-The **Hub** is your home screen. At a glance, you'll see:
-- **Your total balance** at the top (tap it to hide/show — see Zen Mode below)
-- **Wallet carousel** — a horizontal scroll of every account you own, each showing its own currency and balance
-- **Today** and **This Week** spending cards
-- **Trend chart** — a 7-day visualization of your cash flow
-- **Upcoming** — subscriptions or utilities billing in the next few days
-
-Use the bottom navigation to jump between Hub, Stats, Planning, Vault, and Profile.
+### Navigating the App
+The primary interface is anchored by a persistent, touch-friendly bottom dock:
+- **Hub**: Your executive financial command center (net total balance, wallet carousel, credit card alerts, today's spending, trend sparkline, and upcoming bills).
+- **Stats**: In-depth analytics, monthly spending velocity, category breakdowns, and export wizard.
+- **Planning**: Forward-looking financial tools (Savings Goals, Recurring Subscriptions, Utilities).
+- **Vault**: Asset registry, flip trading logs, and warranty tracking.
+- **Profile**: Security settings, account management, categories, appearance, and AI assistant settings.
 
 ---
 
-## 2. Managing Wallets (Multi-Currency)
+## 2. Financial Accounts & Multi-Currency Architecture
 
-The app is built around the idea that your RM account and your USD travel card are *different things*. They never get averaged or auto-converted.
+Expense Tracker Pro treats every wallet as a real financial instrument. Foreign currencies are kept distinct to prevent misleading conversions, and debts are segregated from liquid cash.
 
-### Adding a New Account
-1. Go to **Profile → Manage Accounts**.
-2. Tap **+ Add Account**.
-3. Enter a name (e.g., "Maybank", "DBS SGD", "Japan Cash").
-4. **Select its currency** using the four pills: **RM**, **SGD**, **USD**, or **JPY**.
-5. Tap **Save**.
+### The 5 Account Kinds
+When creating or editing an account (**Profile → Manage Accounts**), you specify its kind:
+- 🏦 **Bank (`bank`)**: Chequing or current accounts used for daily operations and salary deposits.
+- 💵 **Cash (`cash`)**: Physical cash in your wallet or home emergency reserves.
+- 📱 **E-Wallet (`e_wallet`)**: Digital stored-value wallets (e.g., Touch 'n Go eWallet, GrabPay, Boost).
+- 🐷 **Savings (`savings`)**: High-yield savings accounts, fixed deposits, or emergency funds.
+- 💳 **Credit Card (`credit_card`)**: Revolving credit lines treated as liabilities.
 
-The account now appears in the Hub carousel with its currency prefix (e.g., `SGD 1,240.00`).
+### Net Worth Calculation
+Your top-level **Net Worth** is computed using strict double-entry principles:
+$$\text{Net Position} = \sum(\text{Bank} + \text{Cash} + \text{E-Wallet} + \text{Savings}) - \sum(\text{Credit Card Outstanding})$$
 
-### How the Hub Separates Balances
-The Hub carousel shows one card per account. Each card:
-- Displays only that account's currency
-- Sums only transactions tagged to that account
-- Updates instantly when you log a new transaction
+- Liquid assets increase your total balance.
+- Credit card purchases reduce your net position immediately when spent, keeping you aware of your true balance.
+- Paying off a credit card transfers funds from your Bank to the Card, reducing both your cash asset and your card liability with zero duplicate expense counting.
 
-There is **no mixed total** across currencies — the "total balance" at the top sums only your primary-currency (RM) accounts by default.
+### Multi-Currency Wallets
+- Supported currencies include **RM (MYR)**, **SGD**, **USD**, **JPY**, **EUR**, and **GBP**.
+- Each wallet card in the Hub carousel clearly indicates its native currency (e.g., `SGD 1,450.00`).
+- The primary header total sums your primary currency accounts by default, protecting you from artificial inflation caused by currency mixing.
 
 ### Archiving Accounts
-Going on a trip to Japan and don't want your JPY wallet cluttering the daily view? Archive it.
-
-1. Go to **Profile → Manage Accounts**.
-2. Tap the account you want to hide.
-3. Tap **Archive**.
-
-The account disappears from the Hub and from transaction dropdowns — but all its history is preserved. To bring it back, scroll to the **Archived** section at the bottom of the Manage Accounts screen and tap **Restore**.
+To hide a seasonal travel wallet (such as a JPY travel card):
+1. Navigate to **Profile → Manage Accounts**.
+2. Tap the account card and select **Archive**.
+3. The account will disappear from active pickers and the Hub carousel while completely preserving its historical transaction integrity.
+4. You can restore archived accounts at any time from the bottom of the Manage Accounts screen.
 
 ---
 
-## 3. Financial Planning
+## 3. The Credit Card Management Suite
 
-The **Planning** tab (bottom nav) is your long-term financial command center. It houses three modules under one roof:
+Access the dedicated Credit Cards interface via the **Credit Cards** card on the Hub or directly at `/hub/credit-cards`.
+
+### Setting Up a Credit Card
+1. Go to **Profile → Manage Accounts → + Add Account**.
+2. Select **Account Kind: Credit Card**.
+3. Configure your card specifications:
+   - **Card Name & Issuer**: e.g., "Maybank 2 Gold", "CIMB Cash Rebate".
+   - **Credit Limit**: e.g., `RM 10,000.00`.
+   - **Statement Closing Day**: The day of the month your bank issues the monthly bill (e.g., 15th).
+   - **Payment Due Day**: The deadline by which payment must be received (e.g., 5th of next month).
+   - **Annual Percentage Rate (APR)**: Default is 15.00% (the standard Bank Negara Malaysia Tier-1 rate).
+   - **Minimum Payment %**: Default is 5.00% (or minimum RM 50.00).
+
+### Credit Utilization Tracking & Safety Badges
+Maintaining a healthy credit utilization ratio is vital for credit scoring. The app calculates your real-time utilization:
+$$\text{Utilization} = \frac{\text{Current Outstanding Balance}}{\text{Total Credit Limit}} \times 100\%$$
+
+Each card displays a visual progress gauge and status badge:
+- 🟢 **Safe (< 30%)**: Optimal credit standing.
+- 🟡 **Moderate (30% – 70%)**: Balanced usage.
+- 🟠 **High (70% – 99%)**: Approaching credit limit; flagged to prioritize repayment.
+- 🔴 **Over Limit (≥ 100%)**: Critical warning badge; card has exceeded limit.
+
+### In-App Due Date Reminders
+The app proactively tracks your statement deadlines and displays an alert card on the Hub:
+- **5 to 2 Days Before**: ℹ️ "Due in X days — RM XXX.XX remaining on [Card Name]"
+- **1 Day Before**: ⚠️ "Payment due tomorrow!"
+- **On Due Day**: 🚨 "Payment due TODAY!"
+- **Overdue**: 🔴 "Overdue by X days — pay immediately to avoid late fees!"
+
+---
+
+## 4. Credit Card Repayments (The 4 Presets)
+
+To make a payment, open the card in the Credit Cards Hub and tap **Pay Bill**. The modal offers 4 intelligent financial presets:
+
+1. 📄 **Pay Remaining Statement Balance** *(Recommended)*:
+   - Pays the exact amount billed on your latest statement minus any partial payments already made.
+   - Clears your debt obligation to maintain a 100% interest-free grace period without prematurely spending cash on unbilled transactions.
+2. ⚡ **Pay Minimum Due**:
+   - Calculates 5% of your statement balance (minimum RM 50.00).
+   - Protects your credit report from late marks when short on liquid cash, while warning you of interest consequences.
+3. ✏️ **Pay Custom Amount**:
+   - Allows you to enter any partial repayment amount (e.g., RM 500.00).
+   - Live recalculates the remaining unpaid statement balance.
+4. 🏁 **Pay Full Current Outstanding**:
+   - Clears every single sen owed, including both billed statement charges and recent unbilled swipes.
+   - Restores available credit to 100%.
+
+### How Repayments Are Recorded
+When you submit a repayment:
+- You choose the **Source Account** (e.g., Maybank Savings).
+- The system generates an atomic **Transfer** transaction.
+- The source account balance decreases, and the credit card outstanding balance decreases simultaneously.
+- Repayments are strictly classified as financial settlements and will never be miscounted as personal consumption expenses in your monthly stats.
+
+---
+
+## 5. Cashback & Rewards Engine
+
+Maximize your card benefits by setting automated cashback rules (**Credit Cards → Card Details → Rewards & Cashback**).
+
+### Configuring Cashback Rules
+You can set multiple category-specific rebate percentages:
+- **Dining**: 5.0%
+- **Groceries**: 3.0%
+- **Petrol**: 4.0%
+- **General / Other**: 0.5%
+
+### Monthly Caps & Spend Thresholds
+- **Monthly Cap**: e.g., Maximum RM 50.00 rebate per monthly cycle.
+- **Minimum Monthly Spend**: e.g., Requires at least RM 1,000.00 monthly card spend before cashback activates.
+
+### Live Cashback Preview
+When you log an expense using a credit card that has active reward rules, the transaction dialog shows an instant estimate:
+> ✨ *Estimated Cashback: +RM 6.50 (5% Dining)*
+
+### Reconciling Rewards
+When your monthly bank statement applies the cash rebate:
+1. Tap **Record Reward / Statement Credit**.
+2. Select whether it applies as a **Card Statement Credit** (reduces card balance) or **Bank Deposit**.
+3. Enter the confirmed amount. The app updates your rewards ledger and tracks actual vs. estimated returns.
+
+---
+
+## 6. Interest & Finance Charges (Malaysian APR Standards)
+
+Expense Tracker Pro implements the statutory interest calculation model used by Malaysian retail banks:
+
+### Grace Period Mechanics
+- If you pay **100% of your Statement Balance** on or before the Payment Due Date, interest is **RM 0.00**.
+- If you pay less than the full statement balance (even by RM 1.00), you lose the grace period. Finance charges accrue on each transaction from the day it was posted until repayment.
+
+### Tiered APR Structure
+The app models the three-tier structure standard across Malaysian issuers:
+- **Tier 1 (15.0% p.a.)**: Prompt payment for 10 or 12 consecutive months.
+- **Tier 2 (17.0% p.a.)**: Prompt payment for 8 to 9 consecutive months.
+- **Tier 3 (18.0% p.a.)**: Accounts with missed payments or irregular history.
+
+### The Finance Charge Calculator
+Use the built-in interest simulator before deciding your payment:
+- Compare the exact cost of paying **Minimum Due vs Full Balance**.
+- View the estimated daily compounding finance charge.
+- Enter the exact bank finance charge from your PDF bill when reconciling.
+
+---
+
+## 7. Daily Transaction Logging & Velocity
+
+### Logging Expenses & Income
+Tap the floating **`+`** button to open the fast transaction logger:
+- **Amount**: Integer cent accuracy (type `25.5` for RM 25.50).
+- **Type**: Expense, Income, or Transfer.
+- **Account**: Pick the paying account. If a credit card is selected, card limit indicators show available balance.
+- **Category & Sub-Category**: Dynamically sorted by your most frequent usage.
+- **Date & Time**: Defaults to now; easily adjust for past expenses.
+- **Note**: Free-text field supporting smart tag auto-detection.
+
+### Spending Velocity Engine
+In the **Stats** screen, the Spending Velocity meter estimates your projected month-end spend. To keep projections realistic:
+- The engine automatically **excludes fixed bills** (tagged Bills, Subscriptions, Utilities, Savings, or Transfers).
+- Rent, insurance, and salary day lump-sums will not artificially trigger an "overspending" panic on day one of the month.
+- You can manually toggle "Exclude from Velocity" on any specific transaction under the More options drawer.
+
+### Claimable & Split Bills
+If you front the bill for friends or work:
+1. Turn on the **Claimable / Split Bill** toggle in the transaction modal.
+2. Enter the payer or names in the Note field (e.g., "Dinner with Kevin and Sarah").
+3. The expense appears on your Home dashboard under the **Claims & Splits** widget.
+4. When reimbursed, tap **Mark Settled** — the app records the incoming funds and clears the pending claim.
+
+---
+
+## 8. Financial Planning
+
+The **Planning** tab consolidates your forward commitments:
 
 ### Savings Goals
-Set aside money toward named targets (e.g., "New Laptop", "Emergency Fund"). Each goal shows a progress ring, target amount, and current saved total. Tap **+ Add Goal** to create one.
+- Create named savings goals (e.g., "Emergency Fund", "Japan Trip", "New Car Downpayment").
+- Set a target amount and deadline.
+- Deposit money toward a goal to watch the progress ring advance. Crossing 100% unleashes the celebratory Dragon animation!
 
-### Subscriptions
-Track recurring monthly charges like Spotify, Netflix, YouTube Premium. For each:
-- Name, amount, and icon
-- Billing day of the month
-- Source account
-- **Auto-deduct toggle** — when on, the subscription appears in the Hub's "Upcoming" widget for the days leading up to its billing date
-
-### Utilities
-Same structure as subscriptions, but for bills that *vary* month-to-month (electricity, water, internet). Log the amount when the bill arrives; the app tracks your historical averages.
-
-### Why They're Here Together
-Goals, subscriptions, and utilities are all *forward-looking* commitments. Grouping them separates "planning your future money" from "analyzing your past spending" (which lives in Stats).
+### Recurring Subscriptions & Utilities
+- Track monthly recurring commitments (Netflix, Spotify, Gym, Cloud storage, TNB, Water).
+- Set the billing day and source account.
+- The Hub automatically highlights any bills due in the next 7 days in the **Upcoming** widget.
 
 ---
 
-## 4. Exporting Data
+## 9. Power User Features
 
-When tax season rolls around — or your accountant asks for numbers — use the export wizard.
+### 🔍 Power Search Query Syntax
+In the **History** tab, the search bar supports powerful search operators:
+
+| Operator | Syntax Example | What It Matches |
+|---|---|---|
+| Category | `#food`, `#transport` | Only transactions in that category |
+| Account | `@maybank`, `@cash` | Only transactions in matching account |
+| Greater Than | `>50` | Transactions with amount > RM 50 |
+| Less Than | `<100` | Transactions with amount < RM 100 |
+| Amount Range | `50-150` | Transactions between RM 50 and RM 150 |
+| Date Window | `today`, `yesterday` | Transactions on specific calendar days |
+| Relative Period | `last week`, `this month` | Transactions within relative window |
+| Specific Month | `june 2026`, `2025` | Transactions within specific month or year |
+| Exact Phrase | `"Grab Car"` | Exact match for note content |
+
+*Example Query:* `#food @maybank >30 last week` — finds all dining expenses above RM 30 paid via Maybank in the past 7 days.
+
+### 👆 Swipe Gestures (History Screen)
+- **Swipe Row Left**: Reveals quick action buttons — **Edit** (blue) and **Delete** (red).
+- **Long Swipe**: Snaps the action drawer open for one-handed operation.
+- **Shake to Undo**: Accidentally deleted a transaction? Simply shake your phone within 5 seconds to restore it immediately (accompanied by the Shark animation).
+
+### ⚡ Quick Templates (Long-Press FAB)
+- **Press and hold** the floating `+` button for 500ms.
+- A quick menu displays your top 4 most repeated transactions (e.g., "Kopi O RM 3.50", "Lunch RM 12.00").
+- Tap any template to log the transaction instantly without opening the modal.
+
+### 🧾 Monthly Thermal Receipt Generator
+- Access via **Stats → View Monthly Receipt**.
+- Renders your month's finances as a vintage thermal register receipt with category breakdowns, savings rates, and top splurge items.
+- Tap **Share as PNG** to generate a clean 9:16 high-resolution image ready for Instagram Stories, WhatsApp, or personal archiving.
+
+---
+
+## 10. AI Assistant (Gemini)
+
+Expense Tracker Pro includes a privacy-preserving financial copilot powered by Google Gemini:
+
+### Setup
+1. Obtain a free API key from [Google AI Studio](https://aistudio.google.com/apikey).
+2. Go to **Profile → AI Assistant → Gemini API Key** and paste your key.
+3. Select your model (default: `gemini-2.0-flash-lite` for high speed and generous free-tier limits).
+4. Set a daily call cap (default: 50 calls/day) to prevent unintended usage.
+
+### Financial Queries
+The assistant has secure, read-only access to your active financial context. Ask questions naturally:
+- *"How does my dining spending this month compare to last month?"*
+- *"Am I on track to hit my RM 10,000 emergency fund goal by December?"*
+- *"Which credit card should I use for petrol to maximize my rebates?"*
+- *"What is my highest recurring subscription cost?"*
+
+### AI Spending Greetings
+When enabled, the top of your Hub presents dynamic, personalized financial insights on wake:
+- *"📉 Spending down 35% compared to this time last week — looking great!"*
+- *"💡 3 subscriptions billing over the next 4 days (RM 114 total)."*
+
+---
+
+## 11. Security, Offline Integrity & Export
+
+### Offline-First Architecture
+The app operates with zero internet connectivity:
+- All additions, edits, and deletions persist instantly to local **IndexedDB** storage.
+- A background worker quietly syncs mutations with Supabase when a connection is restored.
+- An offline indicator confirms your offline status and verifies that your records are safe.
 
 ### Accountant Export Wizard
-1. Go to **Stats → Export** (or **Profile → Export Data**).
-2. Choose your date range (e.g., "Last 3 months", "Year to date", or a custom range via the date picker).
-3. Optionally filter by **account** or **category**.
+When you need to file taxes or review spending with an advisor:
+1. Go to **Stats → Export Data** (or **Profile → Export Data**).
+2. Select your date range (Custom, This Month, Year-to-Date, or All Time).
+3. Filter by specific accounts or categories if required.
 4. Tap **Generate CSV**.
-
-The app will:
-1. Write a UTF-8 encoded CSV file to your device's app storage
-2. Open the native Android share sheet
-
-### Sharing the CSV
-From the share sheet, pick your target:
-- **WhatsApp** — send directly to your accountant's chat
-- **Gmail / Outlook** — attach to a new email
-- **Drive / OneDrive** — upload to cloud
-- **Files** — save locally
-
-The CSV opens cleanly in Excel, Google Sheets, or Numbers with columns for date, account, category, note, amount, and currency.
+5. The native Android/iOS share sheet opens, allowing one-tap sharing to WhatsApp, Google Drive, Gmail, or local storage.
 
 ---
 
-## 5. Hidden Features
+## 12. Themes, Visual Polish & Easter Eggs
 
-### Zen Mode (Balance Hiding)
-Feeling self-conscious about flashing your balance in public? Tap the large balance number at the top of the Hub. It blurs instantly. Tap again to reveal. The setting persists across launches.
+### AMOLED Pitch Black Mode
+For OLED devices, turn on **Profile → Appearance → AMOLED Pitch Black** (requires Dark Mode). Every surface turns to pure `#000000`, turning off pixels to save battery and reduce eye strain.
 
-### AMOLED Pitch Black Theme
-If you have an OLED screen (most flagship Android phones do), switching to true-black pixels saves battery and looks stunning.
+### Zen Privacy Mode
+Tapping the large net balance figure on the Hub instantly blurs all numbers on screen. Tap again to reveal. Ideal when glancing at your phone in public spaces.
 
-1. Go to **Profile → Appearance**.
-2. Ensure **Dark Mode** is enabled.
-3. Toggle **AMOLED Pitch Black**.
+### Animated Menagerie
+The app celebrates financial moments with fluid micro-animations:
+- 🐋 **Whale**: Triggers when logging any single purchase ≥ RM 5,000.
+- 🐧 **Penguin**: Detects late-night food runs (< RM 10 between 1:00 AM and 5:00 AM).
+- 🐉 **Dragon**: Flies across screen when a Savings Goal hits 100%.
+- 🦈 **Shark**: Swims across the bottom when an undo action successfully restores a deleted entry.
+- 🔥 **Phoenix**: Rises upon phone-shake undo triggers.
 
-The entire app shifts from dark gray to `#000000`, letting your OLED pixels switch off entirely. Note: this toggle auto-disables itself if you turn Dark Mode off — it only works in conjunction with dark mode.
-
-### The Derry Easter Egg
-Some things are best discovered. If you ever log a transaction with the amount `6.66` or write `pennywise` in the note field… you'll know.
-
-If you're feeling extra brave, there's a hidden **Friday the 13th Mode** — press and hold the **"Personality & Fun"** heading in Profile for about a second to reveal it. Once enabled, on any Friday the 13th at 13:13 local time the horror sequence triggers on its own. Fires at most once per day. Hidden by default so nobody can flip it on your phone while borrowing it.
-
-**To hide it again:** turn the Friday the 13th toggle OFF first, then long-press the same "Personality & Fun" heading a second time. The option tucks itself away.
-
-### The Animal Menagerie
-The app reacts to unusual money moves with themed animations:
-- 🐋 **Whale** — any expense ≥ RM 5,000
-- 🐧 **Penguin** — any expense < RM 10 between 1 AM and 5 AM ("Late-Night Snack Detected")
-- 🐉 **Dragon** — the moment a Savings Goal crosses 100%
-- 🔥 **Phoenix** — rises when you shake your phone to undo a just-deleted transaction
-- 🦈 **Shark** — swims across on every successful undo
-
-### Time-Based Greetings + AI Greetings
-The Home screen greeting is now AI-generated from your real spending data when you have a Gemini key set up — *"📉 Down 70% this week — killing it!"* or *"🌙 Day 21, RM 132 spent this month, sleep tight"*. It refreshes on every cold app open (or when you've been away for 5+ minutes), and auto-busts whenever your spending changes meaningfully.
-
-If no API key is configured (or you've hit your daily quota), it falls back to time-based greetings: 🦉 owl at 2–5 AM, 🌙 moon at 23:00–02:00, ☀️ early-bird sun at 05:00, etc. Want the classic "Good morning / afternoon / evening" every time? Turn it off under **Profile → Personality & Fun → Time-Based Greetings**.
-
-Independent of the greeting text, the home screen carries a **bold color gradient** that shifts gently across the day — warm orange at dawn, sky blue at noon, rose at dusk, deep indigo at night. This runs regardless of the greetings toggle (it's background mood, not a loud theme change). Respects your dark-mode setting.
-
-### Broke & Rich Moods
-- If your Net Total dips below zero, the number **subtly glitches** — a gentle reminder. It stops the moment you're back in the black.
-- If your Net Total ever exceeds RM 1,000,000, the number gains a **soft gold shimmer**. Yes, we know you made it.
-
-### Konami God Mode (Desktop only)
-On desktop PWA builds, press **↑ ↑ ↓ ↓ ← → ← → B A** on the keyboard. On mobile, tap the avatar on the Hub 7 times in 3 seconds. Either way, god mode activates and your Hub transforms into a fake-rich fantasy across the UI. Re-enter the sequence to disable.
+### God Mode (Easter Egg)
+- **Mobile**: Tap the user avatar on the Hub 7 times in 3 seconds.
+- **Desktop**: Input the Konami code (`↑ ↑ ↓ ↓ ← → ← → B A`).
+- Activates temporary fantasy figures across all cards. Repeat to toggle off.
 
 ---
 
-## 6. Power Features (v1.1+)
-
-### 🔍 Power Search (History page)
-The search bar in **History** understands more than plain text. Combine any of these with a space between them — they AND together:
-
-| What you type | What it does |
-|---|---|
-| `coffee` | Matches "coffee" anywhere in your notes, categories, or accounts |
-| `"morning coffee"` | Quoted phrase — matched as a single exact token |
-| `#food` | Category filter — only show Food-tagged transactions |
-| `@bank` | Account filter — only show transactions in an account named "Bank…" |
-| `>50` | Amount greater than 50 |
-| `<100` | Amount less than 100 |
-| `100-500` | Amount between 100 and 500 (inclusive) |
-| `today`, `yesterday` | Single-day window |
-| `last week`, `this month`, `last month` | Calendar-relative windows |
-| `april 2026`, `2025` | Specific month or year |
-
-**Example:** `#food @bank >50 last week` → Food expenses above RM 50, paid from a "Bank"-labelled account, in the last 7 days.
-
-Unknown tokens just become free-text — don't worry about getting the syntax perfect. The chips under the search bar show exactly what the app understood.
-
-### 👆 Swipe-to-Edit/Delete (History)
-Slide any transaction row **to the left** to reveal Edit (blue) and Delete (red) buttons. Let go and it snaps shut; slide past the halfway mark and it stays open until you tap away. Tapping Delete goes through the usual confirmation step — nothing destructive happens by accident.
-
-Prefer buttons? They still appear when you hover or keyboard-focus a row.
-
-### ⚡ Quick Templates (Long-press FAB)
-Press and **hold** the `+` button at the bottom of the screen for about half a second. A small card pops up with up to 4 of your most-repeated expenses from the last 30 days — tap one to instantly log a transaction with that amount, category, account, and note. No modal, no typing.
-
-If you don't see any templates, log a few expenses first — the feature auto-learns from repetition and needs at least 2 occurrences of a similar purchase to surface it.
-
-### 🧠 Category Auto-Suggest
-As you type the Note field in the transaction modal, the app watches for patterns from your history. If what you're writing looks like something you've always tagged as "Food", a little **✨ Looks like Food?** pill appears above the category picker. Tap it to accept; tap the × to dismiss it for this note only. The app never picks a category behind your back.
-
-The first 5 transactions you save don't trigger suggestions (cold-start protection). After that, it learns with every save and gets better over time.
-
-### 💰 Split-Bill Widget
-If you enable **Claims & Splits** in Profile, any expense you mark as claimable shows up on an amber card on your Home screen:
-
-> **Unclaimed** RM 240.00
-> 5 expenses · 3 payees
-> **Review →**
-
-Tap it to jump straight to the Claims tracker. The "payees" count is inferred from your note text — if you write "Dinner with Alex" as the note, Alex becomes a payee.
-
-### 🧾 Monthly Recap Receipt
-On the **1st through 7th** of each month, your Home screen shows a small "Your monthly receipt is ready" card. Tap it to see last month's recap rendered as an old-school thermal receipt — category breakdown, net saved, top splurge, quiet-day streak, vs-last-month delta, all the stats.
-
-The **Share as PNG** button on the receipt hands it off to WhatsApp, Instagram stories, Gmail, or anything else on your share sheet. It's a perfect 2× retina PNG that fits an Instagram story at 9:16.
-
-You can also generate a receipt manually any time:
-1. Open **Stats**
-2. Scroll to the two receipt cards: **This Month** (mid-month snapshot) or **Last Month**
-3. Tap either to open the receipt viewer
-
----
-
-## 7. AI Assistant (v1.8+)
-
-The **AI Assistant** is a Gemini-powered chat that has read access to *all* your app data — transactions, goals, assets, trades, trips, subscriptions, pantry. It lives as a tile in the Hub (✨ icon).
-
-### Setup (one-time, ~30 seconds)
-1. Get a free API key from [Google AI Studio](https://aistudio.google.com/apikey) — no credit card required.
-2. In the app: **Profile → AI Assistant → Gemini API Key** → paste the key.
-3. Pick a model. Default is `gemini-2.0-flash-lite` (free tier, fast, plenty smart for this use case).
-4. Daily call limit defaults to **50/day** — protects you from accidentally blowing the free quota. Bump it if you have a paid key.
-
-### What you can ask
-The assistant has the full context of your finances built into its system prompt — recent transactions, all your goals and progress, subscription totals, trip budgets, what's in your pantry. So you can just ask naturally:
-
-- *"How am I doing this month?"*
-- *"Which subscription should I cancel first?"*
-- *"What's my biggest spending category and what should I cut?"*
-- *"Plan a budget trip to Penang in July under RM 800"*
-- *"What can I cook tonight with what I have?"*
-- *"Did I overspend on food last week?"*
-- *"How much closer am I to my laptop goal?"*
-
-### Features
-- **Persistent chat history** — your conversation survives app restarts.
-- **Markdown rendering** — code blocks, bullet lists, bold, headings render properly.
-- **Haptic feedback** on send + receive.
-- **Auto-retry on rate limit** — if Gemini is briefly overloaded (503), the app retries with exponential backoff. You'll never see a raw error message.
-- **Daily call counter** in Profile → AI Assistant so you can see usage at a glance.
-
-### Personalised Greetings
-The greeting line at the top of your Home screen ("Good morning, Jerry") is also AI-generated when you have a key set up — but it pulls from your real spending data and produces things like:
-
-> 📉 Down 70% this week — killing it!
-> 🌙 Day 21, RM 132 spent this month, sleep tight  
-> 🍜 Food's 60% of your month, btw
-
-It refreshes on every cold app open or when you've been away for 5+ minutes. If no key is configured, falls back gracefully to static time-based greetings.
-
----
-
-## 8. Tips for Daily Use
-
-- **Long-press** the + FAB for instant one-tap repeats of your most common expenses
-- **Swipe left** on any row in History to edit or delete without tapping the card first
-- **Shake your phone** after deleting a transaction to undo — the 🦈 shark confirms it worked
-- **Tap the big balance** on the Home to reveal/hide it (Zen Mode); it auto-hides again after 5 seconds
-- **Hold the + FAB** to skip the form when you're just logging "the usual"
-- The app works **fully offline**. Log transactions on a plane; they'll sync when you land.
-
----
-
-## Need Help?
-
-If something breaks, your data is safe — it's stored both locally on your device and in the cloud. A fresh reinstall with the same login will restore everything. For bugs or feedback, message the developer directly.
+## Need Assistance?
+If you encounter unexpected behavior or have feedback during testing, your data is completely secure in local device storage and cloud snapshots. Contact the developer directly or submit an issue in the project repository.

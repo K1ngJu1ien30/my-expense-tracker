@@ -741,6 +741,11 @@ export default function ProfilePage() {
         </div>
       </div>
 
+      {/* App Version Info */}
+      <div className="text-center py-2 text-xs font-medium text-muted-foreground/60 select-none">
+        Expense Tracker Pro v3.0.0
+      </div>
+
       {/* Clear Data Confirm Modal */}
       <AnimatePresence>
         {showClearModal && (

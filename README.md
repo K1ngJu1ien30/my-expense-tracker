@@ -1,10 +1,10 @@
 # Expense Tracker Pro
 
-### Native Multi-Currency Financial Engine — v1.8.0
+### Native Multi-Currency Financial Engine — v3.0.0
 
-A production-grade, offline-first personal finance application built with Next.js and compiled to a native Android binary via Capacitor. Designed from the ground up to feel indistinguishable from a first-party iOS app, with zero native HTML controls, integer-cents precision math, a resilient sync architecture backed by Supabase and IndexedDB, and a Gemini-powered AI assistant that has full read access to your financial life.
+A production-grade, offline-first personal finance application built with Next.js and compiled to a native Android binary via Capacitor. Designed from the ground up to feel indistinguishable from a first-party iOS app, with zero native HTML controls, integer-cents precision math, a resilient sync architecture backed by Supabase and IndexedDB, and a complete optional credit card and financial accounting suite.
 
-> **Quality baseline (v1.8.0):** `tsc --noEmit` → 0 errors. `eslint .` → 0 errors / 0 warnings. Every exception is carefully justified inline.
+> **Quality baseline (v3.0.0):** `tsc --noEmit` → 0 errors. `eslint .` → 0 errors / 0 warnings. Every exception is carefully justified inline.
 
 ---
 
@@ -94,8 +94,31 @@ The app is engineered to stay smooth at **50,000+ transactions**, not just demo-
 
 ## Key Features
 
-### Multi-Currency Wallet System
-Each account carries an explicit `currencyCode` (`RM`, `SGD`, `USD`, `JPY`). The Hub renders a Wise-style horizontal wallet carousel where every card displays its own prefix and balance — no silent FX conversions, no mixing currencies into a single aggregate.
+### Financial Account Architecture (v3.0.0)
+The app features an enterprise-grade accounting model built on pure TypeScript functions (`lib/balance.ts`):
+- **Explicit Account Kinds** — Each account has a typed kind (`bank`, `cash`, `e_wallet`, `savings`, `credit_card`).
+- **Asset vs. Liability Accounting** — Credit cards are treated as liabilities rather than cash assets. The app computes:
+  - **Cash Assets**: Sum of all liquid bank accounts, cash wallets, and e-wallets.
+  - **Credit Card Debt**: Sum of all negative credit card balances.
+  - **Net Financial Position**: `Cash Assets - Credit Card Debt`.
+- **Multi-Currency Wallet Carousel** — Each account carries an explicit currency code (`RM`, `SGD`, `USD`, `JPY`). The dashboard renders a Wise-style horizontal carousel where each card displays its own prefix and balance — no silent FX conversions or mixing currencies into a single aggregate.
+
+### Complete Credit Card Suite
+An optional, bank-grade credit card module tailored to Malaysian and regional banking standards:
+- **Card Profiles & Limits** — Track credit limits, statement closing dates, payment due dates, and annual percentage rates (APR).
+- **Utilization Gauges** — Real-time visual progress bars with dynamic color coding (Emerald < 30%, Amber 30-70%, Rose > 70%).
+- **Transaction Classification** — Strict transaction typing (`purchase`, `repayment`, `refund`, `fee`, `interest`, `cashback`) ensures card swipes count toward expense analytics once while repayments decrease cash assets and card debt without double-counting expenses.
+- **4-Preset Repayment Engine** — Mobile-first repayment modal with four distinct financial options:
+  1. *Pay Statement Balance*: Settles the issued statement without prematurely paying unbilled new purchases.
+  2. *Pay Minimum Due*: Pays the minimum payment without falsely marking the statement as settled.
+  3. *Pay Custom Amount*: Full partial-payment tracking with real-time remaining balance calculations.
+  4. *Pay Full Outstanding*: Clears both issued statement and all unbilled purchases made since the closing date.
+- **Credit Cards Hub (`/hub/credit-cards`)** — Dedicated command center showing card switcher tabs, statement cycles, unbilled transactions, and one-tap payments.
+
+### Smart Credit Card Intelligence
+- **In-App Payment Reminders** — Urgent alerts on the Home dashboard and Hub warning when statement due dates are approaching (`overdue`, `due_today`, `due_soon`).
+- **Cashback & Rewards Engine** (`lib/cashbackEngine.ts`) — Configure custom rebate tiers, monthly caps, and minimum monthly spend requirements (e.g. 5% on Groceries capped at RM50). Tracks both *Estimated* and *Confirmed* cashback with manual reconciliation.
+- **Interest & Finance Charge Projection** (`lib/interestEngine.ts`) — Models Malaysian credit card tiered APRs (15% Tier-1, 17% Tier-2, 18% Tier-3) to project potential daily finance charges if a statement balance is revolved, with one-tap reconciliation of actual bank charges.
 
 ### Native Biometric Security
 A fingerprint or FaceID gate guards cold-launch access via `@aparajita/capacitor-biometric-auth`. Failed auth returns the user to the 6-digit PIN pad; there is no silent numeric fallback.
@@ -103,31 +126,19 @@ A fingerprint or FaceID gate guards cold-launch access via `@aparajita/capacitor
 ### Accountant Export (CSV)
 A purpose-built wizard filters transactions by date range, account, and category, then writes a UTF-8 BOM CSV to the device via Capacitor Filesystem and hands it off to the native Android share sheet (WhatsApp, Gmail, Drive).
 
-### Custom Native UI
+### Custom Native UI & High-Density Design
 Every single `<select>` and `<input type="date">` has been eradicated from the codebase. In their place:
-- **Custom Dropdowns** — Chevron-triggered, animated, backdrop-dismissible pill menus
-- **`CustomDatePicker`** — A reusable iOS-style inline calendar grid with month navigation, M-S weekday headers, and accent-colored selection
-- **Pill Pickers** — 4-button segmented controls for short enumerations (currency, theme, account type)
+- **High-Density Mobile Spacing** — Sleek 95px spending sparklines, compact cards, and zero wasted vertical space on mobile screens.
+- **Custom Dropdowns** — Chevron-triggered, animated, backdrop-dismissible pill menus.
+- **`CustomDatePicker`** — A reusable iOS-style inline calendar grid with month navigation, M-S weekday headers, and accent-colored selection.
+- **Pill Pickers** — Segmented controls for short enumerations (currency, theme, account type, time range).
 
 ### Additional Systems
-- **Financial Planning module** — Unified home for Savings Goals, Subscriptions, and Utilities
-- **Smart Insights** — Programmatic week-over-week spending deltas
-- **Zen Mode** — Tap-to-reveal balance privacy
-- **AMOLED Pitch Black** — True-black theme that auto-disables when Dark Mode is off
-- **App-switcher privacy blur** — Automatic via Capacitor `appStateChange` listener
-
-### AI Features (v1.8.0)
-
-The app ships a Gemini-powered AI layer with three integration points. All share a single rate-limited, daily-capped API client (`lib/ai/gemini.ts`) so your free-tier quota is never accidentally burned.
-
-#### ✨ AI Assistant
-A dedicated tile in the Hub (`/ai`). Full chat UI with persistent localStorage history, markdown rendering, and bouncing-dot typing indicator. The system prompt auto-injects context from across the app — transactions, goals, assets, trades, trips, subscriptions, pantry — so questions like *"how am I doing this month?"* or *"which subscription should I cancel first?"* work without any extra setup. Defaults to `gemini-2.0-flash-lite` (free tier); switch models in **Profile → AI Assistant**.
-
-#### ✨ Personalised Greetings
-The Home dashboard's greeting line is generated by Gemini using your real spending data. One cohesive line that doubles as a smart insight ("📉 Down 70% this week — killing it!"), replacing the previous separate greeting + insights card. Cached per session (refreshes on cold open or 5-min+ background resume), with a data-signature cache key that auto-busts when spending changes meaningfully.
-
-#### ✨ CookMate AI Recipes
-CookMate is now 100% AI-driven — recipes are generated on demand based on your food preferences (cuisine prefs, spice tolerance, dietary flags, allergens, dislikes, budget per meal) and current pantry contents. 2-hour result cache prevents quota waste. The previous 24-recipe curated pool + MealDB integration are gone.
+- **Financial Planning Module** (`/goals`) — Unified home for Savings Goals, Subscriptions, Utilities, and Salary Planner.
+- **Heatmap Calendar** (`/calendar`) — Visual daily spending intensity grid.
+- **Zen Mode** — Tap-to-reveal balance privacy on the wallet card.
+- **AMOLED Pitch Black** — True-black theme that auto-disables when Dark Mode is off.
+- **App-Switcher Privacy Blur** — Automatic blur overlay via Capacitor `appStateChange` listener.
 
 ### Power-User Features (v1.1.0)
 
@@ -204,6 +215,12 @@ npm install
 # 4. Apply migrations in Supabase SQL editor (in order):
 #    - supabase/migrations/001_add_indexes.sql
 #    - supabase/migrations/002_accounts_categories_tables.sql
+#    - supabase/migrations/003_exclude_from_velocity.sql
+#    - supabase/migrations/004_schema_sync.sql
+#    - supabase/migrations/005_remove_wanderplan.sql
+#    - supabase/migrations/006_financial_accounts_architecture.sql
+#    - supabase/migrations/007_credit_card_architecture.sql
+#    - supabase/migrations/008_cashback_rewards.sql
 
 # 5. Dev server (web preview)
 npm run dev
