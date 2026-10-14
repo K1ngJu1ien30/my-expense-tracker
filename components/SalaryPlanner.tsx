@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Trash2, Plus, MonitorPlay, FileText, Zap, Repeat, Check, Edit2, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAppContext } from "@/lib/context";
@@ -362,6 +362,18 @@ export default function SalaryPlanner() {
     );
   };
 
+  // Keyboard accessibility: dismiss edit modal on Escape key
+  useEffect(() => {
+    if (!editingItem) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setEditingItem(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [editingItem]);
+
   return (
     <div className="bg-card p-6 rounded-3xl shadow-soft border border-border/40 space-y-6">
       {/* Header */}
@@ -469,10 +481,13 @@ export default function SalaryPlanner() {
               initial={{ scale: 0.95, opacity: 0, y: 10 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="edit-recurring-modal-title"
               className="relative z-10 w-full max-w-sm bg-card border border-border/60 rounded-3xl shadow-2xl p-5 space-y-4 text-foreground overflow-hidden"
             >
               <div className="flex items-center justify-between border-b border-border/40 pb-3">
-                <h3 className="font-black text-foreground text-base">Edit Recurring Item</h3>
+                <h3 id="edit-recurring-modal-title" className="font-black text-foreground text-base">Edit Recurring Item</h3>
                 <button
                   type="button"
                   onClick={() => setEditingItem(null)}

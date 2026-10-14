@@ -62,6 +62,7 @@ export default function CustomDatePicker({
 
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
+        e.stopPropagation();
         setIsOpen(false);
       }
     }

@@ -191,10 +191,27 @@ export const CustomDateRangeModal = React.memo(function CustomDateRangeModal({
     return `Selected ${tempStartDate} (now tap end date)`;
   }, [tempStartDate, tempEndDate]);
 
+  // Keyboard accessibility: dismiss modal on Escape key
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="date-range-modal-title"
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+        >
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -212,7 +229,7 @@ export const CustomDateRangeModal = React.memo(function CustomDateRangeModal({
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-border/50 pb-3">
               <div>
-                <h3 className="font-black text-foreground text-base">Select Date Range</h3>
+                <h3 id="date-range-modal-title" className="font-black text-foreground text-base">Select Date Range</h3>
                 <p className="text-[11px] text-muted-foreground font-semibold mt-0.5">
                   {subtitleText}
                 </p>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   X,
@@ -112,6 +112,18 @@ export default function CreditCardCashbackModal({
     );
   }, [cashbackRecords, card]);
 
+  // Keyboard accessibility: dismiss modal on Escape key
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   // Handle Record Cashback Submit
@@ -202,7 +214,17 @@ export default function CreditCardCashbackModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="cc-cashback-modal-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+    >
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -219,7 +241,7 @@ export default function CreditCardCashbackModal({
               <Gift className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-black tracking-tight text-foreground flex items-center gap-2">
+              <h2 id="cc-cashback-modal-title" className="text-lg font-black tracking-tight text-foreground flex items-center gap-2">
                 <span>Cashback & Rewards</span>
               </h2>
               <p className="text-xs text-muted-foreground font-medium">

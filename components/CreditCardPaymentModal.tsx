@@ -341,6 +341,18 @@ export default function CreditCardPaymentModal({
     }
   };
 
+  // Keyboard accessibility: dismiss modal on Escape key
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
@@ -350,6 +362,11 @@ export default function CreditCardPaymentModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="cc-payment-modal-title"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            onClose();
+          }
+        }}
       >
         <motion.div
           drag="y"

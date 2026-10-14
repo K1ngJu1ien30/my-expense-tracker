@@ -61,6 +61,24 @@ export default function AssetDetailOverlay({ assetId, onClose }: Props) {
     fetchLogs();
   }, [assetId, session]);
 
+  // Keyboard accessibility: dismiss sub-modals or overlay on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (showEdit) {
+          setShowEdit(false);
+        } else if (showAddLog) {
+          setShowAddLog(false);
+          setEditingLog(null);
+        } else {
+          onClose();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showEdit, showAddLog, onClose]);
+
   const resetLogForm = () => {
     setEditingLog(null);
     setLogDesc("");

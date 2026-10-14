@@ -120,23 +120,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     attemptUnlock();
   }, [isPinEnabled, isBiometricEnabled, session, authLoading, unlock]);
 
-  const handlePinDigit = (digit: string) => {
-    if (pinInput.length >= 6) return;
-    const next = pinInput + digit;
-    setPinInput(next);
-    setError("");
-
-    if (next.length === 6) {
-      verifyPin(next);
-    }
-  };
-
-  const handleDelete = () => {
-    setPinInput(prev => prev.slice(0, -1));
-    setError("");
-  };
-
-  const verifyPin = async (pin: string) => {
+  const verifyPin = useCallback(async (pin: string) => {
     const stored = await getStoredPin(session?.user?.id);
     if (stored && pin === stored) {
       unlock();
@@ -146,7 +130,37 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       setPinInput("");
       NativeHaptics.errorShake();
     }
-  };
+  }, [session?.user?.id, unlock]);
+
+  const handlePinDigit = useCallback((digit: string) => {
+    if (pinInput.length >= 6) return;
+    const next = pinInput + digit;
+    setPinInput(next);
+    setError("");
+
+    if (next.length === 6) {
+      verifyPin(next);
+    }
+  }, [pinInput, verifyPin]);
+
+  const handleDelete = useCallback(() => {
+    setPinInput(prev => prev.slice(0, -1));
+    setError("");
+  }, []);
+
+  // Physical keyboard accessibility: enter PIN digits and backspace on desktop
+  useEffect(() => {
+    if (!isPinEnabled || !isLocked) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key >= "0" && e.key <= "9") {
+        handlePinDigit(e.key);
+      } else if (e.key === "Backspace") {
+        handleDelete();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isPinEnabled, isLocked, handlePinDigit, handleDelete]);
 
   const retryBiometric = async () => {
     const success = await tryBiometric();

@@ -91,6 +91,7 @@ export default function CustomSelect({
 
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
+        e.stopPropagation();
         closeDropdown();
       }
     }

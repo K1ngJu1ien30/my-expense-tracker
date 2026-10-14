@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useMemo } from "react";
+import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { Home, PieChart, User, Plus, LayoutGrid, Zap } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -40,6 +40,18 @@ export default function BottomNav({ onOpenAdd }: { onOpenAdd: () => void }) {
     () => (showQuickSheet ? deriveQuickTemplates(transactions) : []),
     [showQuickSheet, transactions]
   );
+
+  // Keyboard accessibility: dismiss quick-add sheet on Escape key
+  useEffect(() => {
+    if (!showQuickSheet) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowQuickSheet(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showQuickSheet]);
 
   const clearPressTimer = useCallback(() => {
     if (pressTimerRef.current) {

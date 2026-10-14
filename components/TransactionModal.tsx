@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence, PanInfo } from "framer-motion";
 import { X, ArrowRight, Sparkles, ChevronDown, SlidersHorizontal, CreditCard } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useEffect } from "react";
 
 import { useAppContext } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
@@ -406,11 +405,23 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
     if (info.offset.y > 100) handleClose();
   };
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     setIsSubmitting(false);
     setEditTransactionId(null);
     onClose();
-  };
+  }, [onClose, setEditTransactionId]);
+
+  // Keyboard accessibility: dismiss modal on Escape key
+  useEffect(() => {
+    if (!isActuallyOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        handleClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isActuallyOpen, handleClose]);
 
   // ─── Derived state for the Options row ─────────────────────────────────
   //
