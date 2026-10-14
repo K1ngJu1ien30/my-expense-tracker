@@ -1053,17 +1053,42 @@ export default function CreditCardsDashboardPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="p-4 bg-muted/20 rounded-2xl border border-dashed border-border/80 text-center space-y-2">
-                    <p className="text-xs text-muted-foreground">
-                      No statement has been recorded yet for this card.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => openCreditCardPayment(activeCard.id || activeCard.name)}
-                      className="text-xs font-bold text-primary hover:underline"
-                    >
-                      Record an issued statement or make a direct payment →
-                    </button>
+                  <div className="p-5 bg-muted/20 rounded-2xl border border-dashed border-border/80 text-center space-y-3">
+                    <div className="w-10 h-10 rounded-2xl bg-muted/60 mx-auto flex items-center justify-center text-muted-foreground/60">
+                      <FileText className="w-5 h-5" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-bold text-foreground">
+                        No statement recorded yet
+                      </p>
+                      <p className="text-[11px] text-muted-foreground max-w-xs mx-auto">
+                        Track statement closing balance, due date, and payment status by recording an issued statement.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          NativeHaptics.lightTick();
+                          openCreditCardPayment(activeCard.id || activeCard.name);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-primary text-white text-xs font-bold shadow-soft hover:opacity-95 transition-all cursor-pointer"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>Record Statement</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          NativeHaptics.lightTick();
+                          openCreditCardPayment(activeCard.id || activeCard.name);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-card border border-border/80 text-foreground text-xs font-bold hover:bg-muted/50 transition-colors cursor-pointer"
+                      >
+                        <CreditCard className="w-3.5 h-3.5 text-primary" />
+                        <span>Pay Current Balance</span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

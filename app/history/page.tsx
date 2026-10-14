@@ -14,6 +14,7 @@ import {
   type SearchQuery,
 } from "@/lib/searchParser";
 import { NativeHaptics } from "@/lib/haptics";
+import { TransactionSkeletonList } from "@/components/Skeleton";
 
 type FilterType = "today" | "week" | "all";
 
@@ -204,6 +205,7 @@ export default function HistoryPage() {
     confirmAction,
     formatCurrency,
     categories,
+    setShowTransactionModal,
   } = useAppContext();
 
   // Legacy shortcut pills, still useful above the power-search bar.
@@ -450,14 +452,44 @@ export default function HistoryPage() {
           scrolls naturally (no nested scroll contexts fighting the parent's
           overflow-x-hidden). */}
       {filteredTransactions.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24 opacity-50 text-center px-6">
-          <Ghost className="w-16 h-16 mb-4 text-muted-foreground stroke-[1.5]" aria-hidden="true" />
-          <p className="text-sm font-bold text-muted-foreground w-2/3 mx-auto whitespace-pre-line">
-            {!hasAnyFilter ? "No transactions yet.\nYou're saving money!" : "No transactions match your filters."}
-          </p>
-          {hasAnyFilter && (
-            <button onClick={clearAll} style={{ color: accentColor }} className="text-sm font-bold mt-3">
-              Clear All Filters
+        <div className="flex flex-col items-center justify-center py-16 text-center px-6 space-y-4 max-w-sm mx-auto animate-in fade-in duration-300">
+          <div className="w-16 h-16 rounded-3xl bg-muted/60 flex items-center justify-center text-muted-foreground shadow-xs">
+            {hasAnyFilter ? (
+              <Search className="w-8 h-8 stroke-[1.75]" aria-hidden="true" />
+            ) : (
+              <Ghost className="w-8 h-8 stroke-[1.75]" aria-hidden="true" />
+            )}
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-foreground">
+              {hasAnyFilter ? "No Matching Transactions" : "No Transactions Recorded"}
+            </h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              {hasAnyFilter
+                ? "No records match your current keyword or category filters. Try clearing filters to see all entries."
+                : "Log daily expenses, income, or transfers to start seeing your spending history and cash flow insights."}
+            </p>
+          </div>
+          {hasAnyFilter ? (
+            <button
+              type="button"
+              onClick={clearAll}
+              style={{ backgroundColor: accentColor || "#3b82f6" }}
+              className="px-5 py-2.5 rounded-2xl text-white font-bold text-xs shadow-soft hover:opacity-90 active:scale-95 transition-all cursor-pointer"
+            >
+              Reset Filters &amp; Search
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setShowTransactionModal(true);
+                NativeHaptics.lightTick();
+              }}
+              style={{ backgroundColor: accentColor || "#3b82f6" }}
+              className="px-5 py-2.5 rounded-2xl text-white font-bold text-xs shadow-soft hover:opacity-90 active:scale-95 transition-all cursor-pointer"
+            >
+              + Record First Expense
             </button>
           )}
         </div>
@@ -514,9 +546,8 @@ export default function HistoryPage() {
           />
         </div>
       ) : (
-        // Brief interim (one render tick before the effect locates <main>).
-        // Render nothing instead of a flash of unmounted list.
-        null
+        // Interim skeleton state while locating <main> scroll container
+        <TransactionSkeletonList count={5} />
       )}
     </div>
   );

@@ -1115,8 +1115,32 @@ export default function AnalyticsPage() {
               </div>
 
               {breakdownData.length === 0 ? (
-                <div className="text-center py-6 text-xs text-muted-foreground font-medium">
-                  No {breakdownType} records in this period.
+                <div className="flex flex-col items-center justify-center py-8 px-4 text-center rounded-2xl bg-muted/20 border border-dashed border-border/60">
+                  <div className="w-10 h-10 rounded-2xl bg-muted/60 flex items-center justify-center text-muted-foreground/60 mb-2.5">
+                    <Receipt className="w-5 h-5" />
+                  </div>
+                  <p className="text-xs font-bold text-foreground mb-1">
+                    No {breakdownType} records in this period
+                  </p>
+                  <p className="text-[11px] text-muted-foreground max-w-xs mb-3">
+                    {periodOffset !== 0 || timeFilter === "CUSTOM"
+                      ? "You are viewing a past or custom time range with no transactions."
+                      : `Log your first ${breakdownType} to see category distributions here.`}
+                  </p>
+                  {(periodOffset !== 0 || timeFilter === "CUSTOM") && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPeriodOffset(0);
+                        if (timeFilter === "CUSTOM") setTimeFilter("MONTH");
+                        NativeHaptics.lightTick();
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 text-xs font-bold transition-colors"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      Jump to Current Period
+                    </button>
+                  )}
                 </div>
               ) : (
                 breakdownData.map((cat) => {
