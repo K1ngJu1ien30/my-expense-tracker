@@ -115,9 +115,16 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
         // ─── New-table-first account/category resolution (Migration 002) ──
         if (!accountsRes.error && accountsRes.data && accountsRes.data.length > 0) {
           savedAccounts = (accountsRes.data as RawUserAccountRow[]).map(a => ({
+            id: a.id,
             name: a.name,
             currencyCode: a.currency_code || "RM",
             isArchived: a.is_archived || false,
+            kind: a.kind || "bank",
+            openingBalance: Number(a.opening_balance || 0),
+            openingBalanceDate: a.opening_balance_date || undefined,
+            creditLimit: a.credit_limit ? Number(a.credit_limit) : null,
+            statementDay: a.statement_day ?? null,
+            dueDay: a.due_day ?? null,
           }));
           console.log("[refreshData] Loaded", savedAccounts.length, "accounts from user_accounts table");
         } else {
@@ -186,6 +193,7 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
           .map(sub => ({
             id: sub.id, name: sub.name, cost: Number(sub.amount),
             billingDay: sub.billing_day, sourceAccount: sub.source_account,
+            source_account_id: sub.source_account_id,
             autoDeduct: sub.auto_deduct, user_id: sub.user_id, type: "subscription",
             lastPaidMonth: sub.last_paid_month,
             icon: "MonitorPlay", bg: "bg-red-500/10", color: "text-red-500",
@@ -195,6 +203,7 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
           .map(sub => ({
             id: sub.id, name: sub.name, cost: Number(sub.amount),
             billingDay: sub.billing_day, sourceAccount: sub.source_account,
+            source_account_id: sub.source_account_id,
             autoDeduct: sub.auto_deduct, user_id: sub.user_id, type: "fixed_bill",
             lastPaidMonth: sub.last_paid_month,
             icon: "FileText", bg: "bg-purple-500/10", color: "text-purple-500",
@@ -204,6 +213,7 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
           .map(sub => ({
             id: sub.id, name: sub.name, cost: Number(sub.amount),
             billingDay: sub.billing_day, sourceAccount: sub.source_account,
+            source_account_id: sub.source_account_id,
             autoDeduct: sub.auto_deduct, user_id: sub.user_id, type: "utility",
             lastPaidMonth: sub.last_paid_month,
             icon: "Zap", bg: "bg-yellow-500/10", color: "text-yellow-500",

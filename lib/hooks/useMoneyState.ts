@@ -324,6 +324,7 @@ export function useMoneyState(deps: MoneyStateDeps) {
     amount?: number;
     billing_day?: number;
     source_account?: string;
+    source_account_id?: string | null;
     auto_deduct?: boolean;
     type?: "subscription" | "fixed_bill" | "utility" | "bill";
     last_paid_month?: string;
@@ -332,12 +333,13 @@ export function useMoneyState(deps: MoneyStateDeps) {
 
   const buildSubsPayload = useCallback(
     (sub: Partial<Subscription>, kind: "subscription" | "fixed_bill" | "utility"): SubsPayload => {
-      const { cost, billingDay, sourceAccount, autoDeduct, lastPaidMonth } = sub;
+      const { cost, billingDay, sourceAccount, source_account_id, autoDeduct, lastPaidMonth } = sub;
       return {
         name: sub.name,
         amount: cost,
         billing_day: billingDay,
         source_account: sourceAccount,
+        source_account_id: source_account_id || null,
         auto_deduct: autoDeduct,
         last_paid_month: lastPaidMonth,
         type: kind,
@@ -354,6 +356,7 @@ export function useMoneyState(deps: MoneyStateDeps) {
       if (patch.cost !== undefined) out.amount = patch.cost;
       if (patch.billingDay !== undefined) out.billing_day = patch.billingDay;
       if (patch.sourceAccount !== undefined) out.source_account = patch.sourceAccount;
+      if (patch.source_account_id !== undefined) out.source_account_id = patch.source_account_id;
       if (patch.autoDeduct !== undefined) out.auto_deduct = patch.autoDeduct;
       if (patch.lastPaidMonth !== undefined) out.last_paid_month = patch.lastPaidMonth;
       return out;

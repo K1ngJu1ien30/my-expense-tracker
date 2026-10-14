@@ -175,7 +175,7 @@ function OptionChip({
 }
 
 export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const { categories, triggerToast, accentColor, addTransaction, updateTransaction, transactions, editTransactionId, setEditTransactionId, accounts, currency, exchangeRates, triggerDerry, session } = useAppContext();
+  const { categories, triggerToast, accentColor, addTransaction, updateTransaction, transactions, editTransactionId, setEditTransactionId, accounts, accountObjects, currency, exchangeRates, triggerDerry, session } = useAppContext();
 
   const [txType, setTxType] = useState<TxType>("Expense");
   const [modalCurrency, setModalCurrency] = useState(currency);
@@ -263,8 +263,16 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
 
          setTxType(tx.type as TxType);
          setCategory(tx.category || categories[0]);
-         setAccount(tx.account || "Bank (MBB)");
-         if (tx.to_account) setToAccount(tx.to_account);
+         const matchedAcc = tx.account_id
+           ? accountObjects.find(a => a.id === tx.account_id)?.name || tx.account
+           : tx.account;
+         setAccount(matchedAcc || accounts[0] || "Bank (MBB)");
+         if (tx.to_account || tx.to_account_id) {
+           const matchedTo = tx.to_account_id
+             ? accountObjects.find(a => a.id === tx.to_account_id)?.name || tx.to_account
+             : tx.to_account;
+           setToAccount(matchedTo || accounts[1] || accounts[0]);
+         }
          setAmount(String(tx.amount));
          setNote(tx.note || "");
          setDate(tx.date ? new Date(tx.date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0]);
@@ -297,7 +305,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
        setDismissedForNote("");
 
     }
-  }, [editTransactionId, transactions, categories]);
+  }, [editTransactionId, transactions, categories, accounts, accountObjects]);
 
   // Defensive reset on every fresh open (add-mode, not edit).
   //
@@ -842,6 +850,11 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                         triggerDerry();
                       }
 
+                      const selectedAcc = accountObjects.find(a => a.name === account || a.id === account);
+                      const selectedToAcc = txType === "Transfer"
+                        ? accountObjects.find(a => a.name === toAccount || a.id === toAccount)
+                        : undefined;
+
                       const payload = {
                          type: txType,
                          amount: Number(amount),
@@ -857,7 +870,9 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                                ? ""
                                : category,
                          account,
+                         account_id: selectedAcc?.id,
                          to_account: txType === "Transfer" ? toAccount : undefined,
+                         to_account_id: selectedToAcc?.id,
                          note,
                          date: new Date(date).toISOString(),
                          status: txType === "Income" ? status : "cleared",

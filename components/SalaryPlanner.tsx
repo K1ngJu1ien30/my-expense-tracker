@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAppContext } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
 import type { Subscription } from "@/lib/types";
+import { calculateAvailableCash } from "@/lib/balance";
 import CustomSelect from "@/components/CustomSelect";
 
 const getItemSubtext = (items: Array<{ name: string }>) => {
@@ -19,7 +20,7 @@ export default function SalaryPlanner() {
     subscriptions, addSubscription, updateSubscription, deleteSubscription,
     fixedBills, addFixedBill, updateFixedBill, deleteFixedBill,
     utilities, addUtility, updateUtility, deleteUtility,
-    confirmAction, accentColor, transactions, accounts, includeSavings, currency, formatCurrency, triggerToast
+    confirmAction, accentColor, transactions, accounts, accountObjects, includeSavings, currency, formatCurrency, triggerToast
   } = useAppContext();
 
   // Current Month for Paid/Pending tracking (YYYY-MM)
@@ -51,25 +52,8 @@ export default function SalaryPlanner() {
   const [editKind, setEditKind] = useState<"subscriptions" | "fixedBills" | "utilities">("subscriptions");
 
   const totalBalance = useMemo(() => {
-    const activeAccounts = includeSavings
-      ? accounts
-      : accounts.filter(acc => acc && !acc.toLowerCase().includes("saving"));
-
-    return activeAccounts.reduce((total, accountName) => {
-      const balance = transactions.reduce((acc, tx) => {
-        let newAcc = acc;
-        if (tx.account?.toLowerCase().trim() === accountName?.toLowerCase()?.trim()) {
-          if (tx.type === "Income" && tx.status !== "pending") newAcc += Number(tx.amount);
-          if (tx.type === "Expense" || tx.type === "Transfer") newAcc -= Number(tx.amount);
-        }
-        if (tx.type === "Transfer" && tx.to_account?.toLowerCase().trim() === accountName?.toLowerCase()?.trim()) {
-          newAcc += Number(tx.amount);
-        }
-        return newAcc;
-      }, 0);
-      return total + balance;
-    }, 0);
-  }, [transactions, includeSavings, accounts]);
+    return calculateAvailableCash(accountObjects, transactions, includeSavings, currency);
+  }, [accountObjects, transactions, includeSavings, currency]);
 
   // Section Totals (All vs Pending)
   const subTotal = useMemo(() => (subscriptions || []).reduce((sum, s) => sum + Number(s.cost), 0), [subscriptions]);
@@ -119,10 +103,16 @@ export default function SalaryPlanner() {
   const handleAddItem = async (targetCategory: "subscriptions" | "fixedBills" | "utilities") => {
     if (!newName.trim() || !newCost || Number(newCost) <= 0) return;
 
+    const chosenAccountName = newSourceAccount || accounts[0] || "Cash";
+    const matchedAcc = accountObjects.find(
+      (a) => a.name.trim().toLowerCase() === chosenAccountName.trim().toLowerCase()
+    );
+
     const payload: Partial<Subscription> = {
       name: newName.trim(),
       cost: Number(newCost),
-      sourceAccount: newSourceAccount || accounts[0] || "Cash",
+      sourceAccount: matchedAcc?.name || chosenAccountName,
+      source_account_id: matchedAcc?.id,
       autoDeduct: true,
       billingDay: 15,
     };
@@ -144,10 +134,18 @@ export default function SalaryPlanner() {
 
   // Open Edit Modal
   const openEditModal = (item: Subscription, kind: "subscriptions" | "fixedBills" | "utilities") => {
+    // If account was renamed, resolve current name via source_account_id
+    const matchedAcc = item.source_account_id
+      ? accountObjects.find((a) => a.id === item.source_account_id)
+      : accountObjects.find(
+          (a) => a.name.trim().toLowerCase() === (item.sourceAccount || "").trim().toLowerCase()
+        );
+    const resolvedAccountName = matchedAcc?.name || item.sourceAccount || accounts[0] || "Cash";
+
     setEditingItem({ ...item, kind });
     setEditName(item.name);
     setEditCost(String(item.cost));
-    setEditSourceAccount(item.sourceAccount || accounts[0] || "Cash");
+    setEditSourceAccount(resolvedAccountName);
     setEditBillingDay(String(item.billingDay || 15));
     setEditAutoDeduct(item.autoDeduct ?? true);
     setEditKind(kind);
@@ -158,10 +156,15 @@ export default function SalaryPlanner() {
   const handleUpdateItem = async () => {
     if (!editingItem || !editName.trim() || !editCost || Number(editCost) <= 0) return;
 
+    const matchedAcc = accountObjects.find(
+      (a) => a.name.trim().toLowerCase() === editSourceAccount.trim().toLowerCase()
+    );
+
     const patch: Partial<Subscription> = {
       name: editName.trim(),
       cost: Number(editCost),
-      sourceAccount: editSourceAccount,
+      sourceAccount: matchedAcc?.name || editSourceAccount,
+      source_account_id: matchedAcc?.id,
       billingDay: Number(editBillingDay),
       autoDeduct: editAutoDeduct,
     };

@@ -15,6 +15,7 @@ import type {
   Asset,
   AssetLog,
   Account,
+  AccountKind,
 } from "./types";
 import { useEasterEggsUI } from "./hooks/useEasterEggsUI";
 import { useUIState } from "./hooks/useUIState";
@@ -90,7 +91,16 @@ type AppContextType = {
   accountObjects: Account[];
   setAccounts: (val: string[]) => void;
   reorderAccounts: (val: string[]) => Promise<void>;
-  addAccount: (acc: string, currencyCode?: string) => void;
+  addAccount: (
+    acc: string,
+    currencyCode?: string,
+    kind?: AccountKind,
+    openingBalance?: number,
+    creditLimit?: number | null,
+    statementDay?: number | null,
+    dueDay?: number | null
+  ) => void;
+  updateAccount: (nameOrId: string, patch: Partial<Account>) => void;
   renameAccount: (old: string, next: string) => void;
   deleteAccount: (acc: string) => void;
   toggleArchiveAccount: (name: string) => void;
@@ -179,6 +189,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     accounts,
     setAccounts,
     addAccount,
+    updateAccount,
     renameAccount,
     deleteAccount,
     toggleArchiveAccount,
@@ -616,7 +627,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       editTransactionId, setEditTransactionId,
       goals: visibleGoals,
       addGoal, updateGoal, deleteGoal,
-      accounts, accountObjects, setAccounts, reorderAccounts, addAccount, renameAccount, deleteAccount, toggleArchiveAccount,
+      accounts, accountObjects, setAccounts, reorderAccounts, addAccount, updateAccount, renameAccount, deleteAccount, toggleArchiveAccount,
       accentColor, setAccentColor,
       session, authLoading,
       confirmAction,

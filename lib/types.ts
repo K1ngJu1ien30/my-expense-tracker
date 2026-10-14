@@ -30,6 +30,7 @@ export type Subscription = {
   autoDeduct?: boolean;
   billingDay?: number;
   sourceAccount?: string;
+  source_account_id?: string;
   type?: string;
   user_id?: string;
   lastPaidMonth?: string;
@@ -43,6 +44,8 @@ export type Transaction = {
   sub_category?: string;
   account: string;
   to_account?: string;
+  account_id?: string;
+  to_account_id?: string;
   date: string;
   note?: string;
   user_id?: string;
@@ -99,10 +102,25 @@ export type AssetLog = {
 
 
 
+export type AccountKind =
+  | "bank"
+  | "cash"
+  | "ewallet"
+  | "savings"
+  | "credit_card"
+  | "investment";
+
 export type Account = {
+  id?: string;
   name: string;
   currencyCode: string;
   isArchived: boolean;
+  kind?: AccountKind;
+  openingBalance?: number;
+  openingBalanceDate?: string;
+  creditLimit?: number | null;
+  statementDay?: number | null;
+  dueDay?: number | null;
 };
 
 // -------------------------------------------------------------------------
@@ -127,6 +145,7 @@ export type RawSubscriptionRow = {
   amount: number | string;
   billing_day?: number;
   source_account?: string;
+  source_account_id?: string;
   auto_deduct?: boolean;
   type: "subscription" | "fixed_bill" | "utility" | "bill";
   last_paid_month?: string;
@@ -140,6 +159,12 @@ export type RawUserAccountRow = {
   currency_code: string | null;
   is_archived: boolean | null;
   sort_order: number;
+  kind?: AccountKind;
+  opening_balance?: number | string;
+  opening_balance_date?: string;
+  credit_limit?: number | string | null;
+  statement_day?: number | null;
+  due_day?: number | null;
 };
 
 export type RawUserCategoryRow = {
@@ -166,5 +191,59 @@ export type DeletedItemCache = {
   type: "transaction" | "goal" | "asset";
   item: unknown;
   timeout: ReturnType<typeof setTimeout>;
+};
+
+// -------------------------------------------------------------------------
+// Balance Engine types (Phase 1C)
+// -------------------------------------------------------------------------
+
+export type AccountBalanceBreakdown = {
+  accountId: string;
+  accountName: string;
+  currency: string;
+  kind: AccountKind;
+  isArchived: boolean;
+  openingBalance: number;
+  totalIncome: number;
+  totalExpenses: number;
+  totalTransfersIn: number;
+  totalTransfersOut: number;
+  currentBalance: number;
+  transactionCount: number;
+};
+
+export type CurrencyTotals = {
+  currency: string;
+  availableCash: number;
+  savings: number;
+  investments: number;
+  liabilities: number;
+  netFinancialPosition: number;
+  accountCount: number;
+};
+
+export type FinancialPosition = {
+  accountBalances: Record<string, number>;
+  breakdownList: AccountBalanceBreakdown[];
+  availableCash: number;
+  totalSavings: number;
+  totalInvestments: number;
+  totalLiabilities: number;
+  netFinancialPosition: number;
+  isMultiCurrency: boolean;
+  byCurrency: Record<string, CurrencyTotals>;
+  currencies: string[];
+};
+
+export type AccountReconciliation = {
+  accountId: string;
+  accountName: string;
+  currency: string;
+  kind: AccountKind;
+  openingBalance: number;
+  calculatedBalance: number;
+  transactionCount: number;
+  orphanedTransactionCount: number;
+  isBalanced: boolean;
 };
 

@@ -4,13 +4,13 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import type { Session } from "@supabase/supabase-js";
 import localforage from "localforage";
 import { supabase } from "../supabase";
-import type { Account } from "../types";
+import type { Account, AccountKind } from "../types";
 import { getUserDataCacheKey } from "../cacheKeys";
 
 const DEFAULT_ACCOUNTS: Account[] = [
-  { name: "Bank", currencyCode: "RM", isArchived: false },
-  { name: "Cash", currencyCode: "RM", isArchived: false },
-  { name: "eWallet", currencyCode: "RM", isArchived: false },
+  { id: "default-bank", name: "Bank", currencyCode: "RM", isArchived: false, kind: "bank", openingBalance: 0 },
+  { id: "default-cash", name: "Cash", currencyCode: "RM", isArchived: false, kind: "cash", openingBalance: 0 },
+  { id: "default-ewallet", name: "eWallet", currencyCode: "RM", isArchived: false, kind: "ewallet", openingBalance: 0 },
 ];
 
 const DEFAULT_CATEGORIES = [
@@ -25,22 +25,61 @@ const DEFAULT_CATEGORIES = [
 
 /**
  * Safe migration from legacy account formats to the current Account object.
- * Handles three historical shapes:
- *   1. string[]                    → pre-archive era
- *   2. { name, isArchived }[]      → pre-currencyCode era
- *   3. { name, currencyCode, isArchived }[]  → current
+ * Handles historical shapes while preserving stable UUIDs, account kinds,
+ * and opening balance information.
  */
 export function migrateAccounts(raw: unknown): Account[] {
   if (!Array.isArray(raw) || raw.length === 0) return DEFAULT_ACCOUNTS;
   return raw.map((acc): Account => {
     if (typeof acc === "string") {
-      return { name: acc, currencyCode: "RM", isArchived: false };
+      return {
+        id: crypto.randomUUID(),
+        name: acc,
+        currencyCode: "RM",
+        isArchived: false,
+        kind: "bank",
+        openingBalance: 0,
+      };
     }
-    const obj = acc as { name?: string; currencyCode?: string; isArchived?: boolean };
+    const obj = acc as {
+      id?: string;
+      name?: string;
+      currencyCode?: string;
+      currency_code?: string;
+      isArchived?: boolean;
+      is_archived?: boolean;
+      kind?: AccountKind;
+      openingBalance?: number | string;
+      opening_balance?: number | string;
+      openingBalanceDate?: string;
+      opening_balance_date?: string;
+      creditLimit?: number | string | null;
+      credit_limit?: number | string | null;
+      statementDay?: number | null;
+      statement_day?: number | null;
+      dueDay?: number | null;
+      due_day?: number | null;
+    };
     return {
+      id: obj.id || crypto.randomUUID(),
       name: obj.name || "",
-      currencyCode: obj.currencyCode || "RM",
-      isArchived: obj.isArchived ?? false,
+      currencyCode: obj.currencyCode || obj.currency_code || "RM",
+      isArchived: obj.isArchived ?? obj.is_archived ?? false,
+      kind: obj.kind || "bank",
+      openingBalance: Number(obj.openingBalance ?? obj.opening_balance ?? 0) || 0,
+      openingBalanceDate: obj.openingBalanceDate || obj.opening_balance_date,
+      creditLimit:
+        obj.creditLimit !== undefined
+          ? obj.creditLimit !== null
+            ? Number(obj.creditLimit)
+            : null
+          : obj.credit_limit !== undefined
+            ? obj.credit_limit !== null
+              ? Number(obj.credit_limit)
+              : null
+            : null,
+      statementDay: obj.statementDay ?? obj.statement_day ?? null,
+      dueDay: obj.dueDay ?? obj.due_day ?? null,
     };
   });
 }
@@ -82,11 +121,17 @@ export function useAccountsState(session: Session | null) {
         }
         if (accountsArray.length > 0) {
           const rows = accountsArray.map((a, idx) => ({
+            id: a.id && a.id.length === 36 ? a.id : crypto.randomUUID(),
             user_id: userId,
             name: a.name,
             currency_code: a.currencyCode || "RM",
             is_archived: a.isArchived || false,
             sort_order: idx,
+            kind: a.kind || "bank",
+            opening_balance: a.openingBalance ?? 0,
+            credit_limit: a.creditLimit ?? null,
+            statement_day: a.statementDay ?? null,
+            due_day: a.dueDay ?? null,
           }));
           const { error: insErr } = await supabase.from("user_accounts").insert(rows);
           if (insErr) {
@@ -165,11 +210,39 @@ export function useAccountsState(session: Session | null) {
   );
 
   const addAccount = useCallback(
-    (acc: string, currencyCode: string = "RM") =>
+    (
+      acc: string,
+      currencyCode: string = "RM",
+      kind: AccountKind = "bank",
+      openingBalance: number = 0,
+      creditLimit?: number | null,
+      statementDay?: number | null,
+      dueDay?: number | null
+    ) =>
       handleUpdateAccounts([
         ...accountObjects,
-        { name: acc, currencyCode, isArchived: false },
+        {
+          id: crypto.randomUUID(),
+          name: acc,
+          currencyCode,
+          isArchived: false,
+          kind,
+          openingBalance,
+          creditLimit: creditLimit ?? null,
+          statementDay: statementDay ?? null,
+          dueDay: dueDay ?? null,
+        },
       ]),
+    [accountObjects, handleUpdateAccounts]
+  );
+
+  const updateAccount = useCallback(
+    (nameOrId: string, patch: Partial<Account>) =>
+      handleUpdateAccounts(
+        accountObjects.map(a =>
+          a.id === nameOrId || a.name === nameOrId ? { ...a, ...patch } : a
+        )
+      ),
     [accountObjects, handleUpdateAccounts]
   );
 
@@ -361,6 +434,7 @@ export function useAccountsState(session: Session | null) {
     accounts,
     setAccounts,
     addAccount,
+    updateAccount,
     renameAccount,
     deleteAccount,
     toggleArchiveAccount,

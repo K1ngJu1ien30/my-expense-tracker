@@ -9,6 +9,7 @@ import { useAppContext } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
 import { getTimeTheme } from "@/lib/timeTheme";
 import MonthlyReceiptModal from "@/components/MonthlyReceiptModal";
+import { calculateFinancialPosition } from "@/lib/balance";
 
 /**
  * Currency value that smoothly animates from its previous value to the new
@@ -178,7 +179,15 @@ export default function Dashboard() {
 
   const displayGreeting = greeting;
 
-  // === Single-pass transaction computation (Task 3: performance) ===
+  // Centralized Financial Position & Multi-Currency Engine (Phase 1C)
+  const financialPosition = useMemo(() => {
+    return calculateFinancialPosition(accountObjects, transactions, {
+      includeSavings,
+      baseCurrency: currency,
+    });
+  }, [accountObjects, transactions, includeSavings, currency]);
+
+  // === Single-pass transaction computation (Today/Week stats & Trend data) ===
   const dashData = useMemo(() => {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -188,21 +197,6 @@ export default function Dashboard() {
     const endOfWeek = startOfWeek + 7 * 86400000;
     const weekAgoMs = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6).getTime();
 
-    const activeAccounts = includeSavings
-      ? accounts
-      : accounts.filter(acc => acc && !acc.toLowerCase().includes('saving'));
-
-    // Precompute a lowercase → official-name lookup so the per-tx loop below
-    // is O(n) instead of O(n × accounts). At 10k tx × 30 accounts that's
-    // 300k string comparisons per render saved.
-    const lowerToOfficial = new Map<string, string>();
-    for (const a of activeAccounts) lowerToOfficial.set(a.toLowerCase(), a);
-
-    // Integer math accumulators (cents) for precision
-    const balancesCents: Record<string, number> = {};
-    activeAccounts.forEach(a => { balancesCents[a] = 0; });
-
-    let totalBalanceCents = 0;
     let pendingIncomeCents = 0;
     let todayTotalCents = 0;
     let weeklyTotalCents = 0;
@@ -221,7 +215,7 @@ export default function Dashboard() {
       trendData.push(item);
     }
 
-    // Single pass over all transactions
+    // Single pass over all transactions for pending income and trends
     transactions.forEach(t => {
       const amtCents = Math.round(Number(t.amount) * 100);
       const txTime = new Date(t.date).getTime();
@@ -230,22 +224,6 @@ export default function Dashboard() {
       // Pending income
       if (t.type === "Income" && t.status === "pending") {
         pendingIncomeCents += amtCents;
-      }
-
-      // Per-account balances (case-insensitive consolidation)
-      if (t.account) {
-        const official = lowerToOfficial.get(t.account.toLowerCase());
-        const accName = official || t.account;
-        if (balancesCents[accName] === undefined) balancesCents[accName] = 0;
-        if (t.type === "Income" && t.status !== "pending") balancesCents[accName] += amtCents;
-        if (t.type === "Expense") balancesCents[accName] -= amtCents;
-        if (t.type === "Transfer") balancesCents[accName] -= amtCents;
-      }
-      if (t.type === "Transfer" && t.to_account) {
-        const officialTo = lowerToOfficial.get(t.to_account.toLowerCase());
-        const toName = officialTo || t.to_account;
-        if (balancesCents[toName] === undefined) balancesCents[toName] = 0;
-        balancesCents[toName] += amtCents;
       }
 
       // Today & weekly expense totals
@@ -271,31 +249,16 @@ export default function Dashboard() {
       }
     });
 
-    // Convert cents back to float for display, compute total
-    const accountBalances: Record<string, number> = {};
-    for (const [k, v] of Object.entries(balancesCents)) {
-      accountBalances[k] = v / 100;
-    }
-    // Sum only the official (active) accounts — ghost rows present in the
-    // map (case mismatches, archived overflow) are excluded from the hero
-    // total. Uses the precomputed Map for O(1) membership instead of a
-    // per-entry .some() scan.
-    let totalSumCents = 0;
-    for (const [name, cents] of Object.entries(balancesCents)) {
-      if (lowerToOfficial.has(name.toLowerCase())) totalSumCents += cents;
-    }
-    totalBalanceCents = totalSumCents;
-
     return {
-      totalBalance: totalBalanceCents / 100,
-      accountBalances,
+      totalBalance: financialPosition.netFinancialPosition,
+      accountBalances: financialPosition.accountBalances,
       pendingIncome: pendingIncomeCents / 100,
       todayTotal: todayTotalCents / 100,
       todayTransactions: todayTxs,
       weeklyTotal: weeklyTotalCents / 100,
       dynamicTrendData: transactions.length > 0 ? trendData : [],
     };
-  }, [transactions, includeSavings, accounts, currency]);
+  }, [transactions, includeSavings, currency, financialPosition]);
 
   const { totalBalance, accountBalances, pendingIncome, todayTotal, todayTransactions, weeklyTotal, dynamicTrendData } = dashData;
 
@@ -326,20 +289,28 @@ export default function Dashboard() {
   const orderedAccountCards = useMemo(() => {
     const activeAccounts = includeSavings
       ? accounts
-      : accounts.filter(acc => acc && !acc.toLowerCase().includes('saving'));
+      : accounts.filter(acc => {
+          const accObj = accountObjects.find(a => a.name.toLowerCase() === acc.toLowerCase());
+          return accObj ? accObj.kind !== 'savings' : !acc.toLowerCase().includes('saving');
+        });
 
-    const officialCards = activeAccounts.map(name => ({
-      name,
-      balance: accountBalances[name] || 0
-    }));
+    const officialCards = activeAccounts.map(name => {
+      const accObj = accountObjects.find(a => a.name.toLowerCase() === name.toLowerCase());
+      return {
+        name,
+        balance: accountBalances[name] !== undefined ? accountBalances[name] : (Number(accObj?.openingBalance || 0)),
+        kind: accObj?.kind || 'bank',
+        currencyCode: accObj?.currencyCode || currency,
+      };
+    });
 
     const officialSet = new Set(activeAccounts.map(a => a.toLowerCase()));
     const ghostCards = Object.entries(accountBalances)
       .filter(([name]) => !officialSet.has(name.toLowerCase()))
-      .map(([name, balance]) => ({ name, balance }));
+      .map(([name, balance]) => ({ name, balance, kind: 'bank' as const, currencyCode: currency }));
 
     return [...officialCards, ...ghostCards];
-  }, [accountBalances, accounts, includeSavings]);
+  }, [accountBalances, accounts, accountObjects, includeSavings, currency]);
 
   const getCurrencyPrefix = (accountName: string) => {
     const accObj = accountObjects.find(a => a.name.toLowerCase() === accountName.toLowerCase());
@@ -515,9 +486,17 @@ export default function Dashboard() {
               <>
                 {/* Per-account balances — carousel on mobile, responsive grid on desktop */}
                 <div className="relative z-10 -mx-1 px-1 flex lg:grid lg:grid-cols-2 xl:grid-cols-3 overflow-x-auto lg:overflow-x-visible snap-x hide-scrollbar gap-3 pb-2 mb-3">
-                  {orderedAccountCards.map(({ name, balance }) => (
+                  {orderedAccountCards.map(({ name, balance, kind }) => (
                     <div key={name} className="flex-shrink-0 w-fit min-w-[140px] lg:w-full lg:min-w-0 p-3.5 pr-6 bg-gray-800/60 rounded-2xl snap-start border border-gray-700/50 hover:border-gray-600 transition-colors">
-                      <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider block truncate">{name}</span>
+                      <div className="flex items-center justify-between gap-1.5">
+                        <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider block truncate">{name}</span>
+                        {kind === "credit_card" && (
+                          <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 bg-rose-500/20 text-rose-300 rounded shrink-0">Card</span>
+                        )}
+                        {kind === "savings" && (
+                          <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 bg-amber-500/20 text-amber-300 rounded shrink-0">Save</span>
+                        )}
+                      </div>
                       <span className={`text-lg font-bold tracking-tight block mt-0.5 ${balance < 0 ? 'text-rose-400' : 'text-white'}`}>
                         {isGodMode
                           ? `${getCurrencyPrefix(name)} 99,999.00`
@@ -539,7 +518,16 @@ export default function Dashboard() {
                     !isGodMode && balanceRevealed && totalBalance < 0 ? "animate-glitch" : ""
                   }`}
                 >
-                  <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Net Total</span>
+                  <div className="flex flex-col">
+                    <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">
+                      {financialPosition.isMultiCurrency ? "Est. Net Total" : "Net Total"}
+                    </span>
+                    {financialPosition.isMultiCurrency && (
+                      <span className="text-[10px] text-gray-400/80 font-medium">
+                        Converted to {currency}
+                      </span>
+                    )}
+                  </div>
                   <span
                     className={`text-base font-bold tracking-tight ${
                       !isGodMode && balanceRevealed && totalBalance > 1_000_000
@@ -554,6 +542,17 @@ export default function Dashboard() {
                         : `${currency} •••••`}
                   </span>
                 </div>
+
+                {/* Multi-currency breakdown pills */}
+                {financialPosition.isMultiCurrency && balanceRevealed && !isGodMode && (
+                  <div className="relative z-10 mt-2.5 pt-2 border-t border-white/[0.06] flex flex-wrap gap-1.5">
+                    {Object.entries(financialPosition.byCurrency).map(([cur, totals]) => (
+                      <span key={cur} className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/10 text-gray-300 border border-white/10">
+                        {cur}: {totals.netFinancialPosition < 0 ? '-' : ''}{cur} {Math.abs(totals.netFinancialPosition).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </>
             )}
             
