@@ -9,7 +9,8 @@ import { useAppContext } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
 import { getTimeTheme } from "@/lib/timeTheme";
 import MonthlyReceiptModal from "@/components/MonthlyReceiptModal";
-import { calculateFinancialPosition } from "@/lib/balance";
+import { calculateFinancialPosition, isSavingsAccount } from "@/lib/balance";
+import type { AccountKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { deriveCreditCardReminders } from "@/lib/creditCardReminders";
 
@@ -224,7 +225,10 @@ export default function Dashboard() {
     transactions.forEach(t => {
       const amtCents = Math.round(Number(t.amount) * 100);
       const txTime = new Date(t.date).getTime();
-      const isSavingsAcc = t.account?.toLowerCase().includes('saving');
+      const txAcc = accountObjects.find(
+        a => (t.account_id && a.id === t.account_id) || a.name.toLowerCase() === (t.account || "").toLowerCase()
+      );
+      const isSavingsAcc = txAcc ? isSavingsAccount(txAcc) : isSavingsAccount({ name: t.account });
 
       // Pending income
       if (t.type === "Income" && t.status === "pending") {
@@ -255,7 +259,7 @@ export default function Dashboard() {
     });
 
     return {
-      totalBalance: financialPosition.netFinancialPosition,
+      totalBalance: financialPosition.netTotal,
       accountBalances: financialPosition.accountBalances,
       pendingIncome: pendingIncomeCents / 100,
       todayTotal: todayTotalCents / 100,
@@ -263,7 +267,7 @@ export default function Dashboard() {
       weeklyTotal: weeklyTotalCents / 100,
       dynamicTrendData: transactions.length > 0 ? trendData : [],
     };
-  }, [transactions, includeSavings, currency, financialPosition]);
+  }, [transactions, includeSavings, currency, financialPosition, accountObjects]);
 
   const { totalBalance, accountBalances, pendingIncome, todayTotal, todayTransactions, weeklyTotal, dynamicTrendData } = dashData;
 
@@ -329,27 +333,50 @@ export default function Dashboard() {
 
   // Ordered account list: official order first, ghost accounts appended
   const orderedAccountCards = useMemo(() => {
-    const activeAccounts = includeSavings
-      ? accounts
-      : accounts.filter(acc => {
-          const accObj = accountObjects.find(a => a.name.toLowerCase() === acc.toLowerCase());
-          return accObj ? accObj.kind !== 'savings' : !acc.toLowerCase().includes('saving');
-        });
+    // Collect all official account names (active and archived)
+    const allOfficialNames = new Set(
+      accountObjects.map(a => a.name.trim().toLowerCase())
+    );
+    accounts.forEach(name => allOfficialNames.add(name.trim().toLowerCase()));
 
-    const officialCards = activeAccounts.map(name => {
-      const accObj = accountObjects.find(a => a.name.toLowerCase() === name.toLowerCase());
+    // Visible active accounts
+    const visibleAccountNames = accounts.filter(name => {
+      const accObj = accountObjects.find(a => a.name.trim().toLowerCase() === name.trim().toLowerCase());
+      if (accObj?.isArchived) return false;
+      const isSavings = accObj ? isSavingsAccount(accObj) : isSavingsAccount({ name });
+      if (!includeSavings && isSavings) return false;
+      return true;
+    });
+
+    const officialCards = visibleAccountNames.map(name => {
+      const accObj = accountObjects.find(a => a.name.trim().toLowerCase() === name.trim().toLowerCase());
+      const isSavings = accObj ? isSavingsAccount(accObj) : isSavingsAccount({ name });
       return {
         name,
         balance: accountBalances[name] !== undefined ? accountBalances[name] : (Number(accObj?.openingBalance || 0)),
-        kind: accObj?.kind || 'bank',
+        kind: isSavings ? ('savings' as const) : (accObj?.kind || 'bank'),
         currencyCode: accObj?.currencyCode || currency,
       };
     });
 
-    const officialSet = new Set(activeAccounts.map(a => a.toLowerCase()));
+    // Genuine ghost accounts:
+    // Appear in accountBalances, but are NOT any official account (active or archived),
+    // are not savings when includeSavings is false, and have a non-zero balance.
     const ghostCards = Object.entries(accountBalances)
-      .filter(([name]) => !officialSet.has(name.toLowerCase()))
-      .map(([name, balance]) => ({ name, balance, kind: 'bank' as const, currencyCode: currency }));
+      .filter(([name, balance]) => {
+        const lower = name.trim().toLowerCase();
+        if (allOfficialNames.has(lower)) return false;
+        const accObj = accountObjects.find(a => a.name.trim().toLowerCase() === lower);
+        if (accObj?.isArchived) return false;
+        if (!includeSavings && isSavingsAccount({ name })) return false;
+        return balance !== 0;
+      })
+      .map(([name, balance]) => ({
+        name,
+        balance,
+        kind: (isSavingsAccount({ name }) ? 'savings' : 'bank') as AccountKind,
+        currencyCode: currency,
+      }));
 
     return [...officialCards, ...ghostCards];
   }, [accountBalances, accounts, accountObjects, includeSavings, currency]);
@@ -672,7 +699,7 @@ export default function Dashboard() {
                   <div className="relative z-10 mt-2 pt-1.5 border-t border-white/[0.06] flex flex-wrap gap-1.5">
                     {Object.entries(financialPosition.byCurrency).map(([cur, totals]) => (
                       <span key={cur} className="text-[9px] sm:text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/10 text-gray-300 border border-white/10">
-                        {cur}: {totals.netFinancialPosition < 0 ? '-' : ''}{cur} {Math.abs(totals.netFinancialPosition).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {cur}: {totals.netTotal < 0 ? '-' : ''}{cur} {Math.abs(totals.netTotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     ))}
                   </div>

@@ -211,7 +211,24 @@ export function calculateAccountBalances(
 }
 
 /**
- * Calculates the comprehensive Financial Position across all accounts.
+ * Determines whether an account should be treated as a savings account.
+ * Supports explicit account kind "savings" as well as legacy accounts
+ * where kind was not set or set to "bank" but the account name contains "saving".
+ * Explicit non-savings kinds (e.g. "credit_card", "investment") are never treated as savings.
+ */
+export function isSavingsAccount(account: {
+  kind?: AccountKind | string;
+  name?: string;
+  accountName?: string;
+}): boolean {
+  if (account.kind === "savings") return true;
+  if (account.kind && account.kind !== "bank") return false;
+  const name = (account.name || account.accountName || "").toLowerCase();
+  return name.includes("saving");
+}
+
+/**
+ * Computes consolidated multi-currency financial position across all active accounts.
  *
  * Distinct Accounting Concepts:
  * 1. Available Cash: Liquid operational accounts (Bank, Cash, E-Wallet).
@@ -219,7 +236,8 @@ export function calculateAccountBalances(
  * 2. Dedicated Savings: Savings accounts.
  * 3. Investments: Investment accounts.
  * 4. Liabilities: Outstanding credit card balances / debt.
- * 5. Net Financial Position: (Cash + Savings + Investments) - Liabilities.
+ * 5. Net Financial Position: (Cash + Savings + Investments) - Liabilities (Full all-assets net worth).
+ * 6. Net Total: Display total respecting includeSavings preference.
  */
 export function calculateFinancialPosition(
   accounts: Account[],
@@ -257,6 +275,7 @@ export function calculateFinancialPosition(
         investments: 0,
         liabilities: 0,
         netFinancialPosition: 0,
+        netTotal: 0,
         accountCount: 0,
       };
     }
@@ -264,7 +283,8 @@ export function calculateFinancialPosition(
     const curTotals = byCurrency[cur];
     curTotals.accountCount += 1;
 
-    const kind: AccountKind = item.kind || "bank";
+    const isSavings = isSavingsAccount(item);
+    const kind: AccountKind = isSavings ? "savings" : (item.kind || "bank");
     const bal = item.currentBalance;
 
     if (kind === "credit_card") {
@@ -274,36 +294,53 @@ export function calculateFinancialPosition(
         const debt = Math.abs(bal);
         curTotals.liabilities += debt;
         curTotals.netFinancialPosition -= debt;
+        curTotals.netTotal -= debt;
 
         totalLiabilitiesBase += convertCurrency(debt, cur, baseCurrency);
       } else {
         curTotals.netFinancialPosition += bal;
+        curTotals.netTotal += bal;
       }
     } else if (kind === "savings") {
       curTotals.savings += bal;
+      // All-assets Net Financial Position ALWAYS includes dedicated savings (true net worth)
       curTotals.netFinancialPosition += bal;
       totalSavingsBase += convertCurrency(bal, cur, baseCurrency);
 
       if (includeSavings) {
         curTotals.availableCash += bal;
+        curTotals.netTotal += bal;
         totalAvailableCashBase += convertCurrency(bal, cur, baseCurrency);
       }
     } else if (kind === "investment") {
       curTotals.investments += bal;
       curTotals.netFinancialPosition += bal;
+      curTotals.netTotal += bal;
       totalInvestmentsBase += convertCurrency(bal, cur, baseCurrency);
     } else {
       // Liquid operational cash: bank, cash, ewallet
       curTotals.availableCash += bal;
       curTotals.netFinancialPosition += bal;
+      curTotals.netTotal += bal;
       totalAvailableCashBase += convertCurrency(bal, cur, baseCurrency);
     }
   }
 
-  // Net financial position in base currency: Assets - Liabilities
+  // All-assets net financial position in base currency: (Liquid Cash + Savings + Investments) - Liabilities
+  // Represents full accounting net worth
+  const liquidCashBase = includeSavings ? (totalAvailableCashBase - totalSavingsBase) : totalAvailableCashBase;
   const netFinancialPositionBase =
-    totalAvailableCashBase +
-    (includeSavings ? 0 : totalSavingsBase) +
+    liquidCashBase +
+    totalSavingsBase +
+    totalInvestmentsBase -
+    totalLiabilitiesBase;
+
+  // Display Net Total: strictly respects includeSavings preference
+  // When includeSavings is OFF: Liquid Cash + Investments - Liabilities (Excludes Savings)
+  // When includeSavings is ON: Liquid Cash + Savings + Investments - Liabilities (Includes Savings once)
+  const netTotalBase =
+    liquidCashBase +
+    (includeSavings ? totalSavingsBase : 0) +
     totalInvestmentsBase -
     totalLiabilitiesBase;
 
@@ -315,6 +352,7 @@ export function calculateFinancialPosition(
     totalInvestments: Math.round(totalInvestmentsBase * 100) / 100,
     totalLiabilities: Math.round(totalLiabilitiesBase * 100) / 100,
     netFinancialPosition: Math.round(netFinancialPositionBase * 100) / 100,
+    netTotal: Math.round(netTotalBase * 100) / 100,
     isMultiCurrency: activeCurrencies.size > 1,
     byCurrency,
     currencies: Array.from(activeCurrencies),

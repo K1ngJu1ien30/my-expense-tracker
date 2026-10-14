@@ -14,6 +14,7 @@ import { ManageAccountsModal } from "@/components/profile/ManageAccountsModal";
 import { RawDataModal } from "@/components/profile/RawDataModal";
 import { PinSetupModal } from "@/components/profile/PinSetupModal";
 import { setStoredPin } from "@/components/AuthGate";
+import { isSavingsAccount } from "@/lib/balance";
 
 const ACCENT_COLORS = [
   { name: 'Blue', hex: '#3b82f6', bg: 'bg-blue-500' },
@@ -52,7 +53,7 @@ export default function ProfilePage() {
     session
   } = useAppContext();
 
-  const hasSavingsAccount = accountObjects.some(acc => acc.name.toLowerCase().includes('saving'));
+  const hasSavingsAccount = accountObjects.some(acc => isSavingsAccount(acc));
 
   const [darkMode, setDarkMode] = useState(false);
   const [amoledMode, setAmoledMode] = useState(false);

@@ -449,7 +449,7 @@ export default function CreditCardPaymentModal({
           </div>
 
           {/* Body Content */}
-          <div className="flex-1 overflow-y-auto hide-scrollbar p-5 space-y-4">
+          <div className="flex-1 overflow-y-auto hide-scrollbar p-5 space-y-4 pb-[calc(1.25rem+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)))] sm:pb-5">
             {creditCards.length === 0 ? (
               <div className="text-center py-12 px-4 space-y-3">
                 <div className="w-12 h-12 rounded-2xl bg-muted flex items-center justify-center mx-auto text-muted-foreground">

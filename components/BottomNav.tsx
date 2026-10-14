@@ -122,7 +122,7 @@ export default function BottomNav({ onOpenAdd }: { onOpenAdd: () => void }) {
     <>
       <nav
         aria-label="Primary"
-        className="lg:hidden fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-50 bg-white dark:bg-zinc-950 pb-safe border-t border-border shadow-up rounded-t-3xl px-6 py-4 flex justify-around items-center bg-opacity-90 dark:bg-opacity-90 backdrop-blur-xl"
+        className="lg:hidden fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-50 bg-white dark:bg-zinc-950 border-t border-border shadow-up rounded-t-3xl px-6 pt-4 pb-[calc(1rem+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)))] flex justify-around items-center bg-opacity-90 dark:bg-opacity-90 backdrop-blur-xl"
       >
         <Link
           href="/"

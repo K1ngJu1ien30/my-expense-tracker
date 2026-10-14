@@ -88,6 +88,35 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Dynamic SystemBars status bar contrast sync for light, dark, and AMOLED themes
+  useEffect(() => {
+    const updateSystemBars = async () => {
+      try {
+        const { SystemBars, SystemBarsStyle } = await import('@capacitor/core');
+        const isDark =
+          document.documentElement.classList.contains('dark') ||
+          document.documentElement.classList.contains('amoled');
+        await SystemBars.setStyle({
+          style: isDark ? SystemBarsStyle.Dark : SystemBarsStyle.Light,
+        });
+      } catch {
+        // Fallback or non-capacitor environment
+      }
+    };
+
+    updateSystemBars();
+
+    const observer = new MutationObserver(() => {
+      updateSystemBars();
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
   // Block Android WebView long-press context menu
   useEffect(() => {
     const prevent = (e: MouseEvent) => e.preventDefault();
@@ -129,7 +158,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-background"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"/></div>;
 
   if (!session) return (
-    <div className="relative w-full min-h-screen bg-background flex items-center justify-center p-4 overflow-x-hidden">
+    <div className="relative w-full min-h-screen bg-background flex items-center justify-center p-4 overflow-x-hidden pt-safe pb-safe">
       <AuthScreen />
       <InstallPrompt />
       <AnimatePresence>
@@ -141,7 +170,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             transition={{ duration: 0.2 }}
             role="status"
             aria-live="polite"
-            className="fixed top-2 sm:top-3 left-1/2 -translate-x-1/2 z-[9990] flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/90 dark:bg-amber-600/90 text-white backdrop-blur-md shadow-md text-[11px] font-bold tracking-tight pointer-events-none"
+            className="fixed top-[calc(0.5rem+var(--safe-area-inset-top,env(safe-area-inset-top,0px)))] sm:top-3 left-1/2 -translate-x-1/2 z-[9990] flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/90 dark:bg-amber-600/90 text-white backdrop-blur-md shadow-md text-[11px] font-bold tracking-tight pointer-events-none"
           >
             <WifiOff className="w-3 h-3 text-white shrink-0" />
             <span>Offline — Changes saved locally</span>
@@ -150,7 +179,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </AnimatePresence>
       <AnimatePresence>
         {toast && (
-          <motion.div initial={{ y: -50, opacity: 0}} animate={{ y: 0, opacity: 1}} exit={{ y: -50, opacity: 0 }} role="status" aria-live="polite" aria-atomic="true" className="fixed pt-6 lg:pt-8 top-0 left-0 right-0 z-[10000] flex justify-center px-4 pointer-events-none">
+          <motion.div initial={{ y: -50, opacity: 0}} animate={{ y: 0, opacity: 1}} exit={{ y: -50, opacity: 0 }} role="status" aria-live="polite" aria-atomic="true" className="fixed pt-[calc(1.5rem+var(--safe-area-inset-top,env(safe-area-inset-top,0px)))] lg:pt-8 top-0 left-0 right-0 z-[10000] flex justify-center px-4 pointer-events-none">
             <div className="bg-foreground text-background px-6 py-3 rounded-full shadow-heavy font-bold text-sm tracking-wide flex gap-2 items-center text-center">
                <span className="text-emerald-400" aria-hidden="true">⚡</span> {toast.message}
             </div>
@@ -173,7 +202,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               transition={{ duration: 0.2 }}
               role="status"
               aria-live="polite"
-              className="fixed top-2 sm:top-3 left-1/2 -translate-x-1/2 z-[9990] flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/90 dark:bg-amber-600/90 text-white backdrop-blur-md shadow-md text-[11px] font-bold tracking-tight pointer-events-none"
+              className="fixed top-[calc(0.5rem+var(--safe-area-inset-top,env(safe-area-inset-top,0px)))] sm:top-3 left-1/2 -translate-x-1/2 z-[9990] flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/90 dark:bg-amber-600/90 text-white backdrop-blur-md shadow-md text-[11px] font-bold tracking-tight pointer-events-none"
             >
               <WifiOff className="w-3 h-3 text-white shrink-0" />
               <span>Offline — Changes saved locally</span>
@@ -184,7 +213,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {/* Global Toast live region (fixed top center) */}
         <AnimatePresence>
           {toast && (
-            <motion.div initial={{ y: -50, opacity: 0}} animate={{ y: 0, opacity: 1}} exit={{ y: -50, opacity: 0 }} role="status" aria-live="polite" aria-atomic="true" className="fixed pt-6 lg:pt-8 top-0 left-0 right-0 z-[10000] flex justify-center px-4 pointer-events-none">
+            <motion.div initial={{ y: -50, opacity: 0}} animate={{ y: 0, opacity: 1}} exit={{ y: -50, opacity: 0 }} role="status" aria-live="polite" aria-atomic="true" className="fixed pt-[calc(1.5rem+var(--safe-area-inset-top,env(safe-area-inset-top,0px)))] lg:pt-8 top-0 left-0 right-0 z-[10000] flex justify-center px-4 pointer-events-none">
               <div className="bg-foreground text-background px-6 py-3 rounded-full shadow-heavy font-bold text-sm tracking-wide flex gap-2 items-center text-center">
                  <span className="text-emerald-400" aria-hidden="true">✅</span> {toast.message}
               </div>
@@ -197,7 +226,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         {/* Main Content Canvas */}
         <div className="flex-1 min-w-0 flex flex-col min-h-screen">
-          <main className="flex-1 w-full overflow-y-auto hide-scrollbar relative pb-[calc(7rem+env(safe-area-inset-bottom,0px))] lg:pb-12">
+          <main className="flex-1 w-full overflow-y-auto hide-scrollbar relative pt-[var(--safe-area-inset-top,env(safe-area-inset-top,0px))] pb-[calc(7rem+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)))] lg:pt-0 lg:pb-12">
             <div className="w-full max-w-7xl mx-auto">
               {children}
             </div>

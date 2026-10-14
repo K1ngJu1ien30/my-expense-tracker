@@ -28,7 +28,13 @@ export function useUserPreferences(session: Session | null) {
   const [accentColor, setAccentColor] = useState("#3b82f6");
 
   // ─── Money behaviour ────────────────────────────────────────────────────
-  const [includeSavings, setIncludeSavingsRaw] = useState(true);
+  const [includeSavings, setIncludeSavingsRaw] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("include_savings");
+      if (saved !== null) return saved === "true";
+    }
+    return true;
+  });
   const [enableFoodBudget, setEnableFoodBudgetRaw] = useState(false);
   const [enableSalaryPlanner, setEnableSalaryPlannerRaw] = useState(false);
   const [foodDailyLimit, setFoodDailyLimitRaw] = useState(0);
@@ -74,6 +80,9 @@ export function useUserPreferences(session: Session | null) {
   const toggleIncludeSavings = useCallback(
     async (val: boolean) => {
       setIncludeSavingsRaw(val);
+      try {
+        localStorage.setItem("include_savings", String(val));
+      } catch {}
       await persist({ include_savings: val });
     },
     [persist]
@@ -181,7 +190,14 @@ export function useUserPreferences(session: Session | null) {
       const emailName = email?.split("@")[0];
       setUserNameRaw(metaName || emailName || "User");
 
-      setIncludeSavingsRaw((meta.include_savings as boolean | undefined) ?? true);
+      if (meta.include_savings !== undefined) {
+        const val = meta.include_savings === true;
+        setIncludeSavingsRaw(val);
+        try { localStorage.setItem("include_savings", String(val)); } catch {}
+      } else if (typeof window !== "undefined") {
+        const saved = localStorage.getItem("include_savings");
+        if (saved !== null) setIncludeSavingsRaw(saved === "true");
+      }
       setEnableFoodBudgetRaw(meta.enable_food_budget === true);
       setEnableSalaryPlannerRaw(meta.enable_salary_planner === true);
       setFoodDailyLimitRaw((meta.food_daily_limit as number | undefined) ?? 0);
@@ -203,6 +219,7 @@ export function useUserPreferences(session: Session | null) {
   /** Reset all preferences to defaults (called on logout). */
   const resetPreferences = useCallback(() => {
     setUserNameRaw("User");
+    try { localStorage.removeItem("include_savings"); } catch {}
     setIncludeSavingsRaw(true);
     setEnableFoodBudgetRaw(false);
     setEnableSalaryPlannerRaw(false);

@@ -17,6 +17,12 @@ const config: CapacitorConfig = {
   android: {
     webContentsDebuggingEnabled: false,
   },
+  plugins: {
+    SystemBars: {
+      insetsHandling: 'css',
+      style: 'DEFAULT',
+    },
+  },
 };
 
 export default config;

@@ -326,6 +326,7 @@ export type CurrencyTotals = {
   investments: number;
   liabilities: number;
   netFinancialPosition: number;
+  netTotal: number;
   accountCount: number;
 };
 
@@ -337,6 +338,7 @@ export type FinancialPosition = {
   totalInvestments: number;
   totalLiabilities: number;
   netFinancialPosition: number;
+  netTotal: number;
   isMultiCurrency: boolean;
   byCurrency: Record<string, CurrencyTotals>;
   currencies: string[];

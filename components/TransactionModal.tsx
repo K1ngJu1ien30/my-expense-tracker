@@ -499,7 +499,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
           >
             <div className="w-12 h-1.5 bg-border rounded-full mx-auto mt-3 mb-4 cursor-grab active:cursor-grabbing" aria-hidden="true" />
 
-            <div className="px-6 pb-8 overflow-y-auto hide-scrollbar">
+            <div className="px-6 pb-[calc(2rem+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)))] overflow-y-auto hide-scrollbar">
               <div className="flex items-center justify-between mb-3">
                 <h2 id="tx-modal-title" className="text-xl font-bold">{editTransactionId ? "Edit" : "New"} Transaction</h2>
                 <button type="button" aria-label="Close" onClick={handleClose} className="p-2 bg-muted rounded-full text-muted-foreground hover:text-foreground transition-colors">
