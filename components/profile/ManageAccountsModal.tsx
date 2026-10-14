@@ -18,6 +18,8 @@ import {
   TrendingUp,
 } from "lucide-react";
 import type { Account, AccountKind, CreditCardDetails } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import { NativeHaptics } from "@/lib/haptics";
 
 const CURRENCIES = ["RM", "SGD", "USD", "JPY"] as const;
 
@@ -87,6 +89,7 @@ export function ManageAccountsModal({
   const [newAccountOpeningBalance, setNewAccountOpeningBalance] = useState("");
   const [editingAccount, setEditingAccount] = useState<string | null>(null);
   const [editingAccountVal, setEditingAccountVal] = useState("");
+  const [nameError, setNameError] = useState<string | null>(null);
 
   // Credit card specific fields
   const [issuer, setIssuer] = useState("");
@@ -100,8 +103,11 @@ export function ManageAccountsModal({
   const archived = accountObjects.filter((a) => a.isArchived);
 
   const submitNew = async () => {
+    setNameError(null);
     const name = newAccount.trim();
     if (!name) {
+      setNameError("Account name cannot be empty.");
+      NativeHaptics.errorShake();
       triggerToast("⚠️ Account name cannot be empty.");
       return;
     }
@@ -109,6 +115,8 @@ export function ManageAccountsModal({
       (a) => a.name.trim().toLowerCase() === name.toLowerCase()
     );
     if (isDuplicate) {
+      setNameError(`An account named "${name}" already exists.`);
+      NativeHaptics.errorShake();
       triggerToast(`⚠️ An account named "${name}" already exists.`);
       return;
     }
@@ -142,6 +150,7 @@ export function ManageAccountsModal({
         reminderDaysBefore: validRemind,
       });
 
+      NativeHaptics.successMedium();
       triggerToast(`Credit card "${name}" added!`);
       setNewAccount("");
       setNewAccountCurrency("RM");
@@ -158,6 +167,7 @@ export function ManageAccountsModal({
     }
 
     addAccount(name, newAccountCurrency, newAccountKind, openingBalance);
+    NativeHaptics.successMedium();
     triggerToast(`"${name}" added!`);
     setNewAccount("");
     setNewAccountCurrency("RM");
@@ -168,6 +178,7 @@ export function ManageAccountsModal({
   const commitRename = (oldName: string) => {
     const next = editingAccountVal.trim();
     if (!next) {
+      NativeHaptics.errorShake();
       triggerToast("⚠️ Account name cannot be empty.");
       return;
     }
@@ -179,10 +190,12 @@ export function ManageAccountsModal({
       (a) => a.name.trim().toLowerCase() === next.toLowerCase() && a.name !== oldName
     );
     if (isDuplicate) {
+      NativeHaptics.errorShake();
       triggerToast(`⚠️ An account named "${next}" already exists.`);
       return;
     }
     renameAccount(oldName, next);
+    NativeHaptics.successMedium();
     setEditingAccount(null);
     triggerToast("Account renamed!");
   };
@@ -444,11 +457,20 @@ export function ManageAccountsModal({
             <div className="flex gap-2">
               <input
                 value={newAccount}
-                onChange={(e) => setNewAccount(e.target.value)}
+                onChange={(e) => {
+                  setNewAccount(e.target.value);
+                  if (nameError) setNameError(null);
+                }}
                 type="text"
                 placeholder={newAccountKind === "credit_card" ? "Card nickname (e.g. Maybank 2 Gold)" : "Account name (e.g. Maybank)"}
                 aria-label="New account name"
-                className="flex-1 bg-card rounded-xl px-3.5 py-2 text-sm font-medium outline-none border border-border text-foreground placeholder:text-muted-foreground/60"
+                aria-invalid={!!nameError}
+                className={cn(
+                  "flex-1 bg-card rounded-xl px-3.5 py-2 text-sm font-medium outline-none border transition-colors text-foreground placeholder:text-muted-foreground/60",
+                  nameError
+                    ? "border-rose-500/80 ring-2 ring-rose-500/20 text-rose-500"
+                    : "border-border"
+                )}
                 onKeyDown={(e) => { if (e.key === "Enter") submitNew(); }}
               />
               <input
@@ -462,6 +484,11 @@ export function ManageAccountsModal({
                 onKeyDown={(e) => { if (e.key === "Enter") submitNew(); }}
               />
             </div>
+            {nameError && (
+              <p role="alert" className="text-xs font-bold text-rose-500 px-1 animate-in fade-in slide-in-from-top-1 duration-200">
+                {nameError}
+              </p>
+            )}
 
             {/* Account Kind Selection */}
             <div className="grid grid-cols-3 gap-1.5">

@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { motion, Reorder } from "framer-motion";
 import { X, GripVertical, Trash2, Plus } from "lucide-react";
-import { getCategoryColor } from "@/lib/utils";
+import { getCategoryColor, cn } from "@/lib/utils";
+import { NativeHaptics } from "@/lib/haptics";
 
 /**
  * Drag-to-reorder category manager. State for "new category input" is local
@@ -27,10 +28,14 @@ export function CategoriesModal({
   onClose: () => void;
 }) {
   const [newCat, setNewCat] = useState("");
+  const [catError, setCatError] = useState<string | null>(null);
 
   const submit = () => {
+    setCatError(null);
     const trimmed = newCat.trim();
     if (!trimmed) {
+      setCatError("Category name cannot be empty.");
+      NativeHaptics.errorShake();
       if (triggerToast) triggerToast("⚠️ Category name cannot be empty.");
       return;
     }
@@ -38,10 +43,13 @@ export function CategoriesModal({
       (c) => c.trim().toLowerCase() === trimmed.toLowerCase()
     );
     if (isDuplicate) {
+      setCatError(`Category "${trimmed}" already exists.`);
+      NativeHaptics.errorShake();
       if (triggerToast) triggerToast(`⚠️ Category "${trimmed}" already exists.`);
       return;
     }
     addCategory(trimmed);
+    NativeHaptics.successMedium();
     if (triggerToast) triggerToast(`Category "${trimmed}" added!`);
     setNewCat("");
   };
@@ -97,7 +105,10 @@ export function CategoriesModal({
                 <button
                   type="button"
                   aria-label={`Delete category ${cat}`}
-                  onClick={() => deleteCategory(cat)}
+                  onClick={() => {
+                    NativeHaptics.lightTick();
+                    deleteCategory(cat);
+                  }}
                   className="text-muted-foreground hover:text-red-500 transition-colors p-1.5"
                 >
                   <Trash2 className="w-4 h-4" aria-hidden="true" />
@@ -112,25 +123,41 @@ export function CategoriesModal({
           )}
         </div>
 
-        <div className="p-4 border-t border-border/40 bg-muted/20 flex gap-2">
-          <input
-            value={newCat}
-            onChange={(e) => setNewCat(e.target.value)}
-            type="text"
-            placeholder="New category..."
-            aria-label="New category name"
-            className="flex-1 bg-card rounded-xl px-4 py-2 text-sm font-medium outline-none border border-border text-foreground"
-            onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
-          />
-          <button
-            type="button"
-            aria-label="Add category"
-            style={{ backgroundColor: accentColor }}
-            onClick={submit}
-            className="text-white p-3 rounded-xl hover:scale-[1.02] active:scale-95 transition-transform"
-          >
-            <Plus className="w-5 h-5" aria-hidden="true" />
-          </button>
+        <div className="p-4 border-t border-border/40 bg-muted/20 space-y-2">
+          <div className="flex gap-2">
+            <input
+              value={newCat}
+              onChange={(e) => {
+                setNewCat(e.target.value);
+                if (catError) setCatError(null);
+              }}
+              type="text"
+              placeholder="New category..."
+              aria-label="New category name"
+              aria-invalid={!!catError}
+              className={cn(
+                "flex-1 bg-card rounded-xl px-4 py-2 text-sm font-medium outline-none border transition-colors text-foreground",
+                catError
+                  ? "border-rose-500/80 ring-2 ring-rose-500/20 text-rose-500"
+                  : "border-border"
+              )}
+              onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+            />
+            <button
+              type="button"
+              aria-label="Add category"
+              style={{ backgroundColor: accentColor }}
+              onClick={submit}
+              className="text-white p-3 rounded-xl hover:scale-[1.02] active:scale-95 transition-transform"
+            >
+              <Plus className="w-5 h-5" aria-hidden="true" />
+            </button>
+          </div>
+          {catError && (
+            <p role="alert" className="text-xs font-bold text-rose-500 px-1 animate-in fade-in slide-in-from-top-1 duration-200">
+              {catError}
+            </p>
+          )}
         </div>
       </motion.div>
     </div>

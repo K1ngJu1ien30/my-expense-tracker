@@ -133,11 +133,13 @@ export default function CreditCardCashbackModal({
 
     const amt = parseFloat(amountStr);
     if (isNaN(amt) || amt <= 0) {
+      NativeHaptics.errorShake();
       setFormError("Please enter a valid positive cashback amount.");
       return;
     }
 
     if (!targetDestAccount) {
+      NativeHaptics.errorShake();
       setFormError("Please select a valid destination account.");
       return;
     }
@@ -162,6 +164,7 @@ export default function CreditCardCashbackModal({
       setNote("");
       onClose();
     } else {
+      NativeHaptics.errorShake();
       setFormError(result.error || "Failed to record cashback.");
     }
   };
@@ -301,7 +304,7 @@ export default function CreditCardCashbackModal({
             /* ─── TAB 1: RECORD CONFIRMED CASHBACK ───────────────────────── */
             <form onSubmit={handleRecordSubmit} className="space-y-4">
               {formError && (
-                <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-center gap-2 text-rose-500 text-xs font-semibold">
+                <div role="alert" className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-center gap-2 text-rose-500 text-xs font-semibold animate-in fade-in slide-in-from-top-1 duration-200">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{formError}</span>
                 </div>
@@ -322,9 +325,18 @@ export default function CreditCardCashbackModal({
                     min="0.01"
                     required
                     placeholder="0.00"
+                    aria-invalid={!!formError}
                     value={amountStr}
-                    onChange={(e) => setAmountStr(e.target.value)}
-                    className="w-full pl-12 pr-4 py-3 rounded-2xl bg-muted/40 border border-border/80 text-foreground font-mono font-black text-lg outline-none focus:border-primary transition-colors"
+                    onChange={(e) => {
+                      setAmountStr(e.target.value);
+                      if (formError) setFormError(null);
+                    }}
+                    className={cn(
+                      "w-full pl-12 pr-4 py-3 rounded-2xl bg-muted/40 border font-mono font-black text-lg outline-none transition-colors",
+                      formError
+                        ? "border-rose-500/80 ring-2 ring-rose-500/20 text-rose-500"
+                        : "border-border/80 focus:border-primary text-foreground"
+                    )}
                   />
                 </div>
               </div>

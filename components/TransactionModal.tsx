@@ -207,6 +207,8 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
   const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [creditCardTxType, setCreditCardTxType] = useState<CreditCardTxType>("purchase");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [amountError, setAmountError] = useState<string | null>(null);
+  const [accountError, setAccountError] = useState<string | null>(null);
 
   const selectedAcc = accountObjects.find(
     a => a.name.trim().toLowerCase() === account.trim().toLowerCase() || a.id === account
@@ -407,6 +409,8 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
 
   const handleClose = useCallback(() => {
     setIsSubmitting(false);
+    setAmountError(null);
+    setAccountError(null);
     setEditTransactionId(null);
     onClose();
   }, [onClose, setEditTransactionId]);
@@ -510,7 +514,14 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                   single compact currency chip next to the amount. Tapping the chip
                   expands the picker inline only when the user actually needs a
                   non-base currency — which in practice is <5% of saves. */}
-              <div className="mb-4 py-4 px-4 bg-muted/50 rounded-3xl">
+              <div
+                className={cn(
+                  "mb-4 py-4 px-4 rounded-3xl transition-all border",
+                  amountError
+                    ? "bg-rose-500/10 border-rose-500/80 ring-2 ring-rose-500/20"
+                    : "bg-muted/50 border-transparent"
+                )}
+              >
                 <div className="flex items-center justify-center gap-2">
                   <button
                     type="button"
@@ -533,11 +544,24 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                     inputMode="decimal"
                     placeholder="0.00"
                     aria-label="Amount"
+                    aria-invalid={!!amountError}
                     value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    className="bg-transparent text-5xl font-black text-foreground outline-none flex-1 min-w-0 text-center placeholder:text-muted"
+                    onChange={(e) => {
+                      setAmount(e.target.value);
+                      if (amountError) setAmountError(null);
+                    }}
+                    className={cn(
+                      "bg-transparent text-5xl font-black outline-none flex-1 min-w-0 text-center placeholder:text-muted",
+                      amountError ? "text-rose-500" : "text-foreground"
+                    )}
                   />
                 </div>
+
+                {amountError && (
+                  <p role="alert" className="text-xs font-bold text-rose-500 text-center mt-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                    {amountError}
+                  </p>
+                )}
 
                 <AnimatePresence initial={false}>
                   {showCurrencyPicker && (
@@ -607,7 +631,21 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                 ) : (
                   <div>
                     <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1.5">Account</label>
-                    <ScrollPillSelector options={accounts} value={account} onChange={setAccount} ariaLabel="Account" accountObjects={accountObjects} />
+                    <ScrollPillSelector
+                      options={accounts}
+                      value={account}
+                      onChange={(val) => {
+                        setAccount(val);
+                        if (accountError) setAccountError(null);
+                      }}
+                      ariaLabel="Account"
+                      accountObjects={accountObjects}
+                    />
+                    {accountError && (
+                      <p role="alert" className="text-[11px] font-semibold text-rose-500 mt-1 animate-in fade-in">
+                        {accountError}
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -942,41 +980,52 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                     if (isSubmitting) return;
                     const parsedAmount = Number(amount);
                     if (!amount || isNaN(parsedAmount) || !isFinite(parsedAmount) || parsedAmount <= 0) {
+                      setAmountError("Please enter a valid positive amount.");
+                      NativeHaptics.errorShake();
                       triggerToast("⚠️ Please enter a valid positive amount.");
                       return;
                     }
                     if (parsedAmount > 999999999.99) {
+                      setAmountError("Amount exceeds maximum supported limit.");
+                      NativeHaptics.errorShake();
                       triggerToast("⚠️ Amount exceeds maximum supported limit.");
                       return;
                     }
 
                     if (!account || !account.trim()) {
+                      setAccountError("Please select an account.");
+                      NativeHaptics.errorShake();
                       triggerToast("⚠️ Please select an account.");
                       return;
                     }
 
                     if (txType === "Transfer") {
                       if (accounts.length < 2) {
+                        NativeHaptics.errorShake();
                         triggerToast("⚠️ Transfers require at least two accounts.");
                         return;
                       }
                       if (!toAccount || !toAccount.trim()) {
+                        NativeHaptics.errorShake();
                         triggerToast("⚠️ Please select a destination account.");
                         return;
                       }
                       if (account.trim().toLowerCase() === toAccount.trim().toLowerCase()) {
+                        NativeHaptics.errorShake();
                         triggerToast("⚠️ Source and destination accounts cannot be the same.");
                         return;
                       }
                     }
 
                     if (txType === "Expense" && (!category || !category.trim())) {
+                      NativeHaptics.errorShake();
                       triggerToast("⚠️ Please select a category.");
                       return;
                     }
 
                     const parsedDate = new Date(date);
                     if (isNaN(parsedDate.getTime())) {
+                      NativeHaptics.errorShake();
                       triggerToast("⚠️ Please enter a valid date.");
                       return;
                     }
@@ -1044,16 +1093,19 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                       if (editTransactionId) {
                          const updateRes = await updateTransaction(editTransactionId, payload);
                          if (updateRes.success) {
+                           NativeHaptics.successMedium();
                            triggerToast(`✅ ${actionLabel} updated successfully!`);
                            if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(50);
                            handleClose();
                          } else {
+                           NativeHaptics.errorShake();
                            triggerToast(`❌ Update failed: ${updateRes.error || "Please try again."}`);
                            // Input preserved — modal remains open
                          }
                       } else {
                          const saveRes = await addTransaction(payload);
                          if (saveRes.success) {
+                           NativeHaptics.successMedium();
                            if (saveRes.status === "synced") {
                              triggerToast(`✅ ${actionLabel} saved!`);
                            } else {
@@ -1062,6 +1114,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                            if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(50);
                            handleClose();
                          } else {
+                           NativeHaptics.errorShake();
                            triggerToast(`❌ Save failed: ${saveRes.error || "Please try again."}`);
                            // Input preserved — modal remains open
                          }

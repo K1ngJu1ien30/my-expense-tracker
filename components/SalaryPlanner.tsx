@@ -101,7 +101,11 @@ export default function SalaryPlanner() {
 
   // Submit Add Handler
   const handleAddItem = async (targetCategory: "subscriptions" | "fixedBills" | "utilities") => {
-    if (!newName.trim() || !newCost || Number(newCost) <= 0) return;
+    if (!newName.trim() || !newCost || Number(newCost) <= 0) {
+      NativeHaptics.errorShake();
+      triggerToast("⚠️ Please enter a name and positive cost.");
+      return;
+    }
 
     const chosenAccountName = newSourceAccount || accounts[0] || "Cash";
     const matchedAcc = accountObjects.find(
@@ -154,7 +158,11 @@ export default function SalaryPlanner() {
 
   // Handle Edit Save
   const handleUpdateItem = async () => {
-    if (!editingItem || !editName.trim() || !editCost || Number(editCost) <= 0) return;
+    if (!editingItem || !editName.trim() || !editCost || Number(editCost) <= 0) {
+      NativeHaptics.errorShake();
+      triggerToast("⚠️ Please enter a name and positive cost.");
+      return;
+    }
 
     const matchedAcc = accountObjects.find(
       (a) => a.name.trim().toLowerCase() === editSourceAccount.trim().toLowerCase()

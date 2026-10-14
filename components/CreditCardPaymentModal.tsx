@@ -227,20 +227,24 @@ export default function CreditCardPaymentModal({
     setErrorMessage(null);
     const num = Number(amount);
     if (isNaN(num) || num <= 0) {
+      NativeHaptics.errorShake();
       setErrorMessage("Please enter a valid positive payment amount.");
       return;
     }
     if (!currentCard) {
+      NativeHaptics.errorShake();
       setErrorMessage("Please select a credit card.");
       return;
     }
     if (!currentSource) {
+      NativeHaptics.errorShake();
       setErrorMessage("Please select a source payment account.");
       return;
     }
 
     // Check unsupported overpayment (> current outstanding debt when debt > 0)
     if (currentCardDebt > 0 && num > currentCardDebt + 0.01) {
+      NativeHaptics.errorShake();
       setErrorMessage(
         `Amount exceeds current total card debt (${currency} ${currentCardDebt.toFixed(2)}). Unsupported overpayment.`
       );
@@ -291,10 +295,12 @@ export default function CreditCardPaymentModal({
     const minDue = Number(minimumPayment || 0);
 
     if (isNaN(closing) || closing <= 0) {
+      NativeHaptics.errorShake();
       triggerToast("Please enter a valid statement closing balance.");
       return;
     }
     if (new Date(dueDate) < new Date(stDate)) {
+      NativeHaptics.errorShake();
       triggerToast("Due date cannot be earlier than statement date.");
       return;
     }
@@ -312,6 +318,7 @@ export default function CreditCardPaymentModal({
     setIsSavingStatement(false);
 
     if (res.success && res.statement) {
+      NativeHaptics.successMedium();
       setShowAddStatement(false);
       setSelectedStatementId(res.statement.id);
       setClosingBalance("");
@@ -1020,13 +1027,19 @@ export default function CreditCardPaymentModal({
                       type="number"
                       step="0.01"
                       placeholder="0.00"
+                      aria-invalid={!!errorMessage}
                       value={amount}
                       onChange={(e) => {
                         setAmount(e.target.value);
                         setPreset("custom");
                         setErrorMessage(null);
                       }}
-                      className="w-full bg-muted/30 border border-border/80 focus:border-primary pl-14 pr-4 py-3 rounded-2xl text-lg font-black outline-none transition-all text-foreground font-mono"
+                      className={cn(
+                        "w-full bg-muted/30 border pl-14 pr-4 py-3 rounded-2xl text-lg font-black outline-none transition-all font-mono",
+                        errorMessage && (isNaN(Number(amount)) || Number(amount) <= 0 || (currentCardDebt > 0 && Number(amount) > currentCardDebt + 0.01))
+                          ? "border-rose-500/80 ring-2 ring-rose-500/20 text-rose-500"
+                          : "border-border/80 focus:border-primary text-foreground"
+                      )}
                     />
                   </div>
                 </div>
@@ -1103,7 +1116,7 @@ export default function CreditCardPaymentModal({
 
                 {/* Error Banner */}
                 {errorMessage && (
-                  <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-500 text-xs font-semibold flex items-center gap-2">
+                  <div role="alert" className="p-3.5 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-rose-500 text-xs font-semibold flex items-center gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
                     <AlertTriangle className="w-4 h-4 shrink-0" />
                     <span>{errorMessage}</span>
                   </div>
