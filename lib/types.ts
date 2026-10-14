@@ -414,3 +414,29 @@ export type RawRewardConfigRow = {
   updated_at?: string;
 };
 
+// -------------------------------------------------------------------------
+// Interest & Finance Charges types (Phase 3C)
+// -------------------------------------------------------------------------
+
+export type FinanceChargeType = "interest" | "late_fee" | "annual_fee" | "other_fee";
+
+export type InterestProjection = {
+  apr: number;
+  dailyRatePct: number;
+  unpaidBalance: number;
+  estimatedDailyCharge: number;
+  estimatedMonthlyCharge: number;
+  gracePeriodActive: boolean;
+  isOverdue: boolean;
+  potentialLateFee: number;
+  daysRemainingInCycle: number;
+};
+
+export type ReconcileFinanceChargeParams = {
+  card: Account;
+  chargeType: FinanceChargeType;
+  amount: number;
+  date: string;
+  note?: string;
+};
+

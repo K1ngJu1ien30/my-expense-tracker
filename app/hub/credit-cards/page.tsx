@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
   ArrowLeft,
   CreditCard,
@@ -25,13 +25,19 @@ import {
   calculateStatementRemaining,
   calculateMinimumRemaining,
 } from "@/lib/hooks/useCreditCardPayments";
-import type { CreditCardStatement, Transaction } from "@/lib/types";
+import type { Account, CreditCardStatement, Transaction, FinanceChargeType } from "@/lib/types";
 import { deriveCreditCardReminders } from "@/lib/creditCardReminders";
 import {
   calculateEstimatedCashback,
   calculateConfirmedCashback,
 } from "@/lib/cashbackEngine";
 import CreditCardCashbackModal from "@/components/CreditCardCashbackModal";
+import {
+  calculateInterestProjection,
+  APR_TIER_PRESETS,
+} from "@/lib/interestEngine";
+import CreditCardFinanceChargeModal from "@/components/CreditCardFinanceChargeModal";
+import { roundCurrency } from "@/lib/utils";
 
 export default function CreditCardsDashboardPage() {
   const {
@@ -48,9 +54,11 @@ export default function CreditCardsDashboardPage() {
     cashbackRecords,
     saveRewardsConfig,
     recordConfirmedCashback,
+    addTransaction,
   } = useAppContext();
 
   const [showCashbackModal, setShowCashbackModal] = useState(false);
+  const [showFinanceChargeModal, setShowFinanceChargeModal] = useState(false);
 
   // ─── Filter credit card accounts ─────────────────────────────────────────
   const creditCards = useMemo(
@@ -288,6 +296,57 @@ export default function CreditCardsDashboardPage() {
       cardPayments,
     };
   }, [activeCard, balancesData, statements, creditCardPayments, transactions]);
+
+  // Active card interest & finance charge projections (Phase 3C)
+  const interestProjection = useMemo(() => {
+    if (!activeCard || !activeCardMetrics) return null;
+    return calculateInterestProjection({
+      activeCard,
+      cardDebt: activeCardMetrics.outstandingDebt,
+      latestStatement: activeCardMetrics.latestStatement,
+      statementRemaining: activeCardMetrics.statementRemaining,
+      minimumRemaining: activeCardMetrics.minimumRemaining,
+    });
+  }, [activeCard, activeCardMetrics]);
+
+  // Reconcile actual bank finance charges & fees
+  const handleReconcileFinanceCharge = useCallback(
+    async (params: {
+      card: Account;
+      chargeType: FinanceChargeType;
+      amount: number;
+      date: string;
+      note?: string;
+    }) => {
+      const { card, chargeType, amount, date, note } = params;
+      const cleanAmount = roundCurrency(amount);
+
+      const txPayload: Partial<Transaction> = {
+        type: "Expense",
+        amount: cleanAmount,
+        account: card.name,
+        account_id: card.id || card.name,
+        date,
+        category: "Fees & Charges",
+        credit_card_tx_type: chargeType === "interest" ? "interest" : "fee",
+        note:
+          note?.trim() ||
+          (chargeType === "interest"
+            ? `Finance charge / interest (${card.name})`
+            : chargeType === "late_fee"
+            ? `Late payment fee (${card.name})`
+            : `Bank fee (${card.name})`),
+      };
+
+      const result = await addTransaction(txPayload);
+      if (result.success) {
+        triggerToast(`Recorded ${currency} ${cleanAmount.toFixed(2)} bank charge on ${card.name}`);
+        return { success: true };
+      }
+      return { success: false, error: result.error || "Failed to record finance charge." };
+    },
+    [addTransaction, currency, triggerToast]
+  );
 
   // Tab switcher handler
   const handleSelectTab = (id: string) => {
@@ -1239,6 +1298,181 @@ export default function CreditCardsDashboardPage() {
                 </p>
               </div>
 
+              {/* ─── Interest & Finance Charge Projections (Phase 3C) ───────── */}
+              <div className="p-5 bg-card rounded-3xl border border-border/60 shadow-soft space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Percent className="w-4 h-4 text-amber-500" />
+                    <div>
+                      <h3 className="font-bold text-sm text-foreground flex items-center gap-1.5">
+                        <span>Interest &amp; Finance Charges</span>
+                        <span
+                          className={cn(
+                            "text-[9px] font-black uppercase px-2 py-0.5 rounded-full",
+                            interestProjection?.gracePeriodActive
+                              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                              : interestProjection?.isOverdue
+                              ? "bg-rose-500/10 text-rose-500"
+                              : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                          )}
+                        >
+                          {interestProjection?.gracePeriodActive
+                            ? "Grace Period Active"
+                            : interestProjection?.isOverdue
+                            ? "Overdue Warning"
+                            : "Revolving Debt"}
+                        </span>
+                      </h3>
+                      <p className="text-[10px] text-muted-foreground">
+                        Projected finance charges based on {interestProjection?.apr ?? 15}% p.a. APR
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowFinanceChargeModal(true);
+                      NativeHaptics.lightTick();
+                    }}
+                    className="px-3.5 py-1.5 rounded-xl bg-muted/60 hover:bg-muted text-foreground text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border border-border/60"
+                  >
+                    <Receipt className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Reconcile Bank Charge</span>
+                  </button>
+                </div>
+
+                {/* Status Callout Card */}
+                <div
+                  className={cn(
+                    "p-4 rounded-2xl border text-xs leading-relaxed flex items-start gap-3",
+                    interestProjection?.gracePeriodActive
+                      ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-800 dark:text-emerald-300"
+                      : interestProjection?.isOverdue
+                      ? "bg-rose-500/10 border-rose-500/30 text-rose-800 dark:text-rose-300"
+                      : "bg-amber-500/10 border-amber-500/20 text-amber-800 dark:text-amber-300"
+                  )}
+                >
+                  <div className="shrink-0 mt-0.5">
+                    {interestProjection?.gracePeriodActive ? (
+                      <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                    ) : interestProjection?.isOverdue ? (
+                      <AlertTriangle className="w-4 h-4 text-rose-500 animate-pulse" />
+                    ) : (
+                      <Clock className="w-4 h-4 text-amber-500" />
+                    )}
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="font-bold text-xs">
+                      {interestProjection?.gracePeriodActive
+                        ? "Interest-Free Grace Period Active"
+                        : interestProjection?.isOverdue
+                        ? "Payment Overdue — Finance Charge & Penalty Accruing"
+                        : "Revolving Balance Carried Past Due Date"}
+                    </p>
+                    <p className="text-[11px] opacity-90">
+                      {interestProjection?.gracePeriodActive
+                        ? "Statement balance is paid in full (or within grace period). No finance charges will be billed if settled by the due date."
+                        : interestProjection?.isOverdue
+                        ? `Carrying an overdue balance past your due date accrues interest at ${interestProjection?.apr}% p.a. plus an estimated late penalty of ~${currency} ${(interestProjection?.potentialLateFee ?? 0).toFixed(2)}.`
+                        : `An unpaid statement balance of ${currency} ${(interestProjection?.unpaidBalance ?? 0).toFixed(2)} is accruing daily finance charges at ${interestProjection?.apr}% p.a.`}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Projection Metrics 3-Column */}
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="p-3 bg-muted/20 border border-border/40 rounded-2xl">
+                    <span className="text-[10px] text-muted-foreground uppercase font-bold block">
+                      Card APR
+                    </span>
+                    <span className="text-base font-black font-mono text-foreground block mt-0.5">
+                      {interestProjection?.apr.toFixed(1)}%
+                    </span>
+                    <span className="text-[9px] text-muted-foreground block">
+                      ~{interestProjection?.dailyRatePct.toFixed(3)}%/day
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-muted/20 border border-border/40 rounded-2xl">
+                    <span className="text-[10px] text-muted-foreground uppercase font-bold block">
+                      Daily Estimate
+                    </span>
+                    <span className="text-base font-black font-mono text-foreground block mt-0.5">
+                      {currency} {(interestProjection?.estimatedDailyCharge ?? 0).toFixed(2)}
+                    </span>
+                    <span className="text-[9px] text-muted-foreground block">
+                      per day carried
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-muted/20 border border-border/40 rounded-2xl">
+                    <span className="text-[10px] text-muted-foreground uppercase font-bold block">
+                      30-Day Projection
+                    </span>
+                    <span
+                      className={cn(
+                        "text-base font-black font-mono block mt-0.5",
+                        (interestProjection?.estimatedMonthlyCharge ?? 0) > 0
+                          ? "text-rose-500"
+                          : "text-emerald-500"
+                      )}
+                    >
+                      {currency} {(interestProjection?.estimatedMonthlyCharge ?? 0).toFixed(2)}
+                    </span>
+                    <span className="text-[9px] text-muted-foreground block">
+                      if unpaid
+                    </span>
+                  </div>
+                </div>
+
+                {/* APR Tier Configuration Selector */}
+                <div className="space-y-2 pt-1 border-t border-border/40">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-muted-foreground">
+                      Card Tier / APR Preset:
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      Current: {interestProjection?.apr ?? 15}% p.a.
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {APR_TIER_PRESETS.map((p) => {
+                      const isSelected = (interestProjection?.apr ?? 15) === p.apr;
+                      return (
+                        <button
+                          key={p.tier}
+                          type="button"
+                          onClick={async () => {
+                            NativeHaptics.lightTick();
+                            await updateCreditCardDetails(activeCard.id || activeCard.name, {
+                              apr: p.apr,
+                            });
+                            triggerToast(`Updated ${activeCard.name} APR to ${p.apr}% p.a.`);
+                          }}
+                          className={cn(
+                            "p-2 rounded-xl text-center border text-xs font-bold transition-all cursor-pointer",
+                            isSelected
+                              ? "bg-primary text-white border-primary shadow-xs"
+                              : "bg-muted/40 text-muted-foreground border-border/60 hover:bg-muted"
+                          )}
+                        >
+                          <span className="block">{p.apr.toFixed(1)}%</span>
+                          <span className="text-[9px] font-normal opacity-75 block line-clamp-1">
+                            Tier {p.tier}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Strict Non-Posting Guarantee Disclaimer */}
+                <p className="text-[10px] text-muted-foreground/80 leading-snug">
+                  💡 Projections are strictly informational estimates to help you avoid finance charges. Antigravity never auto-posts predicted interest to your actual transactions. When your bank statement arrives, use &quot;Reconcile Bank Charge&quot; to record verified fees.
+                </p>
+              </div>
+
               {/* ─── New Purchases Since Statement Closing ───────────────────── */}
               <div className="p-5 bg-card rounded-3xl border border-border/60 shadow-soft space-y-3">
                 <div className="flex items-center justify-between">
@@ -1362,6 +1596,18 @@ export default function CreditCardsDashboardPage() {
           cashbackRecords={cashbackRecords}
           onSaveConfig={saveRewardsConfig}
           onRecordCashback={recordConfirmedCashback}
+        />
+      )}
+
+      {/* Credit Card Finance Charge Reconciliation Modal (Phase 3C) */}
+      {showFinanceChargeModal && activeCard && (
+        <CreditCardFinanceChargeModal
+          isOpen={showFinanceChargeModal}
+          onClose={() => setShowFinanceChargeModal(false)}
+          card={activeCard}
+          currency={currency}
+          accentColor={accentColor}
+          onReconcile={handleReconcileFinanceCharge}
         />
       )}
     </div>
