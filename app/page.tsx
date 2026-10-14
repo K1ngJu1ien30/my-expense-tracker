@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from "framer-motion";
-import { TrendingUp, Wallet, Target, Clock, HelpCircle, Receipt } from "lucide-react";
+import { TrendingUp, Wallet, Target, Clock, HelpCircle, Receipt, CreditCard } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer, Tooltip } from "recharts";
 import Link from "next/link";
 import { useAppContext } from "@/lib/context";
@@ -10,6 +10,7 @@ import { NativeHaptics } from "@/lib/haptics";
 import { getTimeTheme } from "@/lib/timeTheme";
 import MonthlyReceiptModal from "@/components/MonthlyReceiptModal";
 import { calculateFinancialPosition } from "@/lib/balance";
+import { cn } from "@/lib/utils";
 
 /**
  * Currency value that smoothly animates from its previous value to the new
@@ -285,6 +286,31 @@ export default function Dashboard() {
       distinctPayees: payees.size,
     };
   }, [transactions, isClaimsEnabled]);
+
+  // Credit card summary — drives the credit card companion card on Home
+  const creditCardSummary = useMemo(() => {
+    const cCards = accountObjects.filter((a) => a.kind === "credit_card" && !a.isArchived);
+    if (cCards.length === 0) return null;
+
+    let totalDebt = 0;
+    let totalLimit = 0;
+
+    cCards.forEach((c) => {
+      const bal = accountBalances[c.name] ?? (Number(c.openingBalance) || 0);
+      if (bal < 0) totalDebt += Math.abs(bal);
+      const lim = Number(c.creditLimit || 0);
+      if (lim > 0) totalLimit += lim;
+    });
+
+    const utilization = totalLimit > 0 ? (totalDebt / totalLimit) * 100 : 0;
+
+    return {
+      cardCount: cCards.length,
+      totalDebt: Math.round(totalDebt * 100) / 100,
+      totalLimit: Math.round(totalLimit * 100) / 100,
+      utilization: Math.round(utilization * 10) / 10,
+    };
+  }, [accountObjects, accountBalances]);
 
   // Ordered account list: official order first, ghost accounts appended
   const orderedAccountCards = useMemo(() => {
@@ -703,6 +729,59 @@ export default function Dashboard() {
                 </p>
               </div>
               <span className="text-[10px] font-bold text-amber-500/80 uppercase tracking-wider shrink-0">Review →</span>
+            </Link>
+          )}
+
+          {/* Credit Card Overview Widget (Phase 2E) */}
+          {creditCardSummary && (
+            <Link
+              href="/hub/credit-cards"
+              className="bg-card p-4 rounded-3xl shadow-soft border border-rose-500/20 hover:border-rose-500/50 flex flex-col gap-3 transition-all cursor-pointer block"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="bg-rose-500/10 w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 text-rose-500">
+                    <CreditCard className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-rose-500 block">
+                      Credit Cards ({creditCardSummary.cardCount})
+                    </span>
+                    <span className="text-sm font-black text-foreground font-mono">
+                      {formatCurrency(creditCardSummary.totalDebt)} Outstanding
+                    </span>
+                  </div>
+                </div>
+                <span className="text-[10px] font-bold text-rose-500 hover:underline">
+                  Dashboard →
+                </span>
+              </div>
+
+              {creditCardSummary.totalLimit > 0 && (
+                <div className="space-y-1 bg-muted/20 p-2.5 rounded-2xl border border-border/40">
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-muted-foreground font-medium">Utilization:</span>
+                    <span className="font-mono font-bold text-foreground">
+                      {creditCardSummary.utilization.toFixed(1)}% of {formatCurrency(creditCardSummary.totalLimit)}
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={cn(
+                        "h-full rounded-full transition-all",
+                        creditCardSummary.utilization > 70
+                          ? "bg-rose-500"
+                          : creditCardSummary.utilization > 30
+                          ? "bg-amber-500"
+                          : "bg-emerald-500"
+                      )}
+                      style={{
+                        width: `${Math.min(100, Math.max(2, creditCardSummary.utilization))}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
             </Link>
           )}
 

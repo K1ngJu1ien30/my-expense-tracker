@@ -9,7 +9,7 @@ import { getHeatmapTileStyle } from "../calendar/page";
 export default function HubPage() {
   const {
     accentColor, enableFoodBudget, enableSalaryPlanner, isVaultEnabled,
-    isClaimsEnabled, transactions
+    isClaimsEnabled, transactions, accountObjects,
   } = useAppContext();
 
   // ─── Heatmap Calendar Data Derivation ──────────────────────────────────────
@@ -58,6 +58,18 @@ export default function HubPage() {
         enableFoodBudget && "Food Budget",
         enableSalaryPlanner && "Salary Planner",
       ].filter(Boolean),
+    },
+    {
+      href: "/hub/credit-cards",
+      icon: "💳",
+      title: "Credit Cards",
+      description: "Limits, utilization, statements & unbilled spending",
+      color: "bg-rose-500/10",
+      enabled: true,
+      sub: (() => {
+        const cCards = accountObjects.filter((a) => a.kind === "credit_card" && !a.isArchived);
+        return cCards.length > 0 ? [`${cCards.length} Active Card${cCards.length > 1 ? "s" : ""}`] : [];
+      })(),
     },
     {
       href: "/vault",
