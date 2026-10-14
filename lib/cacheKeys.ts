@@ -16,6 +16,14 @@ export function getUserPinKey(userId?: string): string {
   return userId ? `app_lock_pin_${userId}` : LEGACY_PIN_KEY;
 }
 
+export function getUserCreditCardStatementsKey(userId?: string): string {
+  return userId ? `tracker_cc_statements_${userId}` : "tracker_cc_statements_anon";
+}
+
+export function getUserCreditCardPaymentsKey(userId?: string): string {
+  return userId ? `tracker_cc_payments_${userId}` : "tracker_cc_payments_anon";
+}
+
 /**
  * Migrates legacy un-scoped cache data to the authenticated user's isolated key.
  * Ensures existing users do not lose their offline cache while preventing another

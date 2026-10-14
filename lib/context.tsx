@@ -17,6 +17,9 @@ import type {
   Account,
   AccountKind,
   CreditCardDetails,
+  CreditCardStatement,
+  CreditCardPayment,
+  CreditCardPaymentType,
 } from "./types";
 import { useEasterEggsUI } from "./hooks/useEasterEggsUI";
 import { useUIState } from "./hooks/useUIState";
@@ -26,6 +29,7 @@ import { useSyncState } from "./hooks/useSyncState";
 import { useMoneyState } from "./hooks/useMoneyState";
 import { usePlanningState } from "./hooks/usePlanningState";
 import { useModulesData } from "./hooks/useModulesData";
+import { useCreditCardPayments } from "./hooks/useCreditCardPayments";
 
 // Re-export for backward compatibility — existing pages import from "@/lib/context".
 // Keeping this until we move everything to direct type imports from "@/lib/types".
@@ -167,6 +171,31 @@ type AppContextType = {
   toggleTimeBasedGreeting: (val: boolean) => Promise<void>;
   enableFridayThe13th: boolean;
   toggleFridayThe13th: (val: boolean) => Promise<void>;
+  showCreditCardPaymentModal: boolean;
+  setShowCreditCardPaymentModal: (val: boolean) => void;
+  activePaymentCardId: string | null;
+  openCreditCardPayment: (cardId?: string) => void;
+  closeCreditCardPayment: () => void;
+  statements: CreditCardStatement[];
+  creditCardPayments: CreditCardPayment[];
+  addCreditCardStatement: (params: {
+    accountId: string;
+    statementDate: string;
+    dueDate: string;
+    openingBalance?: number;
+    closingBalance: number;
+    minimumPayment?: number;
+    note?: string;
+  }) => Promise<{ success: boolean; statement?: CreditCardStatement; error?: string }>;
+  recordCreditCardPayment: (params: {
+    accountId: string;
+    sourceAccountId: string;
+    statementId?: string | null;
+    paymentDate: string;
+    amount: number;
+    paymentType: CreditCardPaymentType;
+    note?: string;
+  }) => Promise<{ success: boolean; paymentId?: string; status?: "synced" | "pending_sync"; error?: string }>;
 };
 
 export const AppContext = createContext<AppContextType | null>(null);
@@ -440,6 +469,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     isOfflineRef.current = isOffline;
   }, [isOffline]);
 
+  // ─── Credit Card Payments & Statements (Phase 2D) ──────────────────────
+  const {
+    statements,
+    payments: creditCardPayments,
+    addCreditCardStatement,
+    recordCreditCardPayment,
+  } = useCreditCardPayments({
+    session,
+    isOfflineRef,
+    accountObjects,
+    transactions,
+    addTransaction,
+    triggerToast,
+  });
+
+  const [showCreditCardPaymentModal, setShowCreditCardPaymentModal] = useState(false);
+  const [activePaymentCardId, setActivePaymentCardId] = useState<string | null>(null);
+
+  const openCreditCardPayment = useCallback((cardId?: string) => {
+    if (cardId) setActivePaymentCardId(cardId);
+    setShowCreditCardPaymentModal(true);
+  }, []);
+
+  const closeCreditCardPayment = useCallback(() => {
+    setShowCreditCardPaymentModal(false);
+    setActivePaymentCardId(null);
+  }, []);
+
   // Theming: accentColor is owned by useUserPreferences (see top of provider)
 
   // Currency formatter — integer math to avoid floating-point errors.
@@ -663,6 +720,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       enableFridayThe13th, toggleFridayThe13th,
       activeAssetId, setActiveAssetId,
       showTransactionModal, setShowTransactionModal,
+      showCreditCardPaymentModal, setShowCreditCardPaymentModal,
+      activePaymentCardId, openCreditCardPayment, closeCreditCardPayment,
+      statements, creditCardPayments,
+      addCreditCardStatement, recordCreditCardPayment,
       isOffline,
       isGodMode, whaleAlert, sharkUndo, derryActive, triggerDerry,
       penguinAlert, dragonAlert, phoenixAlert,

@@ -82,6 +82,7 @@ export default function Dashboard() {
     derryActive,
     isClaimsEnabled,
     enableTimeBasedGreeting,
+    openCreditCardPayment,
   } = useAppContext();
   const pinnedGoals = isGodMode ? goals.map(g => ({ ...g, current: g.target })) : goals.filter(g => g.isPinned);
 
@@ -491,7 +492,20 @@ export default function Dashboard() {
                       <div className="flex items-center justify-between gap-1.5">
                         <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider block truncate">{name}</span>
                         {kind === "credit_card" && (
-                          <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 bg-rose-500/20 text-rose-300 rounded shrink-0">Card</span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 bg-rose-500/20 text-rose-300 rounded">Card</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openCreditCardPayment(name);
+                              }}
+                              aria-label={`Pay ${name}`}
+                              className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 bg-white/20 hover:bg-white/30 active:scale-95 text-white rounded transition-all cursor-pointer"
+                            >
+                              Pay
+                            </button>
+                          </div>
                         )}
                         {kind === "savings" && (
                           <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 bg-amber-500/20 text-amber-300 rounded shrink-0">Save</span>

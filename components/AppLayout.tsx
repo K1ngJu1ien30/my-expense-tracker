@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import BottomNav from "./BottomNav";
 import TransactionModal from "./TransactionModal";
+import CreditCardPaymentModal from "./CreditCardPaymentModal";
 import AuthScreen from "./AuthScreen";
 import InstallPrompt from "./InstallPrompt";
 import AuthGate from "./AuthGate";
@@ -13,7 +14,16 @@ import { AnimatePresence, motion } from "framer-motion";
 import DesktopSidebar from "./DesktopSidebar";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { toast, session, authLoading, showTransactionModal, setShowTransactionModal } = useAppContext();
+  const {
+    toast,
+    session,
+    authLoading,
+    showTransactionModal,
+    setShowTransactionModal,
+    showCreditCardPaymentModal,
+    setShowCreditCardPaymentModal,
+    activePaymentCardId,
+  } = useAppContext();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -57,11 +67,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setShowTransactionModal(false);
-    // `setShowTransactionModal` is a stable context setter — re-adding it
-    // to the deps array would cause React 19's linter to suggest wrapping
-    // it in useCallback inside the provider, which is already the case.
-    // Excluded here to keep this effect's intent (reset-on-route-change)
-    // clear.
+    setShowCreditCardPaymentModal(false);
+    // `setShowTransactionModal` and `setShowCreditCardPaymentModal` are stable context setters.
+    // Excluded here to keep this effect's intent (reset-on-route-change) clear.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
@@ -162,6 +170,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         <InstallPrompt />
         <TransactionModal isOpen={showTransactionModal} onClose={() => setShowTransactionModal(false)} />
+        <CreditCardPaymentModal
+          isOpen={showCreditCardPaymentModal}
+          onClose={() => setShowCreditCardPaymentModal(false)}
+          initialCardId={activePaymentCardId}
+        />
         <BottomNav onOpenAdd={() => setShowTransactionModal(true)} />
         <div id="app-privacy-blur" aria-hidden="true" style={{ display: 'none' }} className="fixed inset-0 z-[10000] bg-background/80 backdrop-blur-2xl pointer-events-none" />
       </div>

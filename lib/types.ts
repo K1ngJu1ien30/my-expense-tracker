@@ -112,6 +112,42 @@ export type AssetLog = {
 
 
 
+export type CreditCardStatement = {
+  id: string;
+  userId?: string;
+  accountId: string;
+  statementDate: string; // YYYY-MM-DD
+  dueDate: string; // YYYY-MM-DD
+  openingBalance: number;
+  closingBalance: number;
+  minimumPayment: number;
+  isSettled: boolean;
+  settledAt?: string | null;
+  note?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type CreditCardPaymentType =
+  | "full_statement"
+  | "minimum_due"
+  | "custom"
+  | "full_outstanding";
+
+export type CreditCardPayment = {
+  id: string;
+  userId?: string;
+  accountId: string;
+  sourceAccountId: string;
+  statementId?: string | null;
+  transactionId?: string | null;
+  paymentDate: string; // YYYY-MM-DD
+  amount: number;
+  paymentType: CreditCardPaymentType;
+  note?: string | null;
+  createdAt?: string;
+};
+
 export type CreditCardDetails = {
   accountId: string;
   userId?: string;
@@ -206,6 +242,36 @@ export type RawCreditCardDetailsRow = {
   reminder_days_before: number;
   created_at?: string;
   updated_at?: string;
+};
+
+export type RawCreditCardStatementRow = {
+  id: string;
+  user_id: string;
+  account_id: string;
+  statement_date: string;
+  due_date: string;
+  opening_balance: number | string;
+  closing_balance: number | string;
+  minimum_payment: number | string;
+  is_settled: boolean;
+  settled_at: string | null;
+  note: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type RawCreditCardPaymentRow = {
+  id: string;
+  user_id: string;
+  account_id: string;
+  source_account_id: string;
+  statement_id: string | null;
+  transaction_id: string | null;
+  payment_date: string;
+  amount: number | string;
+  payment_type: CreditCardPaymentType;
+  note: string | null;
+  created_at?: string;
 };
 
 export type RawUserCategoryRow = {

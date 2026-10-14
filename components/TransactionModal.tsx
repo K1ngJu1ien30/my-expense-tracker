@@ -184,7 +184,7 @@ function OptionChip({
 }
 
 export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const { categories, triggerToast, accentColor, addTransaction, updateTransaction, transactions, editTransactionId, setEditTransactionId, accounts, accountObjects, currency, exchangeRates, triggerDerry, session } = useAppContext();
+  const { categories, triggerToast, accentColor, addTransaction, updateTransaction, transactions, editTransactionId, setEditTransactionId, accounts, accountObjects, currency, exchangeRates, triggerDerry, session, openCreditCardPayment } = useAppContext();
 
   const [txType, setTxType] = useState<TxType>("Expense");
   const [modalCurrency, setModalCurrency] = useState(currency);
@@ -652,6 +652,17 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                     <p className="text-[11px] text-muted-foreground leading-snug">
                       Transfers funds from <strong>{account || "bank"}</strong> to pay down <strong>{toAccount}</strong> debt. Does not create an extra expense.
                     </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleClose();
+                        openCreditCardPayment(toAccount);
+                      }}
+                      className="mt-0.5 text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 w-fit cursor-pointer"
+                    >
+                      <span>Open Detailed Credit Card Payment Form</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </button>
                   </div>
                 )}
 
