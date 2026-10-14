@@ -11,10 +11,12 @@ import { getUserDataCacheKey, migrateLegacyCacheToUser } from "../cacheKeys";
 import type {
   Account,
   Asset,
+  CreditCardDetails,
   Goal,
   PlannerItem,
   Subscription,
   Transaction,
+  RawCreditCardDetailsRow,
   RawGoalRow,
   RawSubscriptionRow,
   RawUserAccountRow,
@@ -83,7 +85,7 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
 
       try {
         console.log("[refreshData] Fetching live data...");
-        const [txs, gls, subs, plannerRes, assetsRes, accountsRes, categoriesRes] =
+        const [txs, gls, subs, plannerRes, assetsRes, accountsRes, categoriesRes, cardDetailsRes] =
           await Promise.all([
             supabase.from("transactions").select("*").eq("user_id", currentUser.id).order("date", { ascending: false }),
             supabase.from("goals").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false }),
@@ -93,6 +95,7 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
             // Migration 002 tables — tolerant of missing table / RLS issues.
             supabase.from("user_accounts").select("*").eq("user_id", currentUser.id).order("sort_order", { ascending: true }),
             supabase.from("user_categories").select("name").eq("user_id", currentUser.id).order("sort_order", { ascending: true }),
+            supabase.from("credit_card_details").select("*").eq("user_id", currentUser.id),
           ]);
 
         // Supabase select() does not throw on network failure — force it.
@@ -112,20 +115,45 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
           throw new Error("Supabase returned null data");
         }
 
+        // Map credit_card_details by account_id
+        const cardDetailsMap = new Map<string, CreditCardDetails>();
+        if (!cardDetailsRes.error && cardDetailsRes.data && cardDetailsRes.data.length > 0) {
+          (cardDetailsRes.data as RawCreditCardDetailsRow[]).forEach(c => {
+            cardDetailsMap.set(c.account_id, {
+              accountId: c.account_id,
+              userId: c.user_id,
+              issuer: c.issuer || undefined,
+              cardLastFour: c.card_last_four || undefined,
+              statementDay: c.statement_day,
+              gracePeriodDays: c.grace_period_days,
+              dueDay: c.due_day,
+              apr: c.apr !== null && c.apr !== undefined ? Number(c.apr) : null,
+              cardColor: c.card_color || undefined,
+              reminderDaysBefore: c.reminder_days_before ?? 3,
+              createdAt: c.created_at,
+              updatedAt: c.updated_at,
+            });
+          });
+        }
+
         // ─── New-table-first account/category resolution (Migration 002) ──
         if (!accountsRes.error && accountsRes.data && accountsRes.data.length > 0) {
-          savedAccounts = (accountsRes.data as RawUserAccountRow[]).map(a => ({
-            id: a.id,
-            name: a.name,
-            currencyCode: a.currency_code || "RM",
-            isArchived: a.is_archived || false,
-            kind: a.kind || "bank",
-            openingBalance: Number(a.opening_balance || 0),
-            openingBalanceDate: a.opening_balance_date || undefined,
-            creditLimit: a.credit_limit ? Number(a.credit_limit) : null,
-            statementDay: a.statement_day ?? null,
-            dueDay: a.due_day ?? null,
-          }));
+          savedAccounts = (accountsRes.data as RawUserAccountRow[]).map(a => {
+            const cd = cardDetailsMap.get(a.id);
+            return {
+              id: a.id,
+              name: a.name,
+              currencyCode: a.currency_code || "RM",
+              isArchived: a.is_archived || false,
+              kind: a.kind || "bank",
+              openingBalance: Number(a.opening_balance || 0),
+              openingBalanceDate: a.opening_balance_date || undefined,
+              creditLimit: a.credit_limit ? Number(a.credit_limit) : null,
+              statementDay: cd?.statementDay ?? a.statement_day ?? null,
+              dueDay: cd?.dueDay ?? a.due_day ?? null,
+              cardDetails: cd,
+            };
+          });
           console.log("[refreshData] Loaded", savedAccounts.length, "accounts from user_accounts table");
         } else {
           console.log("[refreshData] user_accounts empty/unavailable — using user_metadata fallback");
@@ -372,6 +400,18 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
             .upsert({ ...tx, user_id: session.user.id }, { onConflict: "id" });
 
           if (error) {
+            if (error.code === "42703") {
+              const fallbackTx: Record<string, unknown> = { ...tx, user_id: session.user.id };
+              delete fallbackTx.credit_card_tx_type;
+              delete fallbackTx.statement_id;
+              const retry = await supabase
+                .from("transactions")
+                .upsert(fallbackTx, { onConflict: "id" });
+              if (!retry.error) {
+                acknowledgedIds.add(tx.id);
+                continue;
+              }
+            }
             console.warn(`[syncOfflineQueue] Failed to sync transaction ${tx.id}:`, error);
             // Stop if this is a network failure to avoid hammering a dropped connection
             const isNetworkError =

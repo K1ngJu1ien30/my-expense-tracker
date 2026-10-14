@@ -186,6 +186,24 @@ export function useMoneyState(deps: MoneyStateDeps) {
           return { success: true, status: "synced" };
         }
 
+        // Schema resilience: if migration 007 columns not yet added in Supabase (code 42703: undefined_column)
+        if (error?.code === "42703") {
+          console.warn("[addTransaction] Column undefined in cloud table — retrying with base schema:", error.message);
+          const fallbackPayload: Record<string, unknown> = { ...txWithId, user_id: session?.user?.id };
+          delete fallbackPayload.credit_card_tx_type;
+          delete fallbackPayload.statement_id;
+          const retryRes = await supabase.from("transactions").insert(fallbackPayload).select().single();
+          if (!retryRes.error && retryRes.data) {
+            const preservedTx = { ...retryRes.data, credit_card_tx_type: txWithId.credit_card_tx_type, statement_id: txWithId.statement_id };
+            setTransactions(prev => [preservedTx as Transaction, ...prev]);
+            await teachPredictor();
+            NativeHaptics.successMedium();
+            if (Number(tx.amount) >= WHALE_THRESHOLD) triggerWhaleAlert();
+            if (tx.type === "Expense") maybeTriggerPenguinAlert(Number(tx.amount));
+            return { success: true, status: "synced" };
+          }
+        }
+
         console.warn("[addTransaction] Cloud insert returned error:", error);
 
         // Check if this error indicates network/connectivity failure while the browser was ostensibly online
@@ -276,6 +294,18 @@ export function useMoneyState(deps: MoneyStateDeps) {
           .select()
           .single();
         if (error) {
+          if (error.code === "42703") {
+            const fallbackPatch: Record<string, unknown> = { ...cleanPatch };
+            delete fallbackPatch.credit_card_tx_type;
+            delete fallbackPatch.statement_id;
+            const retryRes = await supabase.from("transactions").update(fallbackPatch).eq("id", id).select().single();
+            if (!retryRes.error && retryRes.data) {
+              const updated = { ...retryRes.data, credit_card_tx_type: cleanPatch.credit_card_tx_type, statement_id: cleanPatch.statement_id };
+              setTransactions(prev => prev.map(t => (t.id === id ? (updated as Transaction) : t)));
+              NativeHaptics.lightTick();
+              return { success: true };
+            }
+          }
           console.error("[updateTransaction] Supabase error:", error);
           return { success: false, error: error.message };
         }

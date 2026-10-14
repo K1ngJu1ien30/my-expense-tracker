@@ -37,7 +37,7 @@ export default function ProfilePage() {
     userName, setUserName, 
     currency, setCurrency,
     categories, setCategories, addCategory, deleteCategory,
-    accounts, accountObjects, reorderAccounts, addAccount, renameAccount, deleteAccount, toggleArchiveAccount,
+    accounts, accountObjects, reorderAccounts, addAccount, addCreditCardAccount, updateCreditCardDetails, renameAccount, deleteAccount, toggleArchiveAccount,
     accentColor, setAccentColor, confirmAction,
     triggerToast,
     transactions, subscriptions, goals, utilities,
@@ -793,6 +793,8 @@ export default function ProfilePage() {
             toggleArchiveAccount={toggleArchiveAccount}
             deleteAccount={deleteAccount}
             addAccount={addAccount}
+            addCreditCardAccount={addCreditCardAccount}
+            updateCreditCardDetails={updateCreditCardDetails}
             confirmAction={confirmAction}
             triggerToast={triggerToast}
             accentColor={accentColor}

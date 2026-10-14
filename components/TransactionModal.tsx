@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { motion, AnimatePresence, PanInfo } from "framer-motion";
-import { X, ArrowRight, Sparkles, ChevronDown, SlidersHorizontal } from "lucide-react";
+import { X, ArrowRight, Sparkles, ChevronDown, SlidersHorizontal, CreditCard } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect } from "react";
 
@@ -11,6 +11,7 @@ import { NativeHaptics } from "@/lib/haptics";
 import { loadModel, predict, type Prediction, type PredictorModel } from "@/lib/categoryPredictor";
 import { AUTO_EXCLUDE_CATEGORIES } from "@/lib/velocity";
 import CustomDatePicker from "@/components/CustomDatePicker";
+import type { CreditCardTxType, Account } from "@/lib/types";
 
 type TxType = "Expense" | "Income" | "Transfer";
 
@@ -61,11 +62,13 @@ function ScrollPillSelector({
   value,
   onChange,
   ariaLabel,
+  accountObjects,
 }: {
   options: string[];
   value: string;
   onChange: (val: string) => void;
   ariaLabel?: string;
+  accountObjects?: Account[];
 }) {
   const selectedRef = useRef<HTMLButtonElement>(null);
 
@@ -102,6 +105,11 @@ function ScrollPillSelector({
     >
       {options.map((opt) => {
         const isActive = value === opt;
+        const accObj = accountObjects?.find(
+          (a) => a.name.trim().toLowerCase() === opt.trim().toLowerCase() || a.id === opt
+        );
+        const isCard = accObj?.kind === "credit_card";
+
         return (
           <button
             key={opt}
@@ -110,13 +118,14 @@ function ScrollPillSelector({
             aria-checked={isActive}
             onClick={() => onChange(opt)}
             className={cn(
-              "whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium transition-all shrink-0 snap-start",
+              "whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium transition-all shrink-0 snap-start inline-flex items-center gap-1.5",
               isActive
                 ? "bg-primary text-primary-foreground shadow-soft"
                 : "bg-muted text-muted-foreground hover:bg-border"
             )}
           >
-            {opt}
+            {isCard && <CreditCard className="w-3.5 h-3.5 shrink-0 opacity-80" aria-hidden="true" />}
+            <span>{opt}</span>
           </button>
         );
       })}
@@ -197,7 +206,17 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
   // a single tap since the category auto-rule handles the ~90% case.
   // Collapsed by default; expands only when the user wants to override.
   const [showMoreOptions, setShowMoreOptions] = useState(false);
+  const [creditCardTxType, setCreditCardTxType] = useState<CreditCardTxType>("purchase");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const selectedAcc = accountObjects.find(
+    a => a.name.trim().toLowerCase() === account.trim().toLowerCase() || a.id === account
+  );
+  const selectedToAcc = accountObjects.find(
+    a => a.name.trim().toLowerCase() === toAccount.trim().toLowerCase() || a.id === toAccount
+  );
+  const isCreditCardSource = selectedAcc?.kind === "credit_card";
+  const isCreditCardDest = selectedToAcc?.kind === "credit_card";
 
   // Imperative ref for the amount <input>, kept for future use if we ever
   // want to programmatically focus it. NOT auto-focused on open — see the
@@ -290,6 +309,11 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
          if (tx.exclude_from_velocity === true || tx.exclude_from_velocity === false) {
            setShowMoreOptions(true);
          }
+         if (tx.credit_card_tx_type) {
+           setCreditCardTxType(tx.credit_card_tx_type);
+         } else {
+           setCreditCardTxType("purchase");
+         }
          setUserPickedCategory(true); // Editing an existing tx — respect its category
        }
     } else {
@@ -301,6 +325,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
        setIsClaimable(false);
        setExcludeFromVelocity(null);
        setShowMoreOptions(false);
+       setCreditCardTxType("purchase");
        setUserPickedCategory(false);
        setDismissedForNote("");
 
@@ -327,6 +352,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
       setShowMoreOptions(false);
       setShowCurrencyPicker(false);
       setStatus("cleared");
+      setCreditCardTxType("purchase");
       // Don't reset amount/note/category/account here — those are
       // seeded elsewhere and resetting them would wipe a quick-template
       // pre-fill on the way in.
@@ -546,7 +572,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                   <div className="p-4 bg-muted/30 rounded-2xl border border-border/50 flex flex-col gap-2">
                     <div>
                       <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1.5">From Account</label>
-                      <ScrollPillSelector options={accounts} value={account} onChange={setAccount} ariaLabel="From account" />
+                      <ScrollPillSelector options={accounts} value={account} onChange={setAccount} ariaLabel="From account" accountObjects={accountObjects} />
                     </div>
                     <div className="flex justify-center rounded-full relative z-10 w-full -my-0.5">
                       <div className="bg-card border border-border p-1 rounded-full shadow-sm text-muted-foreground">
@@ -555,7 +581,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                     </div>
                     <div>
                       <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1.5">To Account</label>
-                      <ScrollPillSelector options={accounts} value={toAccount} onChange={setToAccount} ariaLabel="To account" />
+                      <ScrollPillSelector options={accounts} value={toAccount} onChange={setToAccount} ariaLabel="To account" accountObjects={accountObjects} />
                     </div>
                     {accounts.length < 2 ? (
                       <p className="text-[11px] font-semibold text-amber-500 bg-amber-500/10 px-3 py-1.5 rounded-xl text-center mt-1">
@@ -570,7 +596,99 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                 ) : (
                   <div>
                     <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1.5">Account</label>
-                    <ScrollPillSelector options={accounts} value={account} onChange={setAccount} ariaLabel="Account" />
+                    <ScrollPillSelector options={accounts} value={account} onChange={setAccount} ariaLabel="Account" accountObjects={accountObjects} />
+                  </div>
+                )}
+
+                {/* Credit Card Transaction Context & Classification */}
+                {txType === "Expense" && isCreditCardSource && (
+                  <div className="p-3.5 bg-purple-500/10 border border-purple-500/20 rounded-2xl flex flex-col gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-purple-700 dark:text-purple-300">
+                        <CreditCard className="w-4 h-4 shrink-0 text-purple-500" aria-hidden="true" />
+                        <span>Credit Card Expense</span>
+                      </div>
+                      <span className="text-[10px] font-bold text-rose-500 bg-rose-500/15 px-2 py-0.5 rounded-full">
+                        Increases Debt
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-snug">
+                      Card swipe increases liability. <strong>Does not deduct liquid cash</strong> until you settle the bill.
+                    </p>
+                    <div className="flex items-center gap-1.5 pt-0.5">
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mr-1">
+                        Type:
+                      </span>
+                      {(["purchase", "fee", "interest"] as const).map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setCreditCardTxType(t)}
+                          className={cn(
+                            "px-2.5 py-1 rounded-lg text-[10px] font-bold capitalize transition-all",
+                            creditCardTxType === t
+                              ? "bg-purple-600 text-white shadow-xs font-black"
+                              : "bg-card text-muted-foreground hover:bg-muted border border-border/60"
+                          )}
+                        >
+                          {t === "purchase" ? "🛒 Purchase" : t === "fee" ? "🏦 Fee" : "📈 Interest"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {txType === "Transfer" && isCreditCardDest && (
+                  <div className="p-3.5 bg-blue-500/10 border border-blue-500/20 rounded-2xl flex flex-col gap-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-blue-700 dark:text-blue-300">
+                        <CreditCard className="w-4 h-4 shrink-0 text-blue-500" aria-hidden="true" />
+                        <span>Credit Card Repayment</span>
+                      </div>
+                      <span className="text-[10px] font-bold text-emerald-500 bg-emerald-500/15 px-2 py-0.5 rounded-full">
+                        Reduces Debt
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-snug">
+                      Transfers funds from <strong>{account || "bank"}</strong> to pay down <strong>{toAccount}</strong> debt. Does not create an extra expense.
+                    </p>
+                  </div>
+                )}
+
+                {txType === "Income" && isCreditCardSource && (
+                  <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex flex-col gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                        <CreditCard className="w-4 h-4 shrink-0 text-emerald-500" aria-hidden="true" />
+                        <span>Card Credit / Refund</span>
+                      </div>
+                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-500/15 px-2 py-0.5 rounded-full">
+                        Reduces Debt
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-snug">
+                      Credit applied to <strong>{account}</strong>. Lowers your outstanding card liability.
+                    </p>
+                    <div className="flex items-center gap-1.5 pt-0.5">
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mr-1">
+                        Type:
+                      </span>
+                      {(["refund", "cashback"] as const).map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setCreditCardTxType(t)}
+                          className={cn(
+                            "px-2.5 py-1 rounded-lg text-[10px] font-bold capitalize transition-all",
+                            creditCardTxType === t
+                              ? "bg-emerald-600 text-white shadow-xs font-black"
+                              : "bg-card text-muted-foreground hover:bg-muted border border-border/60"
+                          )}
+                        >
+                          {t === "refund" ? "↩️ Refund" : "🎁 Cashback"}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
 
@@ -855,6 +973,15 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                         ? accountObjects.find(a => a.name === toAccount || a.id === toAccount)
                         : undefined;
 
+                      let effectiveCcTxType: CreditCardTxType | null = null;
+                      if (txType === "Expense" && selectedAcc?.kind === "credit_card") {
+                        effectiveCcTxType = creditCardTxType || "purchase";
+                      } else if (txType === "Transfer" && selectedToAcc?.kind === "credit_card") {
+                        effectiveCcTxType = "repayment";
+                      } else if (txType === "Income" && selectedAcc?.kind === "credit_card") {
+                        effectiveCcTxType = creditCardTxType === "cashback" ? "cashback" : "refund";
+                      }
+
                       const payload = {
                          type: txType,
                          amount: Number(amount),
@@ -884,12 +1011,18 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                          // the category is later renamed / reclassified.
                          exclude_from_velocity:
                            txType === "Expense" ? excludeFromVelocity : null,
+                         credit_card_tx_type: effectiveCcTxType,
                       };
+
+                      const actionLabel =
+                        txType === "Transfer" && selectedToAcc?.kind === "credit_card"
+                          ? "Repayment"
+                          : txType;
 
                       if (editTransactionId) {
                          const updateRes = await updateTransaction(editTransactionId, payload);
                          if (updateRes.success) {
-                           triggerToast(`✅ ${txType} updated successfully!`);
+                           triggerToast(`✅ ${actionLabel} updated successfully!`);
                            if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(50);
                            handleClose();
                          } else {
@@ -900,9 +1033,9 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                          const saveRes = await addTransaction(payload);
                          if (saveRes.success) {
                            if (saveRes.status === "synced") {
-                             triggerToast(`✅ ${txType} saved!`);
+                             triggerToast(`✅ ${actionLabel} saved!`);
                            } else {
-                             triggerToast(`⏳ ${txType} saved offline (Pending Sync)`);
+                             triggerToast(`⏳ ${actionLabel} saved offline (Pending Sync)`);
                            }
                            if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(50);
                            handleClose();
@@ -923,7 +1056,9 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                     ? "Saving..."
                     : editTransactionId
                       ? "Update Record"
-                      : `Save ${txType}`}
+                      : txType === "Transfer" && selectedToAcc?.kind === "credit_card"
+                        ? "Save Repayment"
+                        : `Save ${txType}`}
                 </button>
               </div>
             </div>

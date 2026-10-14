@@ -16,6 +16,7 @@ import type {
   AssetLog,
   Account,
   AccountKind,
+  CreditCardDetails,
 } from "./types";
 import { useEasterEggsUI } from "./hooks/useEasterEggsUI";
 import { useUIState } from "./hooks/useUIState";
@@ -100,7 +101,22 @@ type AppContextType = {
     statementDay?: number | null,
     dueDay?: number | null
   ) => void;
+  addCreditCardAccount: (params: {
+    name: string;
+    currencyCode?: string;
+    creditLimit?: number | null;
+    openingBalance?: number;
+    issuer?: string;
+    cardLastFour?: string;
+    statementDay: number;
+    gracePeriodDays?: number;
+    dueDay?: number | null;
+    apr?: number | null;
+    cardColor?: string | null;
+    reminderDaysBefore?: number;
+  }) => Promise<void>;
   updateAccount: (nameOrId: string, patch: Partial<Account>) => void;
+  updateCreditCardDetails: (accountId: string, patch: Partial<CreditCardDetails>) => Promise<void>;
   renameAccount: (old: string, next: string) => void;
   deleteAccount: (acc: string) => void;
   toggleArchiveAccount: (name: string) => void;
@@ -189,7 +205,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     accounts,
     setAccounts,
     addAccount,
+    addCreditCardAccount,
     updateAccount,
+    updateCreditCardDetails,
     renameAccount,
     deleteAccount,
     toggleArchiveAccount,
@@ -627,7 +645,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       editTransactionId, setEditTransactionId,
       goals: visibleGoals,
       addGoal, updateGoal, deleteGoal,
-      accounts, accountObjects, setAccounts, reorderAccounts, addAccount, updateAccount, renameAccount, deleteAccount, toggleArchiveAccount,
+      accounts, accountObjects, setAccounts, reorderAccounts, addAccount, addCreditCardAccount, updateAccount, updateCreditCardDetails, renameAccount, deleteAccount, toggleArchiveAccount,
       accentColor, setAccentColor,
       session, authLoading,
       confirmAction,

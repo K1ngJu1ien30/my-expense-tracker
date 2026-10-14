@@ -17,7 +17,7 @@ import {
   CreditCard,
   TrendingUp,
 } from "lucide-react";
-import type { Account, AccountKind } from "@/lib/types";
+import type { Account, AccountKind, CreditCardDetails } from "@/lib/types";
 
 const CURRENCIES = ["RM", "SGD", "USD", "JPY"] as const;
 
@@ -37,7 +37,7 @@ const ACCOUNT_KINDS: {
 /**
  * Drag-to-reorder, rename-in-place, archive, and delete account manager.
  * Supports selecting account kind (bank, cash, ewallet, savings, credit_card, investment),
- * optional opening balances, and per-currency picker.
+ * optional opening balances, credit card parameters, and per-currency picker.
  */
 export function ManageAccountsModal({
   accounts,
@@ -47,6 +47,8 @@ export function ManageAccountsModal({
   toggleArchiveAccount,
   deleteAccount,
   addAccount,
+  addCreditCardAccount,
+  updateCreditCardDetails: _updateCreditCardDetails,
   confirmAction,
   triggerToast,
   accentColor,
@@ -59,6 +61,21 @@ export function ManageAccountsModal({
   toggleArchiveAccount: (name: string) => void;
   deleteAccount: (name: string) => void;
   addAccount: (name: string, currency?: string, kind?: AccountKind, openingBalance?: number) => void;
+  addCreditCardAccount?: (params: {
+    name: string;
+    currencyCode?: string;
+    creditLimit?: number | null;
+    openingBalance?: number;
+    issuer?: string;
+    cardLastFour?: string;
+    statementDay: number;
+    gracePeriodDays?: number;
+    dueDay?: number | null;
+    apr?: number | null;
+    cardColor?: string | null;
+    reminderDaysBefore?: number;
+  }) => Promise<void>;
+  updateCreditCardDetails?: (accountId: string, patch: Partial<CreditCardDetails>) => Promise<void>;
   confirmAction: (title: string, message: string, onConfirm: () => void) => void;
   triggerToast: (msg: string) => void;
   accentColor: string;
@@ -71,9 +88,18 @@ export function ManageAccountsModal({
   const [editingAccount, setEditingAccount] = useState<string | null>(null);
   const [editingAccountVal, setEditingAccountVal] = useState("");
 
+  // Credit card specific fields
+  const [issuer, setIssuer] = useState("");
+  const [cardLastFour, setCardLastFour] = useState("");
+  const [creditLimit, setCreditLimit] = useState("");
+  const [statementDay, setStatementDay] = useState("15");
+  const [gracePeriodDays, setGracePeriodDays] = useState("20");
+  const [apr, setApr] = useState("");
+  const [reminderDaysBefore, setReminderDaysBefore] = useState("3");
+
   const archived = accountObjects.filter((a) => a.isArchived);
 
-  const submitNew = () => {
+  const submitNew = async () => {
     const name = newAccount.trim();
     if (!name) {
       triggerToast("⚠️ Account name cannot be empty.");
@@ -89,6 +115,47 @@ export function ManageAccountsModal({
 
     const parsedBal = newAccountOpeningBalance.trim() ? parseFloat(newAccountOpeningBalance) : 0;
     const openingBalance = isNaN(parsedBal) ? 0 : parsedBal;
+
+    if (newAccountKind === "credit_card" && addCreditCardAccount) {
+      const sDay = parseInt(statementDay, 10);
+      const validStatementDay = isNaN(sDay) || sDay < 1 ? 15 : Math.min(sDay, 31);
+      const parsedGrace = parseInt(gracePeriodDays, 10);
+      const validGrace = isNaN(parsedGrace) || parsedGrace < 0 ? 20 : parsedGrace;
+      const parsedLimit = creditLimit.trim() ? parseFloat(creditLimit) : null;
+      const validLimit = parsedLimit !== null && !isNaN(parsedLimit) && parsedLimit >= 0 ? parsedLimit : null;
+      const parsedApr = apr.trim() ? parseFloat(apr) : null;
+      const validApr = parsedApr !== null && !isNaN(parsedApr) && parsedApr >= 0 ? parsedApr : null;
+      const parsedRemind = parseInt(reminderDaysBefore, 10);
+      const validRemind = isNaN(parsedRemind) || parsedRemind < 0 ? 3 : parsedRemind;
+      const cleanLastFour = cardLastFour.trim().slice(-4);
+
+      await addCreditCardAccount({
+        name,
+        currencyCode: newAccountCurrency,
+        openingBalance,
+        creditLimit: validLimit,
+        statementDay: validStatementDay,
+        gracePeriodDays: validGrace,
+        apr: validApr,
+        issuer: issuer.trim() || undefined,
+        cardLastFour: cleanLastFour || undefined,
+        reminderDaysBefore: validRemind,
+      });
+
+      triggerToast(`Credit card "${name}" added!`);
+      setNewAccount("");
+      setNewAccountCurrency("RM");
+      setNewAccountKind("bank");
+      setNewAccountOpeningBalance("");
+      setIssuer("");
+      setCardLastFour("");
+      setCreditLimit("");
+      setStatementDay("15");
+      setGracePeriodDays("20");
+      setApr("");
+      setReminderDaysBefore("3");
+      return;
+    }
 
     addAccount(name, newAccountCurrency, newAccountKind, openingBalance);
     triggerToast(`"${name}" added!`);
@@ -137,7 +204,7 @@ export function ManageAccountsModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="accounts-title"
-        className="bg-card w-full max-w-sm rounded-[2rem] shadow-heavy z-10 overflow-hidden flex flex-col max-h-[88vh]"
+        className="bg-card w-full max-w-sm sm:max-w-md rounded-[2rem] shadow-heavy z-10 overflow-hidden flex flex-col max-h-[88vh]"
       >
         <div className="p-5 border-b border-border/40 flex justify-between items-center bg-muted/20">
           <h3 id="accounts-title" className="font-bold text-foreground">Manage Accounts</h3>
@@ -201,17 +268,40 @@ export function ManageAccountsModal({
                             {accObj?.currencyCode || "RM"}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md inline-flex items-center gap-1 bg-muted/60 text-muted-foreground">
-                            <KindIcon className="w-2.5 h-2.5 shrink-0" aria-hidden="true" />
-                            {kindMeta.label}
-                          </span>
-                          {accObj?.openingBalance !== undefined && Number(accObj.openingBalance) !== 0 && (
-                            <span className="text-[10px] text-muted-foreground/70 font-mono">
-                              Init: {Number(accObj.openingBalance) > 0 ? `+${accObj.openingBalance}` : accObj.openingBalance}
+                        {accObj?.kind === "credit_card" ? (
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md inline-flex items-center gap-1 bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                              <CreditCard className="w-2.5 h-2.5 shrink-0" aria-hidden="true" />
+                              {accObj.cardDetails?.issuer || kindMeta.label}
+                              {accObj.cardDetails?.cardLastFour ? ` •••• ${accObj.cardDetails.cardLastFour}` : ""}
                             </span>
-                          )}
-                        </div>
+                            {accObj.creditLimit !== undefined && accObj.creditLimit !== null && (
+                              <span className="text-[10px] font-mono text-muted-foreground/80 bg-muted/70 px-1.5 py-0.5 rounded">
+                                Limit: {accObj.currencyCode || "RM"} {Number(accObj.creditLimit).toLocaleString()}
+                              </span>
+                            )}
+                            <span className="text-[10px] font-mono text-muted-foreground/80 bg-muted/70 px-1.5 py-0.5 rounded">
+                              Stmt: Day {accObj.statementDay || accObj.cardDetails?.statementDay || 15}
+                            </span>
+                            {accObj?.openingBalance !== undefined && Number(accObj.openingBalance) !== 0 && (
+                              <span className="text-[10px] text-rose-500 font-mono font-medium">
+                                Debt: {accObj.currencyCode || "RM"} {Math.abs(Number(accObj.openingBalance)).toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md inline-flex items-center gap-1 bg-muted/60 text-muted-foreground">
+                              <KindIcon className="w-2.5 h-2.5 shrink-0" aria-hidden="true" />
+                              {kindMeta.label}
+                            </span>
+                            {accObj?.openingBalance !== undefined && Number(accObj.openingBalance) !== 0 && (
+                              <span className="text-[10px] text-muted-foreground/70 font-mono">
+                                Init: {Number(accObj.openingBalance) > 0 ? `+${accObj.openingBalance}` : accObj.openingBalance}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -281,12 +371,27 @@ export function ManageAccountsModal({
                             {acc.currencyCode || "RM"}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md inline-flex items-center gap-1 bg-muted/60 text-muted-foreground">
-                            <KindIcon className="w-2.5 h-2.5 shrink-0" aria-hidden="true" />
-                            {kindMeta.label}
-                          </span>
-                        </div>
+                        {acc.kind === "credit_card" ? (
+                          <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md inline-flex items-center gap-1 bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                              <CreditCard className="w-2.5 h-2.5 shrink-0" aria-hidden="true" />
+                              {acc.cardDetails?.issuer || kindMeta.label}
+                              {acc.cardDetails?.cardLastFour ? ` •••• ${acc.cardDetails.cardLastFour}` : ""}
+                            </span>
+                            {acc.creditLimit !== undefined && acc.creditLimit !== null && (
+                              <span className="text-[10px] font-mono text-muted-foreground/60">
+                                Limit: {acc.currencyCode || "RM"} {Number(acc.creditLimit).toLocaleString()}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md inline-flex items-center gap-1 bg-muted/60 text-muted-foreground">
+                              <KindIcon className="w-2.5 h-2.5 shrink-0" aria-hidden="true" />
+                              {kindMeta.label}
+                            </span>
+                          </div>
+                        )}
                       </div>
                       <button
                         type="button"
@@ -321,7 +426,7 @@ export function ManageAccountsModal({
                 value={newAccount}
                 onChange={(e) => setNewAccount(e.target.value)}
                 type="text"
-                placeholder="Account name (e.g. Maybank)"
+                placeholder={newAccountKind === "credit_card" ? "Card nickname (e.g. Maybank 2 Gold)" : "Account name (e.g. Maybank)"}
                 aria-label="New account name"
                 className="flex-1 bg-card rounded-xl px-3.5 py-2 text-sm font-medium outline-none border border-border text-foreground placeholder:text-muted-foreground/60"
                 onKeyDown={(e) => { if (e.key === "Enter") submitNew(); }}
@@ -331,8 +436,8 @@ export function ManageAccountsModal({
                 onChange={(e) => setNewAccountOpeningBalance(e.target.value)}
                 type="number"
                 step="any"
-                placeholder="Initial balance (0.00)"
-                aria-label="Opening balance"
+                placeholder={newAccountKind === "credit_card" ? "Current debt (0.00)" : "Initial balance (0.00)"}
+                aria-label={newAccountKind === "credit_card" ? "Current debt" : "Opening balance"}
                 className="w-36 bg-card rounded-xl px-3 py-2 text-sm font-medium outline-none border border-border text-foreground placeholder:text-muted-foreground/60"
                 onKeyDown={(e) => { if (e.key === "Enter") submitNew(); }}
               />
@@ -361,6 +466,135 @@ export function ManageAccountsModal({
                 );
               })}
             </div>
+
+            {/* Credit Card Specific Configuration Accordion/Panel */}
+            {newAccountKind === "credit_card" && (
+              <div className="p-3 bg-card rounded-xl border border-border/80 space-y-2 text-xs shadow-xs animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="flex items-center justify-between text-[11px] font-bold">
+                  <span className="flex items-center gap-1.5 text-foreground">
+                    <CreditCard className="w-3.5 h-3.5 text-purple-500" aria-hidden="true" />
+                    Card Settings
+                  </span>
+                  <span className="text-[10px] text-rose-500 font-semibold bg-rose-500/10 px-1.5 py-0.5 rounded">
+                    Liability
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                      Bank / Issuer
+                    </label>
+                    <input
+                      value={issuer}
+                      onChange={(e) => setIssuer(e.target.value)}
+                      type="text"
+                      placeholder="e.g. Maybank / CIMB"
+                      aria-label="Card issuer"
+                      className="w-full bg-muted/50 rounded-lg px-2.5 py-1.5 text-xs font-medium outline-none border border-border text-foreground placeholder:text-muted-foreground/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                      Last 4 Digits
+                    </label>
+                    <input
+                      value={cardLastFour}
+                      onChange={(e) => setCardLastFour(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                      type="text"
+                      maxLength={4}
+                      placeholder="e.g. 8821"
+                      aria-label="Last 4 digits"
+                      className="w-full bg-muted/50 rounded-lg px-2.5 py-1.5 text-xs font-mono font-medium outline-none border border-border text-foreground placeholder:text-muted-foreground/50"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                      Credit Limit
+                    </label>
+                    <input
+                      value={creditLimit}
+                      onChange={(e) => setCreditLimit(e.target.value)}
+                      type="number"
+                      min="0"
+                      step="any"
+                      placeholder="e.g. 10000"
+                      aria-label="Credit limit"
+                      className="w-full bg-muted/50 rounded-lg px-2.5 py-1.5 text-xs font-medium outline-none border border-border text-foreground placeholder:text-muted-foreground/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                      Stmt Day
+                    </label>
+                    <input
+                      value={statementDay}
+                      onChange={(e) => setStatementDay(e.target.value)}
+                      type="number"
+                      min="1"
+                      max="31"
+                      placeholder="15"
+                      aria-label="Statement closing day"
+                      className="w-full bg-muted/50 rounded-lg px-2.5 py-1.5 text-xs font-medium outline-none border border-border text-foreground"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                      Grace (Days)
+                    </label>
+                    <input
+                      value={gracePeriodDays}
+                      onChange={(e) => setGracePeriodDays(e.target.value)}
+                      type="number"
+                      min="0"
+                      max="60"
+                      placeholder="20"
+                      aria-label="Grace period in days"
+                      className="w-full bg-muted/50 rounded-lg px-2.5 py-1.5 text-xs font-medium outline-none border border-border text-foreground"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                      APR % (Optional)
+                    </label>
+                    <input
+                      value={apr}
+                      onChange={(e) => setApr(e.target.value)}
+                      type="number"
+                      step="any"
+                      placeholder="e.g. 15.0"
+                      aria-label="Annual percentage rate"
+                      className="w-full bg-muted/50 rounded-lg px-2.5 py-1.5 text-xs font-medium outline-none border border-border text-foreground placeholder:text-muted-foreground/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                      Reminder (Days)
+                    </label>
+                    <input
+                      value={reminderDaysBefore}
+                      onChange={(e) => setReminderDaysBefore(e.target.value)}
+                      type="number"
+                      min="0"
+                      max="30"
+                      placeholder="3"
+                      aria-label="Payment reminder days before"
+                      className="w-full bg-muted/50 rounded-lg px-2.5 py-1.5 text-xs font-medium outline-none border border-border text-foreground"
+                    />
+                  </div>
+                </div>
+
+                <p className="text-[10px] text-muted-foreground/80 leading-tight pt-0.5">
+                  💡 Outstanding balance is treated as starting unpaid debt and reflected as a liability in your net worth.
+                </p>
+              </div>
+            )}
 
             {/* Currency Selection + Submit Button */}
             <div className="flex items-center gap-2 pt-0.5">

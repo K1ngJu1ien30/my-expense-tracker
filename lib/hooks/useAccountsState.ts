@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import type { Session } from "@supabase/supabase-js";
 import localforage from "localforage";
 import { supabase } from "../supabase";
-import type { Account, AccountKind } from "../types";
+import type { Account, AccountKind, CreditCardDetails } from "../types";
 import { getUserDataCacheKey } from "../cacheKeys";
 
 const DEFAULT_ACCOUNTS: Account[] = [
@@ -26,7 +26,7 @@ const DEFAULT_CATEGORIES = [
 /**
  * Safe migration from legacy account formats to the current Account object.
  * Handles historical shapes while preserving stable UUIDs, account kinds,
- * and opening balance information.
+ * opening balance information, and credit card details.
  */
 export function migrateAccounts(raw: unknown): Account[] {
   if (!Array.isArray(raw) || raw.length === 0) return DEFAULT_ACCOUNTS;
@@ -59,6 +59,7 @@ export function migrateAccounts(raw: unknown): Account[] {
       statement_day?: number | null;
       dueDay?: number | null;
       due_day?: number | null;
+      cardDetails?: CreditCardDetails;
     };
     return {
       id: obj.id || crypto.randomUUID(),
@@ -80,6 +81,22 @@ export function migrateAccounts(raw: unknown): Account[] {
             : null,
       statementDay: obj.statementDay ?? obj.statement_day ?? null,
       dueDay: obj.dueDay ?? obj.due_day ?? null,
+      cardDetails: obj.cardDetails
+        ? {
+            accountId: obj.cardDetails.accountId || obj.id || "",
+            userId: obj.cardDetails.userId,
+            issuer: obj.cardDetails.issuer,
+            cardLastFour: obj.cardDetails.cardLastFour,
+            statementDay: obj.cardDetails.statementDay || obj.statementDay || obj.statement_day || 15,
+            gracePeriodDays: obj.cardDetails.gracePeriodDays ?? 20,
+            dueDay: obj.cardDetails.dueDay ?? obj.dueDay ?? obj.due_day ?? null,
+            apr: obj.cardDetails.apr,
+            cardColor: obj.cardDetails.cardColor,
+            reminderDaysBefore: obj.cardDetails.reminderDaysBefore ?? 3,
+            createdAt: obj.cardDetails.createdAt,
+            updatedAt: obj.cardDetails.updatedAt,
+          }
+        : undefined,
     };
   });
 }
@@ -110,15 +127,10 @@ export function useAccountsState(session: Session | null) {
     setAccountObjects(migrateAccounts(val));
   }, []);
 
-  /** Dual-write accounts to the user_accounts table (replace-all strategy). */
+  /** Dual-write accounts to user_accounts and credit_card_details (upsert strategy). */
   const syncAccountsToNewTable = useCallback(
     async (userId: string, accountsArray: Account[]): Promise<boolean> => {
       try {
-        const { error: delErr } = await supabase.from("user_accounts").delete().eq("user_id", userId);
-        if (delErr) {
-          console.warn("[dual-write] user_accounts delete failed:", delErr);
-          return false;
-        }
         if (accountsArray.length > 0) {
           const rows = accountsArray.map((a, idx) => ({
             id: a.id && a.id.length === 36 ? a.id : crypto.randomUUID(),
@@ -133,10 +145,37 @@ export function useAccountsState(session: Session | null) {
             statement_day: a.statementDay ?? null,
             due_day: a.dueDay ?? null,
           }));
-          const { error: insErr } = await supabase.from("user_accounts").insert(rows);
-          if (insErr) {
-            console.warn("[dual-write] user_accounts insert failed:", insErr);
+          const { error: upsertErr } = await supabase
+            .from("user_accounts")
+            .upsert(rows, { onConflict: "id" });
+          if (upsertErr) {
+            console.warn("[dual-write] user_accounts upsert failed:", upsertErr);
             return false;
+          }
+
+          // Sync credit_card_details for any credit card accounts that have details
+          const cardRows = accountsArray
+            .filter(a => a.kind === "credit_card" && a.cardDetails)
+            .map(a => ({
+              account_id: a.id!,
+              user_id: userId,
+              issuer: a.cardDetails!.issuer || null,
+              card_last_four: a.cardDetails!.cardLastFour || null,
+              statement_day: a.cardDetails!.statementDay || a.statementDay || 15,
+              grace_period_days: a.cardDetails!.gracePeriodDays ?? 20,
+              due_day: a.cardDetails!.dueDay ?? a.dueDay ?? null,
+              apr: a.cardDetails!.apr ?? null,
+              card_color: a.cardDetails!.cardColor ?? null,
+              reminder_days_before: a.cardDetails!.reminderDaysBefore ?? 3,
+            }));
+
+          if (cardRows.length > 0) {
+            const { error: cardErr } = await supabase
+              .from("credit_card_details")
+              .upsert(cardRows, { onConflict: "account_id" });
+            if (cardErr) {
+              console.warn("[dual-write] credit_card_details upsert error:", cardErr);
+            }
           }
         }
         return true;
@@ -236,6 +275,58 @@ export function useAccountsState(session: Session | null) {
     [accountObjects, handleUpdateAccounts]
   );
 
+  const addCreditCardAccount = useCallback(
+    async (params: {
+      name: string;
+      currencyCode?: string;
+      creditLimit?: number | null;
+      openingBalance?: number;
+      issuer?: string;
+      cardLastFour?: string;
+      statementDay: number;
+      gracePeriodDays?: number;
+      dueDay?: number | null;
+      apr?: number | null;
+      cardColor?: string | null;
+      reminderDaysBefore?: number;
+    }) => {
+      const accountId = crypto.randomUUID();
+      const cardDetails: CreditCardDetails = {
+        accountId,
+        userId: session?.user?.id,
+        issuer: params.issuer,
+        cardLastFour: params.cardLastFour,
+        statementDay: params.statementDay || 15,
+        gracePeriodDays: params.gracePeriodDays ?? 20,
+        dueDay: params.dueDay ?? null,
+        apr: params.apr ?? null,
+        cardColor: params.cardColor ?? null,
+        reminderDaysBefore: params.reminderDaysBefore ?? 3,
+      };
+
+      // Unpaid debt on a credit card is entered as positive debt magnitude by user,
+      // and stored as negative opening balance to properly represent debt.
+      const rawDebt = params.openingBalance ? Math.abs(params.openingBalance) : 0;
+      const openingBalance = -rawDebt;
+
+      const newAcc: Account = {
+        id: accountId,
+        name: params.name,
+        currencyCode: params.currencyCode || "RM",
+        isArchived: false,
+        kind: "credit_card",
+        openingBalance,
+        creditLimit: params.creditLimit ?? null,
+        statementDay: params.statementDay || 15,
+        dueDay: params.dueDay ?? null,
+        cardDetails,
+      };
+
+      await handleUpdateAccounts([...accountObjects, newAcc]);
+    },
+    [accountObjects, handleUpdateAccounts, session]
+  );
+
   const updateAccount = useCallback(
     (nameOrId: string, patch: Partial<Account>) =>
       handleUpdateAccounts(
@@ -244,6 +335,34 @@ export function useAccountsState(session: Session | null) {
         )
       ),
     [accountObjects, handleUpdateAccounts]
+  );
+
+  const updateCreditCardDetails = useCallback(
+    async (accountId: string, patch: Partial<CreditCardDetails>) => {
+      const updatedAccounts = accountObjects.map(a => {
+        if (a.id === accountId) {
+          const updatedCardDetails: CreditCardDetails = {
+            accountId,
+            userId: session?.user?.id,
+            statementDay: a.statementDay || 15,
+            gracePeriodDays: 20,
+            reminderDaysBefore: 3,
+            ...(a.cardDetails || {}),
+            ...patch,
+          };
+          return {
+            ...a,
+            statementDay: updatedCardDetails.statementDay ?? a.statementDay,
+            dueDay: updatedCardDetails.dueDay ?? a.dueDay,
+            cardDetails: updatedCardDetails,
+          };
+        }
+        return a;
+      });
+
+      await handleUpdateAccounts(updatedAccounts);
+    },
+    [accountObjects, handleUpdateAccounts, session]
   );
 
   const renameAccount = useCallback(
@@ -255,9 +374,17 @@ export function useAccountsState(session: Session | null) {
   );
 
   const deleteAccount = useCallback(
-    (acc: string) =>
-      handleUpdateAccounts(accountObjects.filter(a => a.name !== acc)),
-    [accountObjects, handleUpdateAccounts]
+    (acc: string) => {
+      const target = accountObjects.find(a => a.name === acc || a.id === acc);
+      if (target?.id && session?.user?.id) {
+        supabase.from("user_accounts").delete().eq("id", target.id).eq("user_id", session.user.id).then();
+        if (target.kind === "credit_card") {
+          supabase.from("credit_card_details").delete().eq("account_id", target.id).eq("user_id", session.user.id).then();
+        }
+      }
+      return handleUpdateAccounts(accountObjects.filter(a => a.name !== acc && a.id !== acc));
+    },
+    [accountObjects, handleUpdateAccounts, session]
   );
 
   const toggleArchiveAccount = useCallback(
@@ -434,7 +561,9 @@ export function useAccountsState(session: Session | null) {
     accounts,
     setAccounts,
     addAccount,
+    addCreditCardAccount,
     updateAccount,
+    updateCreditCardDetails,
     renameAccount,
     deleteAccount,
     toggleArchiveAccount,

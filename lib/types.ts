@@ -66,7 +66,17 @@ export type Transaction = {
    * See `lib/velocity.ts` for the resolution logic.
    */
   exclude_from_velocity?: boolean | null;
+  credit_card_tx_type?: CreditCardTxType | null;
+  statement_id?: string | null;
 };
+
+export type CreditCardTxType =
+  | "purchase"
+  | "repayment"
+  | "refund"
+  | "fee"
+  | "interest"
+  | "cashback";
 
 export type TransactionSaveResult =
   | { success: true; status: "synced" | "pending_sync" }
@@ -102,6 +112,21 @@ export type AssetLog = {
 
 
 
+export type CreditCardDetails = {
+  accountId: string;
+  userId?: string;
+  issuer?: string;
+  cardLastFour?: string;
+  statementDay: number;
+  gracePeriodDays: number;
+  dueDay?: number | null;
+  apr?: number | null;
+  cardColor?: string | null;
+  reminderDaysBefore: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type AccountKind =
   | "bank"
   | "cash"
@@ -121,6 +146,7 @@ export type Account = {
   creditLimit?: number | null;
   statementDay?: number | null;
   dueDay?: number | null;
+  cardDetails?: CreditCardDetails;
 };
 
 // -------------------------------------------------------------------------
@@ -165,6 +191,21 @@ export type RawUserAccountRow = {
   credit_limit?: number | string | null;
   statement_day?: number | null;
   due_day?: number | null;
+};
+
+export type RawCreditCardDetailsRow = {
+  account_id: string;
+  user_id: string;
+  issuer: string | null;
+  card_last_four: string | null;
+  statement_day: number;
+  grace_period_days: number;
+  due_day: number | null;
+  apr: number | null;
+  card_color: string | null;
+  reminder_days_before: number;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type RawUserCategoryRow = {

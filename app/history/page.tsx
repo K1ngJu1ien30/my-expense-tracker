@@ -2,7 +2,8 @@
 
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { motion, useMotionValue, useTransform, animate, PanInfo } from "framer-motion";
-import { Ghost, Edit2, Trash2, Search, X } from "lucide-react";
+import { Ghost, Edit2, Trash2, Search, X, CreditCard } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Virtuoso } from "react-virtuoso";
 import { useAppContext } from "@/lib/context";
 import type { Transaction } from "@/lib/types";
@@ -114,11 +115,36 @@ function SwipeableTransactionRow({
 
         <div className="flex justify-between items-center gap-3 pl-2 min-w-0">
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold text-muted-foreground tracking-wider uppercase mb-0.5 truncate">
-              {tx.type} • {tx.account}
-            </p>
+            <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+              <span className="text-[10px] font-bold text-muted-foreground tracking-wider uppercase truncate">
+                {tx.type === "Transfer" && tx.to_account
+                  ? `${tx.account} → ${tx.to_account}`
+                  : `${tx.type} • ${tx.account}`}
+              </span>
+              {tx.credit_card_tx_type && (
+                <span
+                  className={cn(
+                    "text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md inline-flex items-center gap-0.5",
+                    tx.credit_card_tx_type === "repayment"
+                      ? "bg-blue-500/15 text-blue-600 dark:text-blue-400"
+                      : tx.credit_card_tx_type === "refund" || tx.credit_card_tx_type === "cashback"
+                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                        : "bg-purple-500/15 text-purple-600 dark:text-purple-400"
+                  )}
+                >
+                  <CreditCard className="w-2.5 h-2.5 shrink-0" aria-hidden="true" />
+                  {tx.credit_card_tx_type === "repayment"
+                    ? "Repayment"
+                    : tx.credit_card_tx_type === "purchase"
+                      ? "Card Swipe"
+                      : tx.credit_card_tx_type}
+                </span>
+              )}
+            </div>
             <h3 className="font-bold text-base text-foreground truncate leading-tight">
-              {tx.category || (tx.type === "Income" ? "Income" : tx.type === "Transfer" ? "Transfer" : "General")}
+              {tx.credit_card_tx_type === "repayment"
+                ? "Card Repayment"
+                : tx.category || (tx.type === "Income" ? "Income" : tx.type === "Transfer" ? "Transfer" : "General")}
             </h3>
             <p className="text-[10px] text-muted-foreground/70 font-medium mt-0.5 truncate">
               {new Date(tx.date).toLocaleDateString()} {tx.note ? `- ${tx.note}` : ""}
