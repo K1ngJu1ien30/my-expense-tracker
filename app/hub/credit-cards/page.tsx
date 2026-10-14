@@ -355,25 +355,25 @@ export default function CreditCardsDashboardPage() {
   };
 
   return (
-    <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6 pb-32 animate-in fade-in duration-300">
+    <div className="p-3.5 sm:p-6 max-w-5xl mx-auto space-y-3.5 sm:space-y-6 pb-24 animate-in fade-in duration-300">
       {/* ─── Header Navigation ────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 sm:gap-3">
           <Link
             href="/hub"
-            className="p-2.5 bg-muted/60 hover:bg-muted rounded-2xl text-foreground transition-colors"
+            className="p-2 sm:p-2.5 bg-muted/60 hover:bg-muted rounded-xl sm:rounded-2xl text-foreground transition-colors"
             aria-label="Back to Hub"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
           </Link>
           <div>
-            <h1 className="text-2xl font-black tracking-tight text-foreground flex items-center gap-2">
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-foreground flex items-center gap-1.5 sm:gap-2">
               <span>Credit Cards</span>
-              <span className="text-xs font-black uppercase px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-500">
+              <span className="text-[10px] sm:text-xs font-black uppercase px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-500">
                 MVP
               </span>
             </h1>
-            <p className="text-xs text-muted-foreground font-medium">
+            <p className="text-[11px] sm:text-xs text-muted-foreground font-medium truncate">
               Limits, utilization, statements & unbilled spending
             </p>
           </div>
@@ -383,10 +383,10 @@ export default function CreditCardsDashboardPage() {
           <button
             type="button"
             onClick={() => openCreditCardPayment(activeCard?.id || creditCards[0].id)}
-            className="px-4 py-2.5 rounded-2xl text-xs font-bold text-white shadow-soft transition-all flex items-center gap-1.5 cursor-pointer"
+            className="px-3 py-1.5 sm:px-4 sm:py-2.5 rounded-xl sm:rounded-2xl text-xs font-bold text-white shadow-soft transition-all flex items-center gap-1.5 cursor-pointer"
             style={{ backgroundColor: accentColor || "#3b82f6" }}
           >
-            <CreditCard className="w-4 h-4" />
+            <CreditCard className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             <span>Pay Card</span>
           </button>
         )}

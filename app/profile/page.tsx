@@ -204,34 +204,34 @@ export default function ProfilePage() {
 
 
   return (
-    <div className="p-6 animate-in fade-in duration-500 space-y-8 pb-[120px] overflow-x-hidden min-h-screen relative max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold pt-2 mb-6 text-foreground">Profile</h1>
+    <div className="p-3.5 sm:p-6 animate-in fade-in duration-500 space-y-4 sm:space-y-8 pb-24 overflow-x-hidden min-h-screen relative max-w-4xl mx-auto">
+      <h1 className="text-xl sm:text-2xl font-bold pt-1 sm:pt-2 mb-3 sm:mb-6 text-foreground">Profile</h1>
 
       {/* User Info Section */}
-      <div className="flex items-center gap-4 mb-8">
-        <div style={{ backgroundColor: `${accentColor}1A`, borderColor: `${accentColor}33` }} className="w-16 h-16 rounded-full overflow-hidden flex items-center justify-center border-2 border-primary/20 shadow-sm shrink-0">
-           <span style={{ color: accentColor }} className="font-black text-2xl">{userName.charAt(0).toUpperCase()}</span>
+      <div className="flex items-center gap-3 sm:gap-4 mb-4 sm:mb-8">
+        <div style={{ backgroundColor: `${accentColor}1A`, borderColor: `${accentColor}33` }} className="w-12 h-12 sm:w-16 sm:h-16 rounded-full overflow-hidden flex items-center justify-center border-2 border-primary/20 shadow-sm shrink-0">
+           <span style={{ color: accentColor }} className="font-black text-xl sm:text-2xl">{userName.charAt(0).toUpperCase()}</span>
         </div>
         <div className="flex-1">
           {isEditingName ? (
             <div className="flex items-center gap-2">
-              <input autoFocus value={tempName} onChange={e=>setTempName(e.target.value)} aria-label="User name" className="bg-muted px-2 py-1 rounded text-lg font-bold outline-none w-32 text-foreground" />
-              <button type="button" aria-label="Save name" style={{ backgroundColor: accentColor }} onClick={saveName} className="p-2 text-primary-foreground rounded-md shadow-soft"><Check className="w-4 h-4" aria-hidden="true" /></button>
+              <input autoFocus value={tempName} onChange={e=>setTempName(e.target.value)} aria-label="User name" className="bg-muted px-2 py-1 rounded text-base sm:text-lg font-bold outline-none w-32 text-foreground" />
+              <button type="button" aria-label="Save name" style={{ backgroundColor: accentColor }} onClick={saveName} className="p-1.5 sm:p-2 text-primary-foreground rounded-md shadow-soft"><Check className="w-4 h-4" aria-hidden="true" /></button>
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <h2 className="text-xl font-bold text-foreground">{userName}</h2>
-              <button type="button" aria-label="Edit name" onClick={() => { setTempName(userName); setIsEditingName(true); }} className="text-muted-foreground hover:text-foreground transition-colors"><Edit2 className="w-4 h-4" aria-hidden="true" /></button>
+              <h2 className="text-lg sm:text-xl font-bold text-foreground">{userName}</h2>
+              <button type="button" aria-label="Edit name" onClick={() => { setTempName(userName); setIsEditingName(true); }} className="text-muted-foreground hover:text-foreground transition-colors"><Edit2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" aria-hidden="true" /></button>
             </div>
           )}
-          <p className="text-muted-foreground text-sm font-medium">{session?.user?.email || `${userName}'s Finance Tracker`}</p>
+          <p className="text-muted-foreground text-xs sm:text-sm font-medium">{session?.user?.email || `${userName}'s Finance Tracker`}</p>
         </div>
       </div>
 
       {/* Advanced Settings */}
       <div>
         <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 px-2">Account Defaults</h3>
-        <div className="bg-card rounded-3xl shadow-soft border border-border/40 overflow-hidden relative">
+        <div className="bg-card rounded-2xl sm:rounded-3xl shadow-soft border border-border/40 overflow-hidden relative">
           <div className="w-full flex w-full items-center justify-between p-4 active:bg-muted/50 transition-colors text-left relative">
             <div className="flex items-center gap-3">
               <div className="bg-green-500/10 p-2 rounded-xl text-green-500"><CircleDollarSign className="w-5 h-5" /></div>

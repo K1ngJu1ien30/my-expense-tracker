@@ -716,12 +716,12 @@ export default function AnalyticsPage() {
   }, [transactions, comparePreset, comparePeriodAStart, comparePeriodAEnd, comparePeriodBStart, comparePeriodBEnd]);
 
   return (
-    <div className="p-6 animate-in fade-in duration-500 space-y-6 pb-[120px] relative min-h-screen overflow-x-hidden">
+    <div className="p-3.5 sm:p-6 animate-in fade-in duration-500 space-y-3.5 sm:space-y-6 pb-24 relative min-h-screen overflow-x-hidden">
       {/* ─── Header & Top Tab Switcher ────────────────────────────────────── */}
-      <div className="flex items-center justify-between pt-2">
+      <div className="flex items-center justify-between pt-1 sm:pt-2">
         <div>
-          <h1 className="text-2xl font-bold">Analytics</h1>
-          <p className="text-xs font-semibold text-muted-foreground mt-0.5">
+          <h1 className="text-xl sm:text-2xl font-bold">Analytics</h1>
+          <p className="text-[11px] sm:text-xs font-semibold text-muted-foreground mt-0.5">
             {activeTab === "overview" ? "Financial intelligence & breakdown" : "Period comparison & variance"}
           </p>
         </div>
@@ -866,9 +866,9 @@ export default function AnalyticsPage() {
           </div>
 
           {/* ─── 4 KPI SCORECARDS ─────────────────────────────────────────── */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 lg:gap-4">
             {/* 1. Total Expenses */}
-            <div className="bg-card p-4 rounded-3xl border border-border/40 shadow-soft space-y-2">
+            <div className="bg-card p-3 sm:p-4 rounded-2xl sm:rounded-3xl border border-border/40 shadow-soft space-y-1.5 sm:space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                   Total Spent
@@ -877,7 +877,7 @@ export default function AnalyticsPage() {
                   <ArrowDownRight className="w-3.5 h-3.5" />
                 </div>
               </div>
-              <p className="text-lg font-black text-rose-500 tracking-tight leading-none">
+              <p className="text-base sm:text-lg font-black text-rose-500 tracking-tight leading-none">
                 {formatCurrency(kpis.totalExpenses)}
               </p>
               <div className="flex items-center justify-between pt-1 text-[10px] font-semibold text-muted-foreground">
@@ -900,7 +900,7 @@ export default function AnalyticsPage() {
             </div>
 
             {/* 2. Total Income */}
-            <div className="bg-card p-4 rounded-3xl border border-border/40 shadow-soft space-y-2">
+            <div className="bg-card p-3 sm:p-4 rounded-2xl sm:rounded-3xl border border-border/40 shadow-soft space-y-1.5 sm:space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                   Income
@@ -909,7 +909,7 @@ export default function AnalyticsPage() {
                   <ArrowUpRight className="w-3.5 h-3.5" />
                 </div>
               </div>
-              <p className="text-lg font-black text-emerald-500 tracking-tight leading-none">
+              <p className="text-base sm:text-lg font-black text-emerald-500 tracking-tight leading-none">
                 {formatCurrency(kpis.totalIncome)}
               </p>
               <div className="flex items-center justify-between pt-1 text-[10px] font-semibold text-muted-foreground">
@@ -928,7 +928,7 @@ export default function AnalyticsPage() {
             </div>
 
             {/* 3. Net Savings */}
-            <div className="bg-card p-4 rounded-3xl border border-border/40 shadow-soft space-y-2">
+            <div className="bg-card p-3 sm:p-4 rounded-2xl sm:rounded-3xl border border-border/40 shadow-soft space-y-1.5 sm:space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                   Net Savings
@@ -938,7 +938,7 @@ export default function AnalyticsPage() {
                 </div>
               </div>
               <p
-                className={`text-lg font-black tracking-tight leading-none ${
+                className={`text-base sm:text-lg font-black tracking-tight leading-none ${
                   kpis.netSavings >= 0 ? "text-emerald-500" : "text-rose-500"
                 }`}
               >
@@ -954,7 +954,7 @@ export default function AnalyticsPage() {
             </div>
 
             {/* 4. Daily Average Spend */}
-            <div className="bg-card p-4 rounded-3xl border border-border/40 shadow-soft space-y-2">
+            <div className="bg-card p-3 sm:p-4 rounded-2xl sm:rounded-3xl border border-border/40 shadow-soft space-y-1.5 sm:space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                   Daily Pace
@@ -963,7 +963,7 @@ export default function AnalyticsPage() {
                   <Clock className="w-3.5 h-3.5" />
                 </div>
               </div>
-              <p className="text-lg font-black text-foreground tracking-tight leading-none">
+              <p className="text-base sm:text-lg font-black text-foreground tracking-tight leading-none">
                 {formatCurrency(kpis.dailyAvgSpend)}
                 <span className="text-xs font-semibold text-muted-foreground">/day</span>
               </p>
@@ -1037,11 +1037,11 @@ export default function AnalyticsPage() {
           />
 
           {/* ─── EXPENSE & INCOME BREAKDOWN (DONUT + DEEP DIVE) ─────────────── */}
-          <div className="bg-card p-6 rounded-[2.5rem] shadow-heavy border border-border/40 space-y-5">
+          <div className="bg-card p-3.5 sm:p-6 rounded-2xl sm:rounded-[2.5rem] shadow-heavy border border-border/40 space-y-3.5 sm:space-y-5">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-black text-foreground text-lg">Category Breakdown</h3>
-                <p className="text-xs font-semibold text-muted-foreground">Distribution &amp; shares</p>
+                <h3 className="font-black text-foreground text-base sm:text-lg">Category Breakdown</h3>
+                <p className="text-[11px] sm:text-xs font-semibold text-muted-foreground">Distribution &amp; shares</p>
               </div>
 
               {/* Expense vs Income toggle */}

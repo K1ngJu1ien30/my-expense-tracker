@@ -101,10 +101,10 @@ function SwipeableTransactionRow({
         style={{ x }}
         onDragEnd={handleDragEnd}
         onClick={() => { if (isOpen) { animate(x, 0); onClose(); } }}
-        className="relative bg-card p-4 rounded-3xl shadow-soft border border-border/40 group hover:border-primary/20 transition-colors touch-pan-y w-full max-w-full"
+        className="relative bg-card p-3 sm:p-4 rounded-2xl sm:rounded-3xl shadow-soft border border-border/40 group hover:border-primary/20 transition-colors touch-pan-y w-full max-w-full"
       >
         <div
-          className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-l-3xl ${
+          className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-l-2xl sm:rounded-l-3xl ${
             tx.type === "Income"
               ? "bg-emerald-500"
               : tx.type === "Expense"
@@ -331,12 +331,12 @@ export default function HistoryPage() {
   }, []);
 
   return (
-    <div className="animate-in fade-in duration-500 pb-[120px] overflow-x-hidden max-w-4xl mx-auto">
-      <div className="px-6 pt-2">
-        <div className="flex justify-between items-center mb-4">
+    <div className="animate-in fade-in duration-500 pb-24 overflow-x-hidden max-w-4xl mx-auto">
+      <div className="px-3.5 sm:px-6 pt-1 sm:pt-2">
+        <div className="flex justify-between items-center mb-2.5 sm:mb-4">
           <div>
-            <h1 className="text-2xl font-bold">History</h1>
-            <p className="text-xs text-muted-foreground font-medium mt-0.5">
+            <h1 className="text-xl sm:text-2xl font-bold">History</h1>
+            <p className="text-[11px] sm:text-xs text-muted-foreground font-medium mt-0.5">
               Showing <span className="font-black text-foreground">{filteredTransactions.length}</span>
               {transactions.length !== filteredTransactions.length && ` of ${transactions.length}`}{" "}
               transaction{filteredTransactions.length !== 1 ? "s" : ""}
@@ -345,7 +345,7 @@ export default function HistoryPage() {
         </div>
 
         {/* Power Search bar */}
-        <div className="flex items-center gap-2 bg-card rounded-2xl px-4 py-3 border border-border/50 shadow-sm mb-3">
+        <div className="flex items-center gap-2 bg-card rounded-xl sm:rounded-2xl px-3.5 py-2.5 border border-border/50 shadow-sm mb-2.5">
           <Search className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden="true" />
           <input
             ref={searchInputRef}
@@ -369,12 +369,12 @@ export default function HistoryPage() {
 
         {/* Parsed query chips */}
         {chips.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-3">
+          <div className="flex flex-wrap gap-1.5 mb-2.5">
             {chips.map((chip) => (
               <span
                 key={chip.key}
                 style={{ backgroundColor: `${accentColor}1A`, color: accentColor, borderColor: `${accentColor}33` }}
-                className="text-[10px] font-black tracking-wide px-2.5 py-1 rounded-full border"
+                className="text-[10px] font-black tracking-wide px-2.5 py-0.5 rounded-full border"
               >
                 {chip.label}
               </span>
@@ -383,7 +383,7 @@ export default function HistoryPage() {
         )}
 
         {/* Time Filter Pills */}
-        <div className="flex gap-2 mb-3">
+        <div className="flex gap-1.5 sm:gap-2 mb-2.5">
           {(
             [
               { key: "today" as FilterType, label: "Today" },
@@ -397,7 +397,7 @@ export default function HistoryPage() {
                 key={f.key}
                 onClick={() => setFilter(f.key)}
                 style={active ? { backgroundColor: accentColor, color: "#fff" } : {}}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs font-bold transition-all ${
                   active ? "shadow-sm" : "bg-muted/50 text-muted-foreground hover:bg-muted"
                 }`}
               >
@@ -408,8 +408,8 @@ export default function HistoryPage() {
         </div>
 
         {/* Category Filter Pills — horizontal scroll, clipped to viewport */}
-        <div className="-mx-6 px-6 overflow-x-auto hide-scrollbar mb-5">
-          <div className="flex gap-2 w-max pb-1">
+        <div className="-mx-3.5 px-3.5 sm:-mx-6 sm:px-6 overflow-x-auto hide-scrollbar mb-3 sm:mb-4">
+          <div className="flex gap-1.5 sm:gap-2 w-max pb-1">
             <button
               onClick={() => setCategoryFilter("all")}
               style={
@@ -417,7 +417,7 @@ export default function HistoryPage() {
                   ? { backgroundColor: `${accentColor}1A`, color: accentColor, borderColor: `${accentColor}33` }
                   : {}
               }
-              className={`px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-wide transition-all border shrink-0 ${
+              className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg text-[10px] font-bold tracking-wide transition-all border shrink-0 ${
                 categoryFilter === "all" ? "border" : "border-border/50 text-muted-foreground hover:bg-muted/50"
               }`}
             >
@@ -434,7 +434,7 @@ export default function HistoryPage() {
                       ? { backgroundColor: `${accentColor}1A`, color: accentColor, borderColor: `${accentColor}33` }
                       : {}
                   }
-                  className={`px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-wide transition-all border shrink-0 ${
+                  className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg text-[10px] font-bold tracking-wide transition-all border shrink-0 ${
                     active ? "border" : "border-border/50 text-muted-foreground hover:bg-muted/50"
                   }`}
                 >

@@ -110,14 +110,14 @@ export default function HubPage() {
   ];
 
   return (
-    <div className="p-6 animate-in fade-in duration-500 space-y-6 pb-32">
-      <div className="pt-2">
-        <h1 className="text-2xl font-bold">Hub</h1>
-        <p className="text-sm text-muted-foreground font-medium mt-1">Your workspace modules</p>
+    <div className="p-3.5 sm:p-6 animate-in fade-in duration-500 space-y-3.5 sm:space-y-6 pb-24">
+      <div className="pt-1 sm:pt-2">
+        <h1 className="text-xl sm:text-2xl font-bold">Hub</h1>
+        <p className="text-xs sm:text-sm text-muted-foreground font-medium mt-0.5 sm:mt-1">Your workspace modules</p>
       </div>
 
       {/* ─── 1. HEATMAP CALENDAR (VERY FIRST SECTION AT TOP OF HUB) ──────────── */}
-      <div className="bg-card rounded-3xl p-5 border border-border/40 shadow-soft space-y-4">
+      <div className="bg-card rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 border border-border/40 shadow-soft space-y-3 sm:space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-2xl bg-rose-500/10 text-rose-500">
@@ -194,28 +194,28 @@ export default function HubPage() {
       </div>
 
       {/* ─── 2. WORKSPACE MODULES ────────────────────────────────────────────── */}
-      <div className="space-y-3">
+      <div className="space-y-2.5 sm:space-y-3">
         <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
           Modules &amp; Tools
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4">
           {modules.map((m) => {
             if (!m.enabled) return null;
             return (
               <Link
                 key={m.href}
                 href={m.href}
-                className="bg-card p-5 rounded-3xl shadow-soft border border-border/40 flex items-center justify-between hover:border-border hover:shadow-md transition-all active:scale-[0.98] group"
+                className="bg-card p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl shadow-soft border border-border/40 flex items-center justify-between hover:border-border hover:shadow-md transition-all active:scale-[0.98] group"
               >
-                <div className="flex items-center gap-3.5 min-w-0">
-                  <div className={`w-12 h-12 rounded-2xl ${m.color} flex items-center justify-center text-2xl shrink-0`}>
+                <div className="flex items-center gap-3 sm:gap-3.5 min-w-0">
+                  <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl ${m.color} flex items-center justify-center text-xl sm:text-2xl shrink-0`}>
                     {m.icon}
                   </div>
                   <div className="min-w-0">
                     <p className="font-bold text-foreground text-sm leading-tight group-hover:text-primary transition-colors">{m.title}</p>
                     <p className="text-xs text-muted-foreground font-medium truncate mt-0.5">{m.description}</p>
                     {m.sub.length > 0 && (
-                      <div className="flex items-center gap-1.5 mt-1.5">
+                      <div className="flex items-center gap-1.5 mt-1 sm:mt-1.5 flex-wrap">
                         {m.sub.map((s, i) => (
                           <span key={i} className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
                             {s}
@@ -225,7 +225,7 @@ export default function HubPage() {
                     )}
                   </div>
                 </div>
-                <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-foreground transition-colors shrink-0 ml-2" />
+                <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground group-hover:text-foreground transition-colors shrink-0 ml-2" />
               </Link>
             );
           })}

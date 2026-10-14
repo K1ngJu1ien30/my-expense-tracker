@@ -61,9 +61,9 @@ export default function GoalsPage() {
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-0 animate-in fade-in duration-500 space-y-6 relative pb-32">
-      <div className="flex justify-between items-center pt-2">
-        <h1 className="text-2xl font-bold">Financial Planning</h1>
+    <div className="p-3.5 sm:p-6 lg:p-0 animate-in fade-in duration-500 space-y-3.5 sm:space-y-6 relative pb-24">
+      <div className="flex justify-between items-center pt-1 sm:pt-2">
+        <h1 className="text-xl sm:text-2xl font-bold">Financial Planning</h1>
         <button type="button" aria-label="Create new goal" onClick={() => setIsCreating(true)} className="bg-primary text-primary-foreground p-2 rounded-full shadow-soft hover:scale-105 active:scale-95 transition-transform cursor-pointer">
           <Plus className="w-5 h-5" aria-hidden="true" />
         </button>
@@ -71,7 +71,7 @@ export default function GoalsPage() {
 
       <AnimatePresence>
         {isCreating && (
-          <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} role="dialog" aria-labelledby="new-goal-title" className="bg-card p-5 rounded-3xl shadow-soft border border-border/40 space-y-3 relative mb-4 max-w-xl">
+          <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} role="dialog" aria-labelledby="new-goal-title" className="bg-card p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-soft border border-border/40 space-y-3 relative mb-4 max-w-xl">
             <button type="button" aria-label="Close" onClick={() => setIsCreating(false)} className="absolute top-4 right-4 text-muted-foreground"><X className="w-4 h-4" aria-hidden="true" /></button>
             <h3 id="new-goal-title" className="font-bold text-sm">Create New Goal</h3>
             <input value={newTitle} onChange={e=>setNewTitle(e.target.value)} aria-label="Goal title" className="w-full bg-muted p-2 rounded-lg text-sm font-semibold outline-none" placeholder="Goal Title (e.g. Dream Car)" />
@@ -81,9 +81,9 @@ export default function GoalsPage() {
         )}
       </AnimatePresence>
 
-      <div className={goals.length === 0 ? "w-full pb-6" : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-6"}>
+      <div className={goals.length === 0 ? "w-full pb-4 sm:pb-6" : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4 pb-4 sm:pb-6"}>
         {goals.length === 0 ? (
-          <div className="bg-card/60 border border-dashed border-border/80 rounded-3xl p-8 text-center space-y-3 max-w-md mx-auto">
+          <div className="bg-card/60 border border-dashed border-border/80 rounded-2xl sm:rounded-3xl p-6 sm:p-8 text-center space-y-3 max-w-md mx-auto">
             <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto">
               <Target className="w-6 h-6" />
             </div>
@@ -105,8 +105,8 @@ export default function GoalsPage() {
           goals.map(g => {
             const progress = Math.min((g.current / g.target) * 100, 100);
             return (
-              <div key={g.id} className="bg-card p-5 rounded-3xl shadow-soft border border-border/40 space-y-3 relative">
-                <div className="absolute top-4 right-4 flex items-center gap-3">
+              <div key={g.id} className="bg-card p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl shadow-soft border border-border/40 space-y-2.5 sm:space-y-3 relative">
+                <div className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 flex items-center gap-2.5 sm:gap-3">
                   <button
                     type="button"
                     aria-label={g.isPinned ? `Unpin ${g.title}` : `Pin ${g.title}`}
@@ -121,8 +121,8 @@ export default function GoalsPage() {
                   </button>
                 </div>
 
-                <div className="flex gap-4 items-center pr-16">
-                  <div className={`${g.bg} p-3 rounded-2xl`}>
+                <div className="flex gap-3 sm:gap-4 items-center pr-14 sm:pr-16">
+                  <div className={`${g.bg} p-2 sm:p-3 rounded-xl sm:rounded-2xl`}>
                     {ICONS[g.iconName] || <Target className="w-5 h-5 text-foreground" />}
                   </div>
                   <div className="min-w-0 flex-1">

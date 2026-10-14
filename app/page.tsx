@@ -398,7 +398,7 @@ export default function Dashboard() {
   }, [derryActive]);
 
   return (
-    <div className="p-4 sm:p-6 lg:p-0 space-y-6 lg:space-y-8 animate-in fade-in duration-500">
+    <div className="p-3 sm:p-5 lg:p-0 space-y-3.5 sm:space-y-5 lg:space-y-8 animate-in fade-in duration-500">
       {/* 🎈 Derry Horror Overlay — purely decorative easter egg */}
       <AnimatePresence>
         {derryActive && (
@@ -468,16 +468,16 @@ export default function Dashboard() {
       />
 
       {/* Responsive Grid: 2 columns on desktop (8 cols left, 4 cols right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 sm:gap-5 lg:gap-8 items-start">
         {/* ─── LEFT COLUMN: Header, Accounts Wallet & Trends ──────────────── */}
-        <div className="lg:col-span-7 xl:col-span-8 space-y-6">
+        <div className="lg:col-span-7 xl:col-span-8 space-y-3.5 sm:space-y-5">
           {/* Credit Card In-App Reminder Alert (Phase 3A) */}
           {urgentReminder && (
             <motion.div
               initial={{ y: -10, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               className={cn(
-                "p-4 rounded-3xl border shadow-soft flex items-center justify-between gap-3 transition-all",
+                "p-3 sm:p-4 rounded-2xl sm:rounded-3xl border shadow-soft flex items-center justify-between gap-2.5 sm:gap-3 transition-all",
                 urgentReminder.urgency === "overdue"
                   ? "bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400"
                   : urgentReminder.urgency === "due_today"
@@ -485,10 +485,10 @@ export default function Dashboard() {
                   : "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400"
               )}
             >
-              <div className="flex items-center gap-3 min-w-0">
+              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
                 <div
                   className={cn(
-                    "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-sm text-white",
+                    "w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl flex items-center justify-center shrink-0 shadow-sm text-white",
                     urgentReminder.urgency === "overdue"
                       ? "bg-rose-500 animate-pulse"
                       : urgentReminder.urgency === "due_today"
@@ -497,14 +497,14 @@ export default function Dashboard() {
                   )}
                 >
                   {urgentReminder.urgency === "overdue" ? (
-                    <AlertTriangle className="w-5 h-5" />
+                    <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" />
                   ) : (
-                    <Clock className="w-5 h-5" />
+                    <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
                   )}
                 </div>
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-black/10 dark:bg-white/10">
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-black/10 dark:bg-white/10">
                       {urgentReminder.urgency === "overdue"
                         ? `Overdue (${Math.abs(urgentReminder.daysRemaining)}d)`
                         : urgentReminder.urgency === "due_today"
@@ -515,7 +515,7 @@ export default function Dashboard() {
                       {urgentReminder.cardName}
                     </span>
                   </div>
-                  <p className="text-xs font-semibold text-foreground mt-0.5">
+                  <p className="text-[11px] sm:text-xs font-semibold text-foreground mt-0.5 truncate">
                     {formatCurrency(urgentReminder.remainingBalance)} Statement Due
                     {urgentReminder.minimumPayment > 0 &&
                       ` · Min ${formatCurrency(urgentReminder.minimumPayment)}`}
@@ -528,7 +528,7 @@ export default function Dashboard() {
                   type="button"
                   onClick={() => openCreditCardPayment(urgentReminder.cardId)}
                   className={cn(
-                    "px-3.5 py-2 rounded-xl text-xs font-bold text-white shadow-soft transition-all cursor-pointer",
+                    "px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-bold text-white shadow-soft transition-all cursor-pointer",
                     urgentReminder.urgency === "overdue"
                       ? "bg-rose-600 hover:bg-rose-700"
                       : "bg-primary hover:opacity-90"
@@ -542,7 +542,7 @@ export default function Dashboard() {
 
           {/* Header Banner with Time-of-Day theme */}
           <div
-            className="relative rounded-3xl px-5 py-4 transition-colors duration-700 overflow-hidden shadow-soft border border-border/30"
+            className="relative rounded-2xl sm:rounded-3xl px-3.5 py-2.5 sm:px-5 sm:py-4 transition-colors duration-700 overflow-hidden shadow-soft border border-border/30"
             style={{
               background: timeTheme.gradient,
             }}
@@ -550,21 +550,21 @@ export default function Dashboard() {
           >
             <div className="flex justify-between items-center gap-3">
               <div className="min-w-0 flex-1">
-                <p className="text-muted-foreground font-semibold text-sm flex items-center gap-1.5">
-                  <span aria-hidden="true" className="text-base">{timeTheme.icon}</span>
+                <p className="text-muted-foreground font-semibold text-xs sm:text-sm flex items-center gap-1.5">
+                  <span aria-hidden="true" className="text-sm sm:text-base">{timeTheme.icon}</span>
                   <span className="truncate">{displayGreeting}</span>
                 </p>
-                <h1 className="text-2xl lg:text-3xl font-bold truncate mt-0.5">{userName}</h1>
+                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold truncate mt-0.5">{userName}</h1>
               </div>
 
               <button
                 type="button"
                 aria-label="User avatar"
                 onClick={handleAvatarTap}
-                className="w-11 h-11 rounded-full bg-primary/10 overflow-hidden flex items-center justify-center border-2 border-primary/20 shadow-sm active:scale-95 transition-transform shrink-0 cursor-pointer"
-                style={{ boxShadow: `0 0 18px ${timeTheme.accent}` }}
+                className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-primary/10 overflow-hidden flex items-center justify-center border-2 border-primary/20 shadow-sm active:scale-95 transition-transform shrink-0 cursor-pointer"
+                style={{ boxShadow: `0 0 14px ${timeTheme.accent}` }}
               >
-                <span className="font-bold text-primary text-base">{userName.charAt(0).toUpperCase()}</span>
+                <span className="font-bold text-primary text-sm sm:text-base">{userName.charAt(0).toUpperCase()}</span>
               </button>
             </div>
           </div>
@@ -583,26 +583,26 @@ export default function Dashboard() {
                 handleRevealBalance();
               }
             }}
-            className="bg-primary text-primary-foreground p-5 rounded-[2rem] shadow-heavy shadow-primary/20 relative overflow-hidden dark:bg-zinc-900 dark:text-zinc-100 border border-transparent dark:border-white/5 cursor-pointer"
+            className="bg-primary text-primary-foreground p-3.5 sm:p-5 rounded-2xl sm:rounded-[2rem] shadow-heavy shadow-primary/20 relative overflow-hidden dark:bg-zinc-900 dark:text-zinc-100 border border-transparent dark:border-white/5 cursor-pointer"
           >
             <div className="absolute top-0 right-0 w-48 h-48 bg-white/5 rounded-full blur-2xl -mr-16 -mt-16 pointer-events-none" />
             <div className="absolute bottom-0 left-0 w-32 h-32 bg-white/5 rounded-full blur-xl -ml-12 -mb-12 pointer-events-none" />
             
             {derryActive ? (
               <>
-                <p className="text-primary-foreground/70 font-medium mb-1 relative z-10 text-sm">🎈</p>
-                <h2 className="text-4xl font-black mb-4 relative z-10 tracking-tight text-red-600">YOU&rsquo;LL FLOAT TOO.</h2>
+                <p className="text-primary-foreground/70 font-medium mb-1 relative z-10 text-xs sm:text-sm">🎈</p>
+                <h2 className="text-2xl sm:text-4xl font-black mb-3 sm:mb-4 relative z-10 tracking-tight text-red-600">YOU&rsquo;LL FLOAT TOO.</h2>
               </>
             ) : (
               <>
                 {/* Per-account balances — carousel on mobile, responsive grid on desktop */}
-                <div className="relative z-10 -mx-1 px-1 flex lg:grid lg:grid-cols-2 xl:grid-cols-3 overflow-x-auto lg:overflow-x-visible snap-x hide-scrollbar gap-3 pb-2 mb-3">
+                <div className="relative z-10 -mx-1 px-1 flex lg:grid lg:grid-cols-2 xl:grid-cols-3 overflow-x-auto lg:overflow-x-visible snap-x hide-scrollbar gap-2.5 sm:gap-3 pb-1.5 sm:pb-2 mb-2 sm:mb-3">
                   {orderedAccountCards.map(({ name, balance, kind }) => (
-                    <div key={name} className="flex-shrink-0 w-fit min-w-[140px] lg:w-full lg:min-w-0 p-3.5 pr-6 bg-gray-800/60 rounded-2xl snap-start border border-gray-700/50 hover:border-gray-600 transition-colors">
+                    <div key={name} className="flex-shrink-0 w-fit min-w-[125px] sm:min-w-[140px] lg:w-full lg:min-w-0 p-2.5 sm:p-3.5 pr-4 sm:pr-6 bg-gray-800/60 rounded-xl sm:rounded-2xl snap-start border border-gray-700/50 hover:border-gray-600 transition-colors">
                       <div className="flex items-center justify-between gap-1.5">
                         <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider block truncate">{name}</span>
                         {kind === "credit_card" && (
-                          <div className="flex items-center gap-1.5 shrink-0">
+                          <div className="flex items-center gap-1 shrink-0">
                             <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 bg-rose-500/20 text-rose-300 rounded">Card</span>
                             <button
                               type="button"
@@ -611,7 +611,7 @@ export default function Dashboard() {
                                 openCreditCardPayment(name);
                               }}
                               aria-label={`Pay ${name}`}
-                              className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 bg-white/20 hover:bg-white/30 active:scale-95 text-white rounded transition-all cursor-pointer"
+                              className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 bg-white/20 hover:bg-white/30 active:scale-95 text-white rounded transition-all cursor-pointer"
                             >
                               Pay
                             </button>
@@ -621,7 +621,7 @@ export default function Dashboard() {
                           <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 bg-amber-500/20 text-amber-300 rounded shrink-0">Save</span>
                         )}
                       </div>
-                      <span className={`text-lg font-bold tracking-tight block mt-0.5 ${balance < 0 ? 'text-rose-400' : 'text-white'}`}>
+                      <span className={`text-base sm:text-lg font-bold tracking-tight block mt-0.5 ${balance < 0 ? 'text-rose-400' : 'text-white'}`}>
                         {isGodMode
                           ? `${getCurrencyPrefix(name)} 99,999.00`
                           : balanceRevealed
@@ -632,28 +632,28 @@ export default function Dashboard() {
                     </div>
                   ))}
                   {orderedAccountCards.length === 0 && (
-                    <p className="text-gray-500 text-sm font-medium min-w-full text-center py-2">No active accounts</p>
+                    <p className="text-gray-500 text-xs sm:text-sm font-medium min-w-full text-center py-2">No active accounts</p>
                   )}
                 </div>
 
                 {/* Net Total */}
                 <div
-                  className={`relative z-10 pt-3 border-t border-white/[0.08] flex items-center justify-between ${
+                  className={`relative z-10 pt-2.5 sm:pt-3 border-t border-white/[0.08] flex items-center justify-between ${
                     !isGodMode && balanceRevealed && totalBalance < 0 ? "animate-glitch" : ""
                   }`}
                 >
                   <div className="flex flex-col">
-                    <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">
+                    <span className="text-gray-400 text-[11px] sm:text-xs font-bold uppercase tracking-wider">
                       {financialPosition.isMultiCurrency ? "Est. Net Total" : "Net Total"}
                     </span>
                     {financialPosition.isMultiCurrency && (
-                      <span className="text-[10px] text-gray-400/80 font-medium">
+                      <span className="text-[9px] sm:text-[10px] text-gray-400/80 font-medium">
                         Converted to {currency}
                       </span>
                     )}
                   </div>
                   <span
-                    className={`text-base font-bold tracking-tight ${
+                    className={`text-sm sm:text-base font-bold tracking-tight ${
                       !isGodMode && balanceRevealed && totalBalance > 1_000_000
                         ? "rich-sparkle text-amber-300"
                         : "text-gray-200"
@@ -669,9 +669,9 @@ export default function Dashboard() {
 
                 {/* Multi-currency breakdown pills */}
                 {financialPosition.isMultiCurrency && balanceRevealed && !isGodMode && (
-                  <div className="relative z-10 mt-2.5 pt-2 border-t border-white/[0.06] flex flex-wrap gap-1.5">
+                  <div className="relative z-10 mt-2 pt-1.5 border-t border-white/[0.06] flex flex-wrap gap-1.5">
                     {Object.entries(financialPosition.byCurrency).map(([cur, totals]) => (
-                      <span key={cur} className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/10 text-gray-300 border border-white/10">
+                      <span key={cur} className="text-[9px] sm:text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/10 text-gray-300 border border-white/10">
                         {cur}: {totals.netFinancialPosition < 0 ? '-' : ''}{cur} {Math.abs(totals.netFinancialPosition).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     ))}
@@ -681,8 +681,8 @@ export default function Dashboard() {
             )}
             
             {pendingIncome > 0 && !derryActive && (
-              <div className="relative z-10 mt-3">
-                <div className="flex items-center gap-2 bg-amber-400/20 px-3 py-1 rounded-full backdrop-blur-md w-fit">
+              <div className="relative z-10 mt-2 sm:mt-2.5">
+                <div className="flex items-center gap-1.5 sm:gap-2 bg-amber-400/20 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full backdrop-blur-md w-fit">
                   <Clock className="w-3 h-3 text-amber-400" aria-hidden="true" />
                   <span className="text-[10px] font-bold text-amber-300">{formatCurrency(pendingIncome)} Pending</span>
                   <button type="button" aria-label="About pending funds" aria-expanded={showPendingTip} onClick={(e) => { e.stopPropagation(); setShowPendingTip(!showPendingTip); }} className="pointer-events-auto cursor-pointer">
@@ -699,56 +699,56 @@ export default function Dashboard() {
           </motion.div>
 
           {/* Spending Trend Chart */}
-          <div className="bg-card p-6 rounded-3xl shadow-soft border border-border/40">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-foreground text-base">Spending Trend</h3>
-              <span className="text-xs font-semibold text-muted-foreground">Past 7 Days</span>
+          <div className="bg-card p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl shadow-soft border border-border/40">
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <h3 className="font-bold text-foreground text-sm sm:text-base">Spending Trend</h3>
+              <span className="text-[11px] sm:text-xs font-semibold text-muted-foreground">Past 7 Days</span>
             </div>
-            <div className="h-[140px] lg:h-[220px] w-full" style={{ minWidth: 0 }}>
+            <div className="h-[95px] sm:h-[150px] lg:h-[200px] w-full" style={{ minWidth: 0 }}>
               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <LineChart data={dynamicTrendData}>
                   <Line 
                     type="monotone" 
                     dataKey="value" 
                     stroke="var(--foreground)" 
-                    strokeWidth={3} 
+                    strokeWidth={2.5} 
                     dot={false}
-                    activeDot={{ r: 6, fill: "var(--foreground)" }} 
+                    activeDot={{ r: 5, fill: "var(--foreground)" }} 
                   />
                   <Tooltip 
                     content={<CustomTooltip />}
-                    cursor={{ stroke: 'var(--border)', strokeWidth: 2, strokeDasharray: '4 4', fill: 'transparent' }}
+                    cursor={{ stroke: 'var(--border)', strokeWidth: 1.5, strokeDasharray: '4 4', fill: 'transparent' }}
                   />
                 </LineChart>
               </ResponsiveContainer>
             </div>
-            <div className="flex justify-between text-xs text-muted-foreground font-medium px-2 mt-3 pt-2 border-t border-border/30">
+            <div className="flex justify-between text-[10px] sm:text-xs text-muted-foreground font-medium px-1 mt-1.5 sm:mt-2.5 pt-1.5 sm:pt-2 border-t border-border/30">
               {dynamicTrendData.map((d, i) => <span key={i}>{d.name}</span>)}
             </div>
           </div>
         </div>
 
         {/* ─── RIGHT COLUMN: Insights, Claims & Goals ─────────────────────── */}
-        <div className="lg:col-span-5 xl:col-span-4 space-y-6">
+        <div className="lg:col-span-5 xl:col-span-4 space-y-3.5 sm:space-y-5">
           {/* Insights Row */}
-          <div className="grid grid-cols-2 gap-4">
-            <Link href="/history" className="bg-card w-full text-left p-5 rounded-3xl shadow-soft border border-border/40 hover:scale-[1.02] active:scale-95 transition-all cursor-pointer block group">
-              <div className="bg-primary/5 w-9 h-9 rounded-2xl flex items-center justify-center mb-3 group-hover:bg-primary/10 transition-colors">
-                <Wallet className="w-4 h-4 text-primary" aria-hidden="true" />
+          <div className="grid grid-cols-2 gap-2.5 sm:gap-4">
+            <Link href="/history" className="bg-card w-full text-left p-3 sm:p-4 rounded-2xl sm:rounded-3xl shadow-soft border border-border/40 hover:scale-[1.02] active:scale-95 transition-all cursor-pointer block group">
+              <div className="bg-primary/5 w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center mb-1.5 sm:mb-2 group-hover:bg-primary/10 transition-colors">
+                <Wallet className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-primary" aria-hidden="true" />
               </div>
-              <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-1">Today</p>
+              <p className="text-muted-foreground text-[9px] sm:text-[10px] font-bold uppercase tracking-wider mb-0.5">Today</p>
               {todayTransactions.length === 0 ? (
-                <p className="text-xs font-medium text-muted-foreground">No transactions</p>
+                <p className="text-[11px] sm:text-xs font-medium text-muted-foreground">No transactions</p>
               ) : (
-                <p className="text-lg font-black dark:text-foreground">{formatCurrency(todayTotal)}</p>
+                <p className="text-base sm:text-lg font-black dark:text-foreground">{formatCurrency(todayTotal)}</p>
               )}
             </Link>
-            <Link href="/history" className="bg-card w-full text-left p-5 rounded-3xl shadow-soft border border-border/40 hover:scale-[1.02] active:scale-95 transition-all cursor-pointer block group">
-              <div className="bg-rose-500/10 w-9 h-9 rounded-2xl flex items-center justify-center mb-3 group-hover:bg-rose-500/20 transition-colors">
-                <TrendingUp className="w-4 h-4 text-rose-500" aria-hidden="true" />
+            <Link href="/history" className="bg-card w-full text-left p-3 sm:p-4 rounded-2xl sm:rounded-3xl shadow-soft border border-border/40 hover:scale-[1.02] active:scale-95 transition-all cursor-pointer block group">
+              <div className="bg-rose-500/10 w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center mb-1.5 sm:mb-2 group-hover:bg-rose-500/20 transition-colors">
+                <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-500" aria-hidden="true" />
               </div>
-              <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-1">Weekly</p>
-              <p className="text-lg font-black dark:text-foreground">{formatCurrency(weeklyTotal)}</p>
+              <p className="text-muted-foreground text-[9px] sm:text-[10px] font-bold uppercase tracking-wider mb-0.5">Weekly</p>
+              <p className="text-base sm:text-lg font-black dark:text-foreground">{formatCurrency(weeklyTotal)}</p>
             </Link>
           </div>
 
@@ -760,15 +760,15 @@ export default function Dashboard() {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -10, scale: 0.97 }}
                 transition={{ type: "spring", damping: 26, stiffness: 300 }}
-                className="relative rounded-3xl border border-amber-400/40 p-4 flex items-center gap-3 overflow-hidden shadow-soft"
+                className="relative rounded-2xl sm:rounded-3xl border border-amber-400/40 p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3 overflow-hidden shadow-soft"
                 style={{
                   background:
                     "linear-gradient(135deg, rgba(253, 248, 235, 0.95) 0%, rgba(248, 241, 222, 0.95) 100%)",
                   color: "#3a3a37",
                 }}
               >
-                <div className="w-11 h-11 rounded-2xl bg-amber-500/20 flex items-center justify-center shrink-0">
-                  <Receipt className="w-5 h-5 text-amber-700" aria-hidden="true" />
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-amber-500/20 flex items-center justify-center shrink-0">
+                  <Receipt className="w-4 h-4 sm:w-5 sm:h-5 text-amber-700" aria-hidden="true" />
                 </div>
                 <button
                   type="button"
@@ -776,16 +776,16 @@ export default function Dashboard() {
                   className="flex-1 text-left active:scale-[0.99] transition-transform cursor-pointer"
                   aria-label="Open last month's receipt"
                 >
-                  <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">
+                  <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-amber-700">
                     Your monthly receipt is ready
                   </p>
-                  <p className="text-sm font-bold mt-0.5">Tap to view & share →</p>
+                  <p className="text-xs sm:text-sm font-bold mt-0.5">Tap to view & share →</p>
                 </button>
                 <button
                   type="button"
                   aria-label="Dismiss recap prompt"
                   onClick={dismissRecapPrompt}
-                  className="p-1.5 text-stone-500 hover:text-stone-800 transition-colors shrink-0 text-lg leading-none font-bold cursor-pointer"
+                  className="p-1 text-stone-500 hover:text-stone-800 transition-colors shrink-0 text-base leading-none font-bold cursor-pointer"
                 >
                   <span aria-hidden="true">×</span>
                 </button>
@@ -797,17 +797,17 @@ export default function Dashboard() {
           {claimsSummary && (
             <Link
               href="/hub/claims"
-              className="bg-card p-4 rounded-3xl shadow-soft border border-amber-500/30 flex items-center gap-4 hover:border-amber-500/60 active:scale-[0.99] transition-all cursor-pointer"
+              className="bg-card p-3 sm:p-4 rounded-2xl sm:rounded-3xl shadow-soft border border-amber-500/30 flex items-center gap-3 hover:border-amber-500/60 active:scale-[0.99] transition-all cursor-pointer"
             >
-              <div className="bg-amber-500/10 w-11 h-11 rounded-2xl flex items-center justify-center shrink-0">
-                <Receipt className="w-5 h-5 text-amber-500" aria-hidden="true" />
+              <div className="bg-amber-500/10 w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl flex items-center justify-center shrink-0">
+                <Receipt className="w-4 h-4 sm:w-5 sm:h-5 text-amber-500" aria-hidden="true" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-wider text-amber-500">Unclaimed</p>
-                <p className="text-base font-black text-foreground leading-tight">
+                <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-amber-500">Unclaimed</p>
+                <p className="text-sm sm:text-base font-black text-foreground leading-tight">
                   {formatCurrency(claimsSummary.total)}
                 </p>
-                <p className="text-[11px] text-muted-foreground font-medium mt-0.5">
+                <p className="text-[10px] sm:text-[11px] text-muted-foreground font-medium mt-0.5 truncate">
                   {claimsSummary.count} expense{claimsSummary.count !== 1 ? "s" : ""}
                   {claimsSummary.distinctPayees > 0 && ` · ${claimsSummary.distinctPayees} payee${claimsSummary.distinctPayees !== 1 ? "s" : ""}`}
                 </p>
@@ -820,18 +820,18 @@ export default function Dashboard() {
           {creditCardSummary && (
             <Link
               href="/hub/credit-cards"
-              className="bg-card p-4 rounded-3xl shadow-soft border border-rose-500/20 hover:border-rose-500/50 flex flex-col gap-3 transition-all cursor-pointer block"
+              className="bg-card p-3 sm:p-4 rounded-2xl sm:rounded-3xl shadow-soft border border-rose-500/20 hover:border-rose-500/50 flex flex-col gap-2 sm:gap-2.5 transition-all cursor-pointer block"
             >
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="bg-rose-500/10 w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 text-rose-500">
-                    <CreditCard className="w-4 h-4" />
+                <div className="flex items-center gap-2 sm:gap-2.5">
+                  <div className="bg-rose-500/10 w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 text-rose-500">
+                    <CreditCard className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   </div>
                   <div>
-                    <span className="text-[10px] font-black uppercase tracking-wider text-rose-500 block">
+                    <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-rose-500 block">
                       Credit Cards ({creditCardSummary.cardCount})
                     </span>
-                    <span className="text-sm font-black text-foreground font-mono">
+                    <span className="text-xs sm:text-sm font-black text-foreground font-mono">
                       {formatCurrency(creditCardSummary.totalDebt)} Outstanding
                     </span>
                   </div>
@@ -842,7 +842,7 @@ export default function Dashboard() {
               </div>
 
               {creditCardSummary.totalLimit > 0 && (
-                <div className="space-y-1 bg-muted/20 p-2.5 rounded-2xl border border-border/40">
+                <div className="space-y-1 bg-muted/20 p-2 sm:p-2.5 rounded-xl border border-border/40">
                   <div className="flex justify-between text-[10px]">
                     <span className="text-muted-foreground font-medium">Utilization:</span>
                     <span className="font-mono font-bold text-foreground">
@@ -870,34 +870,34 @@ export default function Dashboard() {
           )}
 
           {/* Savings Goals Section */}
-          <div className="space-y-3">
+          <div className="space-y-2 sm:space-y-3">
             <div className="flex justify-between items-center px-1">
-              <h3 className="font-bold text-foreground text-sm">Savings Goals</h3>
-              <Link href="/goals" className="text-xs font-bold text-primary uppercase hover:underline transition-all">View All</Link>
+              <h3 className="font-bold text-foreground text-xs sm:text-sm">Savings Goals</h3>
+              <Link href="/goals" className="text-[11px] sm:text-xs font-bold text-primary uppercase hover:underline transition-all">View All</Link>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-2 sm:space-y-2.5">
               {pinnedGoals.length === 0 && (
-                <div className="bg-card p-5 rounded-3xl shadow-soft border border-border/40 text-center">
+                <div className="bg-card p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-soft border border-border/40 text-center">
                   <p className="text-muted-foreground text-xs font-medium">No pinned goals yet. Pin them in Goals!</p>
                 </div>
               )}
               {pinnedGoals.map(g => (
-                <div key={`${g.id}-${g.current}`} className="bg-card p-4 rounded-2xl shadow-soft border border-border/40 relative space-y-2">
-                  <div className="flex justify-between items-end">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className={`${g.bg} p-2 rounded-xl shrink-0`}>
-                        <Target className={`w-4 h-4 ${g.color.replace('bg-', 'text-')}`} />
+                <div key={`${g.id}-${g.current}`} className="bg-card p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl shadow-soft border border-border/40 relative space-y-1.5 sm:space-y-2">
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className={`${g.bg} p-1.5 sm:p-2 rounded-lg sm:rounded-xl shrink-0`}>
+                        <Target className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${g.color.replace('bg-', 'text-')}`} />
                       </div>
                       <div className="min-w-0">
                         <p className="text-xs font-bold text-foreground truncate">{g.title}</p>
-                        <p className="text-[10px] text-muted-foreground font-medium truncate">{g.subtitle}</p>
+                        <p className="text-[9px] sm:text-[10px] text-muted-foreground font-medium truncate">{g.subtitle}</p>
                       </div>
                     </div>
                     <div className="text-right shrink-0">
                       <p className="text-xs font-bold text-primary">{currency} {g.current.toLocaleString()} <span className="text-muted-foreground font-medium text-[10px]">/ {g.target >= 1000 ? `${g.target/1000}k` : g.target}</span></p>
                     </div>
                   </div>
-                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                  <div className="h-1.5 sm:h-2 bg-muted rounded-full overflow-hidden">
                     <motion.div 
                       initial={{ width: 0 }}
                       animate={{ width: `${Math.min((g.current / g.target) * 100, 100)}%` }}
