@@ -22,7 +22,7 @@ import {
   calculateStatementRemaining,
   calculateMinimumRemaining,
 } from "@/lib/hooks/useCreditCardPayments";
-import { calculateAccountBalances } from "@/lib/balance";
+import { calculateAccountBalances, convertCurrencySafe } from "@/lib/balance";
 import type { CreditCardPaymentType } from "@/lib/types";
 
 export default function CreditCardPaymentModal({
@@ -46,6 +46,7 @@ export default function CreditCardPaymentModal({
     creditCardAllocations,
     addCreditCardStatement,
     recordCreditCardPayment,
+    exchangeRates,
   } = useAppContext();
 
   // ─── Filter credit cards & liquid payment sources ────────────────────────
@@ -127,6 +128,16 @@ export default function CreditCardPaymentModal({
     () => liquidSources.find((s) => s.id === sourceAccountId || s.name === sourceAccountId),
     [liquidSources, sourceAccountId]
   );
+
+  // Multi-currency resolution
+  const cardCurrency = (currentCard?.currencyCode || currency).trim().toUpperCase();
+  const sourceCurrency = (currentSource?.currencyCode || currency).trim().toUpperCase();
+  const isCurrencyMismatch = cardCurrency !== sourceCurrency;
+
+  const conversionEstimate = useMemo(() => {
+    if (!isCurrencyMismatch || !amount || isNaN(Number(amount)) || Number(amount) <= 0) return null;
+    return convertCurrencySafe(Number(amount), cardCurrency, sourceCurrency, { liveRates: exchangeRates });
+  }, [isCurrencyMismatch, amount, cardCurrency, sourceCurrency, exchangeRates]);
 
   // Balances calculation
   const balancesData = useMemo(
@@ -257,7 +268,7 @@ export default function CreditCardPaymentModal({
     if (currentCardDebt > 0 && num > currentCardDebt + 0.01) {
       NativeHaptics.errorShake();
       setErrorMessage(
-        `Amount exceeds current total card debt (${currency} ${currentCardDebt.toFixed(2)}). Unsupported overpayment.`
+        `Amount exceeds current total card debt (${cardCurrency} ${currentCardDebt.toFixed(2)}). Unsupported overpayment.`
       );
       return;
     }
@@ -639,9 +650,16 @@ export default function CreditCardPaymentModal({
 
                   <div className="pt-2 border-t border-border/40 flex justify-between items-center">
                     <span className="font-bold text-foreground">Payment Amount</span>
-                    <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">
-                      {currency} {Number(amount).toFixed(2)}
-                    </span>
+                    <div className="text-right">
+                      <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">
+                        {cardCurrency} {Number(amount).toFixed(2)}
+                      </span>
+                      {isCurrencyMismatch && conversionEstimate && conversionEstimate.isKnown && (
+                        <span className="text-[10px] text-muted-foreground block font-medium">
+                          ≈ {sourceCurrency} {conversionEstimate.amount.toFixed(2)} (estimated debit)
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -654,13 +672,16 @@ export default function CreditCardPaymentModal({
                   <div className="flex justify-between pl-5">
                     <span>{currentSource?.name} Balance:</span>
                     <span className="font-mono font-bold">
-                      {currency} {(sourceBalance - Number(amount)).toFixed(2)}
+                      {sourceCurrency}{" "}
+                      {isCurrencyMismatch && conversionEstimate && conversionEstimate.isKnown
+                        ? `${(sourceBalance - conversionEstimate.amount).toFixed(2)} (est.)`
+                        : (sourceBalance - Number(amount)).toFixed(2)}
                     </span>
                   </div>
                   <div className="flex justify-between pl-5">
                     <span>{currentCard?.name} Debt:</span>
                     <span className="font-mono font-bold">
-                      {currency} {Math.max(0, currentCardDebt - Number(amount)).toFixed(2)}
+                      {cardCurrency} {Math.max(0, currentCardDebt - Number(amount)).toFixed(2)}
                     </span>
                   </div>
                 </div>
@@ -723,6 +744,7 @@ export default function CreditCardPaymentModal({
                         balancesData.balancesByName[card.name] < 0
                           ? Math.abs(balancesData.balancesByName[card.name])
                           : 0;
+                      const cCur = (card.currencyCode || currency).trim().toUpperCase();
                       return (
                         <button
                           key={card.id || card.name}
@@ -751,7 +773,7 @@ export default function CreditCardPaymentModal({
                               cardDebt > 0 ? "text-rose-500" : "text-emerald-500"
                             )}
                           >
-                            {currency} {cardDebt.toFixed(2)} debt
+                            {cCur} {cardDebt.toFixed(2)} debt
                           </span>
                         </button>
                       );
@@ -804,7 +826,7 @@ export default function CreditCardPaymentModal({
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <label className="text-[10px] font-bold text-muted-foreground block mb-1">
-                            Closing Balance ({currency})
+                            Closing Balance ({cardCurrency})
                           </label>
                           <input
                             type="number"
@@ -817,7 +839,7 @@ export default function CreditCardPaymentModal({
                         </div>
                         <div>
                           <label className="text-[10px] font-bold text-muted-foreground block mb-1">
-                            Minimum Payment ({currency})
+                            Minimum Payment ({cardCurrency})
                           </label>
                           <input
                             type="number"
@@ -851,7 +873,7 @@ export default function CreditCardPaymentModal({
                       >
                         {cardStatements.map((st) => (
                           <option key={st.id} value={st.id}>
-                            Stmt: {st.statementDate} (Due {st.dueDate}) — {st.isSettled ? "Settled" : `${currency} ${st.closingBalance}`}
+                            Stmt: {st.statementDate} (Due {st.dueDate}) — {st.isSettled ? "Settled" : `${cardCurrency} ${st.closingBalance}`}
                           </option>
                         ))}
                       </select>
@@ -878,13 +900,13 @@ export default function CreditCardPaymentModal({
                           <CheckCircle2 className="w-4 h-4 shrink-0" />
                           Statement Fully Paid
                         </span>
-                        <span className="font-mono">{currency} 0.00 due</span>
+                        <span className="font-mono">{cardCurrency} 0.00 due</span>
                       </div>
                       {newerUnbilledPurchases > 0 ? (
                         <p className="text-[11px] text-muted-foreground pl-5.5">
                           Statement is settled, but you have{" "}
                           <strong className="text-foreground">
-                            {currency} {newerUnbilledPurchases.toFixed(2)}
+                            {cardCurrency} {newerUnbilledPurchases.toFixed(2)}
                           </strong>{" "}
                           in newer unbilled purchases made after statement closing.
                         </p>
@@ -905,8 +927,8 @@ export default function CreditCardPaymentModal({
                         <span className="font-mono">Due: {activeStatement.dueDate}</span>
                       </div>
                       <div className="flex justify-between text-[11px] pl-5.5 font-medium">
-                        <span>Remaining: {currency} {statementRemaining.toFixed(2)}</span>
-                        <span>Min Due: {currency} {minimumRemaining.toFixed(2)}</span>
+                        <span>Remaining: {cardCurrency} {statementRemaining.toFixed(2)}</span>
+                        <span>Min Due: {cardCurrency} {minimumRemaining.toFixed(2)}</span>
                       </div>
                     </div>
                   ) : (
@@ -923,19 +945,19 @@ export default function CreditCardPaymentModal({
                         <div>
                           <span className="text-[10px] text-muted-foreground block">Closing</span>
                           <span className="font-bold text-foreground">
-                            {currency} {activeStatement.closingBalance.toFixed(2)}
+                            {cardCurrency} {activeStatement.closingBalance.toFixed(2)}
                           </span>
                         </div>
                         <div>
                           <span className="text-[10px] text-muted-foreground block">Remaining</span>
                           <span className="font-bold text-amber-500">
-                            {currency} {statementRemaining.toFixed(2)}
+                            {cardCurrency} {statementRemaining.toFixed(2)}
                           </span>
                         </div>
                         <div>
                           <span className="text-[10px] text-muted-foreground block">Min Due</span>
                           <span className="font-bold text-foreground">
-                            {currency} {minimumRemaining.toFixed(2)}
+                            {cardCurrency} {minimumRemaining.toFixed(2)}
                           </span>
                         </div>
                       </div>
@@ -946,7 +968,7 @@ export default function CreditCardPaymentModal({
                   <div className="flex justify-between items-center text-xs pt-1 px-1">
                     <span className="text-muted-foreground">Current Card Total Outstanding:</span>
                     <span className="font-black text-sm text-foreground font-mono">
-                      {currency} {currentCardDebt.toFixed(2)}
+                      {cardCurrency} {currentCardDebt.toFixed(2)}
                     </span>
                   </div>
                 </div>
@@ -975,7 +997,7 @@ export default function CreditCardPaymentModal({
                         <span className="text-[10px] font-bold text-primary">#1</span>
                       </div>
                       <span className="text-xs font-black font-mono block text-foreground">
-                        {currency} {statementRemaining.toFixed(2)}
+                        {cardCurrency} {statementRemaining.toFixed(2)}
                       </span>
                       <span className="text-[10px] text-muted-foreground block mt-0.5 truncate">
                         Settle billing statement
@@ -1000,7 +1022,7 @@ export default function CreditCardPaymentModal({
                         <span className="text-[10px] font-bold text-primary">#2</span>
                       </div>
                       <span className="text-xs font-black font-mono block text-foreground">
-                        {currency} {minimumRemaining.toFixed(2)}
+                        {cardCurrency} {minimumRemaining.toFixed(2)}
                       </span>
                       <span className="text-[10px] text-muted-foreground block mt-0.5 truncate">
                         Avoid late penalties
@@ -1048,7 +1070,7 @@ export default function CreditCardPaymentModal({
                         <span className="text-[10px] font-bold text-primary">#4</span>
                       </div>
                       <span className="text-xs font-black font-mono block text-foreground">
-                        {currency} {currentCardDebt.toFixed(2)}
+                        {cardCurrency} {currentCardDebt.toFixed(2)}
                       </span>
                       <span className="text-[10px] text-muted-foreground block mt-0.5 truncate">
                         Zero out all card debt
@@ -1061,7 +1083,7 @@ export default function CreditCardPaymentModal({
                 <div>
                   <div className="flex justify-between items-center mb-1.5">
                     <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                      Payment Amount ({currency})
+                      Payment Amount ({cardCurrency})
                     </label>
                     {preset === "minimum_due" && (
                       <span className="text-[10px] text-amber-500 font-semibold">
@@ -1071,7 +1093,7 @@ export default function CreditCardPaymentModal({
                   </div>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-muted-foreground">
-                      {currency}
+                      {cardCurrency}
                     </span>
                     <input
                       type="number"
@@ -1092,6 +1114,25 @@ export default function CreditCardPaymentModal({
                       )}
                     />
                   </div>
+
+                  {/* Multi-Currency Repayment Notice Banner */}
+                  {isCurrencyMismatch && (
+                    <div className="mt-2.5 p-3 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-xs space-y-1 text-blue-600 dark:text-blue-300">
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <Info className="w-4 h-4 shrink-0" />
+                        <span>Multi-Currency Repayment Notice</span>
+                      </div>
+                      <p className="text-[11px] leading-relaxed">
+                        Paying to <strong>{currentCard?.name}</strong> ({cardCurrency}) from{" "}
+                        <strong>{currentSource?.name}</strong> ({sourceCurrency}).
+                        {conversionEstimate && conversionEstimate.isKnown ? (
+                          <span> Estimated deduction: <strong>{sourceCurrency} {conversionEstimate.amount.toFixed(2)}</strong> for {cardCurrency} {Number(amount || 0).toFixed(2)} payment.</span>
+                        ) : (
+                          <span> Exchange rate is unrated; repayment will be recorded with exact nominal units between accounts.</span>
+                        )}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* 5. Payment Source Account */}
@@ -1105,6 +1146,7 @@ export default function CreditCardPaymentModal({
                       const bal =
                         balancesData.balancesByName[acc.name] ??
                         (Number(acc.openingBalance) || 0);
+                      const accCur = (acc.currencyCode || currency).trim().toUpperCase();
                       return (
                         <button
                           key={acc.id || acc.name}
@@ -1124,7 +1166,7 @@ export default function CreditCardPaymentModal({
                             {acc.name}
                           </span>
                           <span className="text-[10px] font-mono text-muted-foreground block mt-0.5">
-                            {currency} {bal.toFixed(2)} avail
+                            {accCur} {bal.toFixed(2)} avail
                           </span>
                         </button>
                       );
@@ -1132,11 +1174,15 @@ export default function CreditCardPaymentModal({
                   </div>
 
                   {/* Insufficient Source Balance Warning (Non-blocking) */}
-                  {Number(amount) > sourceBalance && sourceBalance > 0 && (
+                  {((!isCurrencyMismatch && Number(amount) > sourceBalance) ||
+                    (isCurrencyMismatch && conversionEstimate?.isKnown && conversionEstimate.amount > sourceBalance)) &&
+                    sourceBalance > 0 && (
                     <div className="mt-2 p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-600 dark:text-amber-400 text-xs flex items-center gap-2">
                       <AlertTriangle className="w-4 h-4 shrink-0" />
                       <span>
-                        Source balance appears insufficient ({currency} {sourceBalance.toFixed(2)} available). You may still proceed if your bank account has external funds.
+                        Source balance appears insufficient ({sourceCurrency} {sourceBalance.toFixed(2)} available
+                        {isCurrencyMismatch && conversionEstimate?.isKnown ? `, estimated required: ${sourceCurrency} ${conversionEstimate.amount.toFixed(2)}` : ""}).
+                        You may still proceed if your account has external funds.
                       </span>
                     </div>
                   )}

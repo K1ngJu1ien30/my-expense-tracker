@@ -20,7 +20,7 @@ export default function SalaryPlanner() {
     subscriptions, addSubscription, updateSubscription, deleteSubscription,
     fixedBills, addFixedBill, updateFixedBill, deleteFixedBill,
     utilities, addUtility, updateUtility, deleteUtility,
-    confirmAction, accentColor, transactions, accounts, accountObjects, includeSavings, currency, formatCurrency, triggerToast
+    confirmAction, accentColor, transactions, accounts, accountObjects, includeSavings, currency, formatCurrency, triggerToast, exchangeRates
   } = useAppContext();
 
   // Current Month for Paid/Pending tracking (YYYY-MM)
@@ -52,8 +52,8 @@ export default function SalaryPlanner() {
   const [editKind, setEditKind] = useState<"subscriptions" | "fixedBills" | "utilities">("subscriptions");
 
   const totalBalance = useMemo(() => {
-    return calculateAvailableCash(accountObjects, transactions, includeSavings, currency);
-  }, [accountObjects, transactions, includeSavings, currency]);
+    return calculateAvailableCash(accountObjects, transactions, includeSavings, currency, exchangeRates);
+  }, [accountObjects, transactions, includeSavings, currency, exchangeRates]);
 
   // Section Totals (All vs Pending)
   const subTotal = useMemo(() => (subscriptions || []).reduce((sum, s) => sum + Number(s.cost), 0), [subscriptions]);

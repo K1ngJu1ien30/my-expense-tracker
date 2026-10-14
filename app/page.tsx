@@ -89,6 +89,7 @@ export default function Dashboard() {
     statements,
     creditCardPayments,
     creditCardAllocations,
+    exchangeRates,
   } = useAppContext();
   const pinnedGoals = isGodMode ? goals.map(g => ({ ...g, current: g.target })) : goals.filter(g => g.isPinned);
 
@@ -186,13 +187,14 @@ export default function Dashboard() {
 
   const displayGreeting = greeting;
 
-  // Centralized Financial Position & Multi-Currency Engine (Phase 1C)
+  // Centralized Financial Position & Multi-Currency Engine (Phase 1C & Stage F)
   const financialPosition = useMemo(() => {
     return calculateFinancialPosition(accountObjects, transactions, {
       includeSavings,
       baseCurrency: currency,
+      liveRates: exchangeRates,
     });
-  }, [accountObjects, transactions, includeSavings, currency]);
+  }, [accountObjects, transactions, includeSavings, currency, exchangeRates]);
 
   // === Single-pass transaction computation (Today/Week stats & Trend data) ===
   const dashData = useMemo(() => {
@@ -672,8 +674,13 @@ export default function Dashboard() {
                   }`}
                 >
                   <div className="flex flex-col">
-                    <span className="text-gray-300 text-[11px] sm:text-xs font-bold uppercase tracking-wider">
+                    <span className="text-gray-300 text-[11px] sm:text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
                       {financialPosition.isMultiCurrency ? "Est. Net Total" : "Net Total"}
+                      {financialPosition.isEstimatedConversion && (
+                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-white/15 text-white/90 font-mono font-semibold">
+                          est.
+                        </span>
+                      )}
                     </span>
                     {financialPosition.isMultiCurrency && (
                       <span className="text-[9px] sm:text-[10px] text-gray-400 font-medium">
@@ -696,12 +703,23 @@ export default function Dashboard() {
                   </span>
                 </div>
 
+                {/* Unknown Currency Rates Warning */}
+                {financialPosition.hasUnknownCurrencyRates && balanceRevealed && !isGodMode && (
+                  <div className="relative z-10 mt-2 px-2.5 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/30 text-[10px] text-amber-200 flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-300" />
+                    <span>
+                      Rates unavailable for {financialPosition.unconvertedCurrencies?.join(", ")}. Amounts remain in native currency.
+                    </span>
+                  </div>
+                )}
+
                 {/* Multi-currency breakdown pills */}
                 {financialPosition.isMultiCurrency && balanceRevealed && !isGodMode && (
                   <div className="relative z-10 mt-2.5 pt-2 border-t border-white/[0.08] flex flex-wrap gap-2">
                     {Object.entries(financialPosition.byCurrency).map(([cur, totals]) => (
                       <span key={cur} className="text-[9px] sm:text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/10 text-gray-300 border border-white/10">
                         {cur}: {totals.netTotal < 0 ? '-' : ''}{cur} {Math.abs(totals.netTotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {totals.creditAssets && totals.creditAssets > 0 ? ` (+${cur} ${totals.creditAssets.toFixed(2)} card credit)` : ""}
                       </span>
                     ))}
                   </div>

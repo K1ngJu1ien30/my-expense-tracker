@@ -343,6 +343,7 @@ export type CurrencyTotals = {
   savings: number;
   investments: number;
   liabilities: number;
+  creditAssets?: number;
   netFinancialPosition: number;
   netTotal: number;
   accountCount: number;
@@ -355,11 +356,16 @@ export type FinancialPosition = {
   totalSavings: number;
   totalInvestments: number;
   totalLiabilities: number;
+  totalCreditAssets?: number;
   netFinancialPosition: number;
   netTotal: number;
   isMultiCurrency: boolean;
   byCurrency: Record<string, CurrencyTotals>;
   currencies: string[];
+  isEstimatedConversion?: boolean;
+  hasUnknownCurrencyRates?: boolean;
+  unconvertedCurrencies?: string[];
+  archivedBreakdownList?: AccountBalanceBreakdown[];
 };
 
 export type AccountReconciliation = {
