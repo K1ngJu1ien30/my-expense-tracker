@@ -6,6 +6,40 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [3.0.0 Patches] — Post-Release Maintenance, Security Hardening & Concurrency Integrity — 2026-10-15
+
+A series of verified maintenance fixes and security hardening patches addressing database access controls, repayment concurrency locking, client idempotency, statement persistence, and multi-currency edge cases.
+
+### 🔒 Database Security & Function Permissions (Migration 012)
+- **Revoked PUBLIC / Anon RPC Privileges**: Revoked default `EXECUTE` privileges from `PUBLIC` and `anon` on all sensitive `SECURITY DEFINER` routines (`record_credit_card_repayment`, `post_credit_card_cashback`, `check_account_dependencies`, `delete_user_account`).
+- **Explicit Role Grants**: Restricted function execution exclusively to `authenticated` and `service_role` roles.
+- **Search Path Hardening**: Set explicit `SET search_path = public, auth` across all RPC definitions to eliminate search path spoofing.
+- **Legacy WanderPlan & Travel Tables Audit**: Added pre-flight read-only inspection queries in migration 012 to audit legacy travel tables (`travel_trips`, `travel_expenses`) and obsolete WanderPlan routines without automatic deletion.
+
+### 💳 Credit Card Concurrency, Debt Validation & Repayment Integrity
+- **Statement Allocation Row-Level Locking**: Implemented explicit row-level locks (`FOR UPDATE`) on candidate `credit_card_statements` rows and participating `user_accounts` in `record_credit_card_repayment`, preventing race conditions and statement overallocations during concurrent repayment submissions.
+- **Live Debt Validation**: Validated repayment amounts against the live outstanding debt calculated from the ledger history, rejecting repayments that exceed the current balance (+0.01 tolerance).
+- **Client Idempotency Persistence**: Refactored `CreditCardPaymentModal` and `CreditCardCashbackModal` to persist `operationId` UUIDs across network retries via React refs (`paymentOperationIdRef`, `cashbackOperationIdRef`), ensuring retries reuse original IDs and leverage backend idempotency guards.
+- **Migration 009 Schema Reconciliation**: Reconciled migration `009_credit_card_payment_integrity.sql` to explicitly guarantee the composite unique constraint `uq_credit_card_payments_id_user` on `credit_card_payments(id, user_id)` before downstream foreign key references in `credit_card_payment_allocations`.
+- **Durable Statement Offline Queue**: Added `offlineStatementQueue` in `lib/offlineQueue.ts` with serialized mutex locking and automatic flush upon reconnect in `useCreditCardPayments.ts`, eliminating silent statement creation failures during network drops.
+
+### 🛡️ Account Deletion & Cashback Data Integrity
+- **Safe Account Deletion (Migration 010)**: Created `check_account_dependencies` and `delete_user_account` RPCs with interactive dependency dialogs in `ManageAccountsModal.tsx`, preventing deletion of accounts referenced by active transactions.
+- **Eliminated Unsafe Deletion Fallback**: Removed direct client-side table deletion fallbacks in `useAccountsState.ts`; deletions strictly require verified backend dependency clearance.
+- **Confirmed Cashback Ledger & RPC (Migration 011)**: Implemented atomic `post_credit_card_cashback` RPC for statement credits and bank deposits; removed unsafe non-atomic 2-step write fallback in `useCashbackRewards.ts`.
+
+### 🌐 Multi-Currency Safeguards
+- **Unrated Currency Isolation**: Enhanced `lib/balance.ts` (`resolveRateToMYR`, `convertCurrencySafe`) so that foreign currencies lacking a verified exchange rate (`isKnown = false`) are excluded from consolidated base currency totals (returning 0 in `toBase`), preventing nominal addition distortion (e.g. adding 1M JPY as 1M MYR) while accurately maintaining native currency totals in `byCurrency`.
+- **Multi-Currency Warning Banner**: Added home dashboard warning banner alerting users when unrated currencies are present and excluded from base totals.
+
+### 📱 Android & UI Native Refinements
+- **Android Session Persistence**: Reconfigured Supabase client storage to use Capacitor Preferences (`@capacitor/preferences`) via a custom async storage adapter, ensuring auth tokens persist across Android app restarts.
+- **Safe-Area Insets Handling**: Enabled `SystemBars: { insetsHandling: 'css' }` in `capacitor.config.ts` and applied CSS safe-area insets (`env(safe-area-inset-top)` / `env(safe-area-inset-bottom)`) in `app/globals.css`, `AppLayout.tsx`, and `BottomNav.tsx`, resolving status bar and gesture navigation bar clipping.
+- **Savings Toggle Correction**: Corrected `include_savings` user preference syncing; `Available Cash` and `Net Total` now accurately reflect the savings toggle, while `Net Financial Position` continues to reflect all-assets net worth.
+- **High-Volume Pagination**: Added cursor/keyset transaction batching in `lib/transactionPagination.ts` and `useSyncState.ts`, maintaining smooth scrolling and low memory usage on mobile devices.
+
+---
+
 ## [3.0.0] — Financial Account Architecture, Credit Card Engine & Reliability — 2026-10-14
 
 A milestone architecture upgrade focused on financial correctness, offline data safety, a complete optional credit-card module with Malaysian banking practices, intelligent rewards and finance charge projections, and high-density mobile UI optimization.
