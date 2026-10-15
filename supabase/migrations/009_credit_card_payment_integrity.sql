@@ -19,7 +19,24 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ----------------------------------------------------------------------------
--- 1. CREDIT CARD PAYMENT ALLOCATIONS TABLE
+-- 1. PREREQUISITE: COMPOSITE UNIQUE CONSTRAINT ON credit_card_payments
+-- ----------------------------------------------------------------------------
+-- Reconciles live database state: credit_card_payment_allocations references
+-- (payment_id, user_id), which requires a composite unique key on credit_card_payments.
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'uq_credit_card_payments_id_user'
+    ) THEN
+        ALTER TABLE credit_card_payments
+            ADD CONSTRAINT uq_credit_card_payments_id_user UNIQUE (id, user_id);
+    END IF;
+END $$;
+
+-- ----------------------------------------------------------------------------
+-- 2. CREDIT CARD PAYMENT ALLOCATIONS TABLE
 -- ----------------------------------------------------------------------------
 -- Tracks exact, auditable amount allocated from a credit card payment to a
 -- specific statement cycle. Enables partial repayments, multi-statement waterfall

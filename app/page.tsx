@@ -708,7 +708,7 @@ export default function Dashboard() {
                   <div className="relative z-10 mt-2 px-2.5 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/30 text-[10px] text-amber-200 flex items-center gap-1.5">
                     <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-300" />
                     <span>
-                      Rates unavailable for {financialPosition.unconvertedCurrencies?.join(", ")}. Amounts remain in native currency.
+                      Rates unavailable for {financialPosition.unconvertedCurrencies?.join(", ")}. Excluded from {currency} totals; amounts shown below in native currency.
                     </span>
                   </div>
                 )}

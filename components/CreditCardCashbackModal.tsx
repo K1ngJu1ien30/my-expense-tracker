@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import {
   X,
@@ -43,6 +43,7 @@ export type CreditCardCashbackModalProps = {
     amount: number;
     date: string;
     note?: string;
+    operationId?: string;
   }) => Promise<{ success: boolean; error?: string }>;
 };
 
@@ -114,9 +115,14 @@ export default function CreditCardCashbackModal({
     );
   }, [cashbackRecords, card]);
 
+  const cashbackOperationIdRef = useRef<string | null>(null);
+
   // Keyboard accessibility: dismiss modal on Escape key
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      cashbackOperationIdRef.current = null;
+      return;
+    }
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         onClose();
@@ -155,6 +161,10 @@ export default function CreditCardCashbackModal({
     setIsSubmitting(true);
     NativeHaptics.lightTick();
 
+    if (!cashbackOperationIdRef.current) {
+      cashbackOperationIdRef.current = crypto.randomUUID();
+    }
+
     const result = await onRecordCashback({
       card,
       destinationAccount: targetDestAccount,
@@ -162,11 +172,13 @@ export default function CreditCardCashbackModal({
       amount: amt,
       date: dateStr,
       note: note.trim() || undefined,
+      operationId: cashbackOperationIdRef.current,
     });
 
     setIsSubmitting(false);
 
     if (result.success) {
+      cashbackOperationIdRef.current = null;
       NativeHaptics.successMedium();
       setAmountStr("");
       setNote("");

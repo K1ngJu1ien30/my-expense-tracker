@@ -134,18 +134,19 @@ CREATE TABLE IF NOT EXISTS credit_card_statements (
     account_id UUID NOT NULL,
     statement_date DATE NOT NULL,
     due_date DATE NOT NULL,
-    statement_balance NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+    opening_balance NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+    closing_balance NUMERIC(14, 2) NOT NULL,
     minimum_payment NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
-    paid_amount NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
     is_settled BOOLEAN NOT NULL DEFAULT false,
-    closing_balance NUMERIC(14, 2) DEFAULT NULL,
-    finance_charge NUMERIC(14, 2) DEFAULT 0.00,
+    settled_at TIMESTAMPTZ DEFAULT NULL,
+    note TEXT DEFAULT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_cc_statement_cycle UNIQUE (account_id, statement_date),
-    CONSTRAINT uq_cc_statement_id_user UNIQUE (id, user_id),
-    CONSTRAINT fk_cc_statement_account FOREIGN KEY (account_id, user_id)
-        REFERENCES user_accounts (id, user_id) ON DELETE CASCADE
+    CONSTRAINT fk_credit_card_statements_account FOREIGN KEY (account_id, user_id)
+        REFERENCES user_accounts (id, user_id) ON DELETE CASCADE,
+    CONSTRAINT uq_credit_card_statements_account_date UNIQUE (account_id, statement_date),
+    CONSTRAINT uq_credit_card_statements_id_user UNIQUE (id, user_id),
+    CONSTRAINT chk_statement_dates CHECK (due_date >= statement_date)
 );
 
 ALTER TABLE credit_card_statements ENABLE ROW LEVEL SECURITY;
@@ -160,27 +161,54 @@ CREATE POLICY "Strict isolation for credit_card_statements" ON credit_card_state
 CREATE TABLE IF NOT EXISTS credit_card_payments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    statement_id UUID NOT NULL,
-    transaction_id UUID NOT NULL,
+    account_id UUID NOT NULL,
     source_account_id UUID NOT NULL,
+    statement_id UUID DEFAULT NULL,
+    transaction_id UUID DEFAULT NULL,
+    payment_date DATE NOT NULL,
     amount NUMERIC(14, 2) NOT NULL CHECK (amount > 0),
-    payment_preset VARCHAR(30) NOT NULL DEFAULT 'statement_balance'
-        CHECK (payment_preset IN ('statement_balance', 'minimum_due', 'custom_partial', 'full_outstanding')),
-    paid_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    payment_type VARCHAR(30) NOT NULL DEFAULT 'custom'
+        CHECK (payment_type IN ('full_statement', 'minimum_due', 'custom', 'full_outstanding')),
     note TEXT DEFAULT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_cc_payment_statement FOREIGN KEY (statement_id, user_id)
-        REFERENCES credit_card_statements (id, user_id) ON DELETE CASCADE,
-    CONSTRAINT fk_cc_payment_transaction FOREIGN KEY (transaction_id, user_id)
-        REFERENCES transactions (id, user_id) ON DELETE CASCADE,
-    CONSTRAINT fk_cc_payment_source FOREIGN KEY (source_account_id, user_id)
-        REFERENCES user_accounts (id, user_id) ON DELETE RESTRICT
+    CONSTRAINT uq_credit_card_payments_id_user UNIQUE (id, user_id),
+    CONSTRAINT fk_cc_payments_account FOREIGN KEY (account_id, user_id)
+        REFERENCES user_accounts (id, user_id) ON DELETE CASCADE,
+    CONSTRAINT fk_cc_payments_source FOREIGN KEY (source_account_id, user_id)
+        REFERENCES user_accounts (id, user_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_cc_payments_statement FOREIGN KEY (statement_id, user_id)
+        REFERENCES credit_card_statements (id, user_id) ON DELETE SET NULL,
+    CONSTRAINT fk_cc_payments_transaction FOREIGN KEY (transaction_id, user_id)
+        REFERENCES transactions (id, user_id) ON DELETE SET NULL
 );
 
 ALTER TABLE credit_card_payments ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Strict isolation for credit_card_payments" ON credit_card_payments;
 CREATE POLICY "Strict isolation for credit_card_payments" ON credit_card_payments
+    FOR ALL USING (auth.uid() = user_id);
+
+-- ----------------------------------------------------------------------------
+-- 6b. Credit Card Payment Allocations
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS credit_card_payment_allocations (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    payment_id UUID NOT NULL,
+    statement_id UUID NOT NULL,
+    allocated_amount NUMERIC(14, 2) NOT NULL CHECK (allocated_amount > 0.00),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_cc_allocations_payment FOREIGN KEY (payment_id, user_id)
+        REFERENCES credit_card_payments (id, user_id) ON DELETE CASCADE,
+    CONSTRAINT fk_cc_allocations_statement FOREIGN KEY (statement_id, user_id)
+        REFERENCES credit_card_statements (id, user_id) ON DELETE CASCADE,
+    CONSTRAINT uq_cc_allocation_payment_statement UNIQUE (payment_id, statement_id)
+);
+
+ALTER TABLE credit_card_payment_allocations ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Strict isolation for credit_card_payment_allocations" ON credit_card_payment_allocations;
+CREATE POLICY "Strict isolation for credit_card_payment_allocations" ON credit_card_payment_allocations
     FOR ALL USING (auth.uid() = user_id);
 
 -- ----------------------------------------------------------------------------
@@ -368,3 +396,621 @@ ALTER TABLE radar_sources ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Strict isolation mapping for Radar Sources" ON radar_sources;
 CREATE POLICY "Strict isolation mapping for Radar Sources" ON radar_sources
     FOR ALL USING (auth.uid() = user_id);
+
+-- ============================================================================
+-- 14. TRANSACTIONAL POSTING & INTEGRITY RPCs
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- 14a. check_account_dependencies
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION check_account_dependencies(
+    p_account_id UUID
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+DECLARE
+    v_user_id UUID;
+    v_acc_name VARCHAR;
+    v_tx_count INTEGER := 0;
+    v_stmt_count INTEGER := 0;
+    v_pay_count INTEGER := 0;
+    v_sub_count INTEGER := 0;
+    v_cb_count INTEGER := 0;
+    v_has_dependencies BOOLEAN := FALSE;
+BEGIN
+    v_user_id := auth.uid();
+    IF v_user_id IS NULL THEN
+        RAISE EXCEPTION 'UNAUTHENTICATED: Authentication required'
+            USING ERRCODE = '42501';
+    END IF;
+
+    SELECT name INTO v_acc_name
+    FROM user_accounts
+    WHERE id = p_account_id AND user_id = v_user_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'ACCOUNT_NOT_FOUND: Account does not exist or is not owned by user'
+            USING ERRCODE = '22023';
+    END IF;
+
+    SELECT COUNT(*) INTO v_tx_count
+    FROM transactions
+    WHERE user_id = v_user_id
+      AND (account_id = p_account_id OR to_account_id = p_account_id OR account = v_acc_name OR to_account = v_acc_name);
+
+    SELECT COUNT(*) INTO v_stmt_count
+    FROM credit_card_statements
+    WHERE user_id = v_user_id AND account_id = p_account_id;
+
+    SELECT COUNT(*) INTO v_pay_count
+    FROM credit_card_payments
+    WHERE user_id = v_user_id AND (account_id = p_account_id OR source_account_id = p_account_id);
+
+    SELECT COUNT(*) INTO v_sub_count
+    FROM subscriptions
+    WHERE user_id = v_user_id AND (source_account_id = p_account_id OR source_account = v_acc_name);
+
+    SELECT COUNT(*) INTO v_cb_count
+    FROM credit_card_cashback_records
+    WHERE user_id = v_user_id AND (account_id = p_account_id OR destination_account_id = p_account_id);
+
+    v_has_dependencies := (v_tx_count > 0 OR v_stmt_count > 0 OR v_pay_count > 0 OR v_sub_count > 0 OR v_cb_count > 0);
+
+    RETURN jsonb_build_object(
+        'can_delete', NOT v_has_dependencies,
+        'has_dependencies', v_has_dependencies,
+        'account_id', p_account_id,
+        'account_name', v_acc_name,
+        'transaction_count', v_tx_count,
+        'statement_count', v_stmt_count,
+        'payment_count', v_pay_count,
+        'subscription_count', v_sub_count,
+        'cashback_count', v_cb_count
+    );
+END;
+$$;
+
+-- ----------------------------------------------------------------------------
+-- 14b. delete_user_account
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION delete_user_account(
+    p_account_id UUID
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+DECLARE
+    v_user_id UUID;
+    v_acc_name VARCHAR;
+    v_dep JSONB;
+BEGIN
+    v_user_id := auth.uid();
+    IF v_user_id IS NULL THEN
+        RAISE EXCEPTION 'UNAUTHENTICATED: Authentication required'
+            USING ERRCODE = '42501';
+    END IF;
+
+    SELECT name INTO v_acc_name
+    FROM user_accounts
+    WHERE id = p_account_id AND user_id = v_user_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'ACCOUNT_NOT_FOUND: Account not found or unauthorized'
+            USING ERRCODE = '22023';
+    END IF;
+
+    v_dep := check_account_dependencies(p_account_id);
+
+    IF (v_dep->>'has_dependencies')::boolean THEN
+        RAISE EXCEPTION 'ACCOUNT_HAS_DEPENDENCIES: Cannot delete account "%" with active or historical financial records. Archive the account instead.', v_acc_name
+            USING ERRCODE = '23503';
+    END IF;
+
+    DELETE FROM credit_card_reward_configs WHERE account_id = p_account_id AND user_id = v_user_id;
+    DELETE FROM credit_card_details WHERE account_id = p_account_id AND user_id = v_user_id;
+    DELETE FROM user_accounts WHERE id = p_account_id AND user_id = v_user_id;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'deleted_account_id', p_account_id,
+        'account_name', v_acc_name,
+        'message', 'Empty account successfully deleted.'
+    );
+END;
+$$;
+
+-- ----------------------------------------------------------------------------
+-- 14c. record_credit_card_repayment
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION record_credit_card_repayment(
+    p_operation_id UUID,
+    p_card_account_id UUID,
+    p_source_account_id UUID,
+    p_amount NUMERIC,
+    p_payment_date DATE DEFAULT CURRENT_DATE,
+    p_payment_type VARCHAR DEFAULT 'custom',
+    p_statement_id UUID DEFAULT NULL,
+    p_note TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+DECLARE
+    v_user_id UUID;
+    v_card_name VARCHAR;
+    v_card_currency VARCHAR;
+    v_source_name VARCHAR;
+    v_source_currency VARCHAR;
+    v_existing_payment RECORD;
+    v_tx_id UUID;
+    v_amount NUMERIC(14, 2);
+    v_remaining_payment NUMERIC(14, 2);
+    v_statement RECORD;
+    v_st_remaining NUMERIC(14, 2);
+    v_alloc_amount NUMERIC(14, 2);
+    v_total_statement_alloc NUMERIC(14, 2) := 0.00;
+    v_unbilled_alloc NUMERIC(14, 2) := 0.00;
+    v_settled_statements UUID[] := ARRAY[]::UUID[];
+    v_current_debt NUMERIC(14, 2);
+BEGIN
+    v_user_id := auth.uid();
+    IF v_user_id IS NULL THEN
+        RAISE EXCEPTION 'UNAUTHENTICATED: Authentication required to post repayments'
+            USING ERRCODE = '42501';
+    END IF;
+
+    SELECT id, transaction_id, amount INTO v_existing_payment
+    FROM credit_card_payments
+    WHERE id = p_operation_id AND user_id = v_user_id;
+
+    IF FOUND THEN
+        RETURN jsonb_build_object(
+            'success', true,
+            'already_processed', true,
+            'payment_id', v_existing_payment.id,
+            'transaction_id', v_existing_payment.transaction_id,
+            'amount', v_existing_payment.amount,
+            'message', 'Operation was already recorded previously.'
+        );
+    END IF;
+
+    v_amount := ROUND(p_amount::numeric, 2);
+    IF v_amount IS NULL OR v_amount <= 0.00 THEN
+        RAISE EXCEPTION 'INVALID_AMOUNT: Repayment amount must be strictly positive'
+            USING ERRCODE = '22023';
+    END IF;
+
+    IF p_card_account_id = p_source_account_id THEN
+        RAISE EXCEPTION 'INVALID_ACCOUNTS: Source account and destination card cannot be the same'
+            USING ERRCODE = '22023';
+    END IF;
+
+    PERFORM 1 FROM user_accounts
+    WHERE id = p_card_account_id AND user_id = v_user_id
+    FOR UPDATE;
+
+    PERFORM 1 FROM user_accounts
+    WHERE id = p_source_account_id AND user_id = v_user_id
+    FOR UPDATE;
+
+    SELECT name, COALESCE(currency_code, 'RM') INTO v_card_name, v_card_currency
+    FROM user_accounts
+    WHERE id = p_card_account_id AND user_id = v_user_id AND kind = 'credit_card';
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'INVALID_CARD: Destination account must be an owned credit card'
+            USING ERRCODE = '22023';
+    END IF;
+
+    SELECT name, COALESCE(currency_code, 'RM') INTO v_source_name, v_source_currency
+    FROM user_accounts
+    WHERE id = p_source_account_id AND user_id = v_user_id AND kind <> 'credit_card';
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'INVALID_SOURCE: Source account must be an owned non-credit-card liquid account'
+            USING ERRCODE = '22023';
+    END IF;
+
+    SELECT 
+        - (
+            COALESCE(u.opening_balance, 0.00)
+            + COALESCE(SUM(CASE 
+                WHEN t.type = 'Income' AND (t.account_id = p_card_account_id OR (t.account_id IS NULL AND t.account = u.name)) AND t.status <> 'pending' THEN t.amount 
+                ELSE 0.00 END), 0.00)
+            - COALESCE(SUM(CASE 
+                WHEN t.type = 'Expense' AND (t.account_id = p_card_account_id OR (t.account_id IS NULL AND t.account = u.name)) THEN t.amount 
+                ELSE 0.00 END), 0.00)
+            + COALESCE(SUM(CASE 
+                WHEN t.type = 'Transfer' AND (t.to_account_id = p_card_account_id OR (t.to_account_id IS NULL AND t.to_account = u.name)) THEN t.amount 
+                ELSE 0.00 END), 0.00)
+            - COALESCE(SUM(CASE 
+                WHEN t.type = 'Transfer' AND (t.account_id = p_card_account_id OR (t.account_id IS NULL AND t.account = u.name)) THEN t.amount 
+                ELSE 0.00 END), 0.00)
+        ) INTO v_current_debt
+    FROM user_accounts u
+    LEFT JOIN transactions t 
+        ON (t.account_id = u.id OR t.to_account_id = u.id OR t.account = u.name OR t.to_account = u.name) 
+       AND t.user_id = v_user_id 
+       AND t.deleted_at IS NULL
+    WHERE u.id = p_card_account_id AND u.user_id = v_user_id
+    GROUP BY u.opening_balance, u.name;
+
+    IF v_current_debt IS NOT NULL AND v_current_debt > 0.00 AND v_amount > (v_current_debt + 0.01) THEN
+        RAISE EXCEPTION 'AMOUNT_EXCEEDS_DEBT: Payment amount (% %) exceeds current card debt (% %). Unsupported overpayment.',
+            v_card_currency, v_amount, v_card_currency, v_current_debt
+            USING ERRCODE = '22023';
+    END IF;
+
+    v_tx_id := uuid_generate_v4();
+
+    INSERT INTO transactions (
+        id,
+        user_id,
+        type,
+        amount,
+        account,
+        account_id,
+        to_account,
+        to_account_id,
+        credit_card_tx_type,
+        statement_id,
+        date,
+        note,
+        created_at
+    ) VALUES (
+        v_tx_id,
+        v_user_id,
+        'Transfer',
+        v_amount,
+        v_source_name,
+        p_source_account_id,
+        v_card_name,
+        p_card_account_id,
+        'repayment',
+        p_statement_id,
+        p_payment_date::timestamptz,
+        COALESCE(p_note, 'Repayment for ' || v_card_name),
+        NOW()
+    );
+
+    INSERT INTO credit_card_payments (
+        id,
+        user_id,
+        account_id,
+        source_account_id,
+        statement_id,
+        transaction_id,
+        payment_date,
+        amount,
+        payment_type,
+        note,
+        created_at
+    ) VALUES (
+        p_operation_id,
+        v_user_id,
+        p_card_account_id,
+        p_source_account_id,
+        p_statement_id,
+        v_tx_id,
+        p_payment_date,
+        v_amount,
+        COALESCE(p_payment_type, 'custom'),
+        p_note,
+        NOW()
+    );
+
+    v_remaining_payment := v_amount;
+
+    IF p_statement_id IS NOT NULL THEN
+        PERFORM 1 FROM credit_card_statements
+        WHERE id = p_statement_id AND user_id = v_user_id AND account_id = p_card_account_id
+        FOR UPDATE;
+
+        SELECT s.id, s.closing_balance,
+               s.closing_balance - COALESCE(SUM(a.allocated_amount), 0.00) AS remaining
+        INTO v_statement
+        FROM credit_card_statements s
+        LEFT JOIN credit_card_payment_allocations a ON a.statement_id = s.id AND a.user_id = v_user_id
+        WHERE s.id = p_statement_id AND s.user_id = v_user_id AND s.account_id = p_card_account_id
+        GROUP BY s.id, s.closing_balance;
+
+        IF FOUND THEN
+            v_st_remaining := GREATEST(0.00, v_statement.remaining);
+            v_alloc_amount := LEAST(v_remaining_payment, v_st_remaining);
+
+            IF v_alloc_amount > 0.00 THEN
+                INSERT INTO credit_card_payment_allocations (
+                    user_id, payment_id, statement_id, allocated_amount, created_at
+                ) VALUES (
+                    v_user_id, p_operation_id, v_statement.id, v_alloc_amount, NOW()
+                );
+
+                v_total_statement_alloc := v_alloc_amount;
+                v_remaining_payment := v_remaining_payment - v_alloc_amount;
+
+                IF (v_st_remaining - v_alloc_amount) <= 0.005 THEN
+                    UPDATE credit_card_statements
+                    SET is_settled = TRUE, settled_at = NOW(), updated_at = NOW()
+                    WHERE id = v_statement.id AND user_id = v_user_id;
+
+                    v_settled_statements := array_append(v_settled_statements, v_statement.id);
+                END IF;
+            END IF;
+        END IF;
+
+    ELSE
+        PERFORM 1 FROM credit_card_statements
+        WHERE account_id = p_card_account_id 
+          AND user_id = v_user_id 
+          AND is_settled = FALSE
+        FOR UPDATE;
+
+        FOR v_statement IN
+            SELECT s.id, s.closing_balance,
+                   s.closing_balance - COALESCE(SUM(a.allocated_amount), 0.00) AS remaining
+            FROM credit_card_statements s
+            LEFT JOIN credit_card_payment_allocations a ON a.statement_id = s.id AND a.user_id = v_user_id
+            WHERE s.account_id = p_card_account_id 
+              AND s.user_id = v_user_id 
+              AND s.is_settled = FALSE
+            GROUP BY s.id, s.closing_balance, s.due_date, s.statement_date
+            ORDER BY s.due_date ASC, s.statement_date ASC
+        LOOP
+            IF v_remaining_payment <= 0.00 THEN
+                EXIT;
+            END IF;
+
+            v_st_remaining := GREATEST(0.00, v_statement.remaining);
+            IF v_st_remaining > 0.00 THEN
+                v_alloc_amount := LEAST(v_remaining_payment, v_st_remaining);
+
+                INSERT INTO credit_card_payment_allocations (
+                    user_id, payment_id, statement_id, allocated_amount, created_at
+                ) VALUES (
+                    v_user_id, p_operation_id, v_statement.id, v_alloc_amount, NOW()
+                );
+
+                v_total_statement_alloc := v_total_statement_alloc + v_alloc_amount;
+                v_remaining_payment := v_remaining_payment - v_alloc_amount;
+
+                IF (v_st_remaining - v_alloc_amount) <= 0.005 THEN
+                    UPDATE credit_card_statements
+                    SET is_settled = TRUE, settled_at = NOW(), updated_at = NOW()
+                    WHERE id = v_statement.id AND user_id = v_user_id;
+
+                    v_settled_statements := array_append(v_settled_statements, v_statement.id);
+                END IF;
+            END IF;
+        END LOOP;
+    END IF;
+
+    v_unbilled_alloc := v_remaining_payment;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'already_processed', false,
+        'payment_id', p_operation_id,
+        'transaction_id', v_tx_id,
+        'amount', v_amount,
+        'statement_allocated', v_total_statement_alloc,
+        'unbilled_allocated', v_unbilled_alloc,
+        'settled_statement_ids', v_settled_statements
+    );
+END;
+$$;
+
+-- ----------------------------------------------------------------------------
+-- 14d. post_credit_card_cashback
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION post_credit_card_cashback(
+    p_operation_id UUID,
+    p_card_id UUID,
+    p_destination_account_id UUID,
+    p_destination_type VARCHAR(30),
+    p_amount NUMERIC(14, 2),
+    p_reward_date DATE,
+    p_note TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+DECLARE
+    v_user_id UUID;
+    v_card_name TEXT;
+    v_card_kind TEXT;
+    v_dest_name TEXT;
+    v_dest_kind TEXT;
+    v_target_account_id UUID;
+    v_target_account_name TEXT;
+    v_transaction_id UUID;
+    v_tx_note TEXT;
+    v_tx_category TEXT;
+    v_existing_record RECORD;
+BEGIN
+    v_user_id := auth.uid();
+    IF v_user_id IS NULL THEN
+        RAISE EXCEPTION 'UNAUTHENTICATED: Authentication required' USING ERRCODE = '42501';
+    END IF;
+
+    IF p_amount IS NULL OR p_amount <= 0 THEN
+        RAISE EXCEPTION 'INVALID_AMOUNT: Cashback amount must be greater than zero' USING ERRCODE = '22023';
+    END IF;
+
+    IF p_destination_type NOT IN ('card_statement_credit', 'bank_deposit') THEN
+        RAISE EXCEPTION 'INVALID_TYPE: Invalid destination type: %. Must be card_statement_credit or bank_deposit.', p_destination_type
+            USING ERRCODE = '22023';
+    END IF;
+
+    SELECT 
+        c.id, c.account_id, c.destination_account_id, c.destination_type,
+        c.amount, c.transaction_id, c.reward_date, c.note, c.created_at
+    INTO v_existing_record
+    FROM credit_card_cashback_records c
+    WHERE c.id = p_operation_id AND c.user_id = v_user_id;
+
+    IF FOUND THEN
+        RETURN jsonb_build_object(
+            'success', true,
+            'is_duplicate', true,
+            'record', jsonb_build_object(
+                'id', v_existing_record.id,
+                'userId', v_user_id,
+                'cardId', v_existing_record.account_id,
+                'destinationAccountId', v_existing_record.destination_account_id,
+                'creditDestination', v_existing_record.destination_type,
+                'amount', v_existing_record.amount,
+                'transactionId', v_existing_record.transaction_id,
+                'date', v_existing_record.reward_date,
+                'note', v_existing_record.note,
+                'createdAt', v_existing_record.created_at
+            )
+        );
+    END IF;
+
+    SELECT name, kind INTO v_card_name, v_card_kind
+    FROM user_accounts
+    WHERE id = p_card_id AND user_id = v_user_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Credit card account not found or access denied.' USING ERRCODE = '22023';
+    END IF;
+
+    IF v_card_kind <> 'credit_card' THEN
+        RAISE EXCEPTION 'Account % is not a credit card.', v_card_name USING ERRCODE = '22023';
+    END IF;
+
+    SELECT name, kind INTO v_dest_name, v_dest_kind
+    FROM user_accounts
+    WHERE id = p_destination_account_id AND user_id = v_user_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Destination account not found or access denied.' USING ERRCODE = '22023';
+    END IF;
+
+    IF p_destination_type = 'bank_deposit' AND v_dest_kind = 'credit_card' THEN
+        RAISE EXCEPTION 'Bank deposit destination cannot be a credit card.' USING ERRCODE = '22023';
+    END IF;
+
+    IF p_destination_type = 'card_statement_credit' THEN
+        v_target_account_id := p_card_id;
+        v_target_account_name := v_card_name;
+        v_tx_category := 'Card Statement Credit';
+        v_tx_note := COALESCE(p_note, 'Statement credit cashback (' || v_card_name || ')');
+    ELSE
+        v_target_account_id := p_destination_account_id;
+        v_target_account_name := v_dest_name;
+        v_tx_category := 'Cashback & Rewards';
+        v_tx_note := COALESCE(p_note, 'Cashback deposit from ' || v_card_name);
+    END IF;
+
+    v_transaction_id := uuid_generate_v4();
+
+    INSERT INTO transactions (
+        id,
+        user_id,
+        type,
+        amount,
+        category,
+        account,
+        account_id,
+        date,
+        note,
+        credit_card_tx_type,
+        status,
+        created_at
+    ) VALUES (
+        v_transaction_id,
+        v_user_id,
+        'Income',
+        p_amount,
+        v_tx_category,
+        v_target_account_name,
+        v_target_account_id,
+        p_reward_date::timestamptz,
+        v_tx_note,
+        'cashback',
+        'cleared',
+        NOW()
+    );
+
+    INSERT INTO credit_card_cashback_records (
+        id,
+        user_id,
+        account_id,
+        destination_account_id,
+        destination_type,
+        amount,
+        transaction_id,
+        reward_date,
+        note,
+        created_at
+    ) VALUES (
+        p_operation_id,
+        v_user_id,
+        p_card_id,
+        p_destination_account_id,
+        p_destination_type,
+        p_amount,
+        v_transaction_id,
+        p_reward_date,
+        p_note,
+        NOW()
+    );
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'is_duplicate', false,
+        'record', jsonb_build_object(
+            'id', p_operation_id,
+            'userId', v_user_id,
+            'cardId', p_card_id,
+            'destinationAccountId', p_destination_account_id,
+            'creditDestination', p_destination_type,
+            'amount', p_amount,
+            'transactionId', v_transaction_id,
+            'date', p_reward_date,
+            'note', p_note,
+            'createdAt', NOW()
+        ),
+        'transaction', jsonb_build_object(
+            'id', v_transaction_id,
+            'userId', v_user_id,
+            'type', 'Income',
+            'amount', p_amount,
+            'category', v_tx_category,
+            'account', v_target_account_name,
+            'accountId', v_target_account_id,
+            'date', p_reward_date,
+            'note', v_tx_note,
+            'creditCardTxType', 'cashback',
+            'status', 'cleared'
+        )
+    );
+END;
+$$;
+
+-- ----------------------------------------------------------------------------
+-- 15. PERMISSION HARDENING: RESTRICT EXECUTION TO AUTHENTICATED USERS
+-- ----------------------------------------------------------------------------
+REVOKE ALL ON FUNCTION check_account_dependencies(UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION check_account_dependencies(UUID) TO authenticated, service_role;
+
+REVOKE ALL ON FUNCTION delete_user_account(UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION delete_user_account(UUID) TO authenticated, service_role;
+
+REVOKE ALL ON FUNCTION record_credit_card_repayment(UUID, UUID, UUID, NUMERIC, DATE, VARCHAR, UUID, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION record_credit_card_repayment(UUID, UUID, UUID, NUMERIC, DATE, VARCHAR, UUID, TEXT) TO authenticated, service_role;
+
+REVOKE ALL ON FUNCTION post_credit_card_cashback(UUID, UUID, UUID, VARCHAR, NUMERIC, DATE, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION post_credit_card_cashback(UUID, UUID, UUID, VARCHAR, NUMERIC, DATE, TEXT) TO authenticated, service_role;
+

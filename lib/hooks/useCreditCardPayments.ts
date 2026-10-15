@@ -23,8 +23,14 @@ import {
   getUserCreditCardStatementsKey,
 } from "../cacheKeys";
 import { roundCurrency } from "../utils";
+import {
+  enqueueOfflineStatement,
+  getOfflineStatementQueueForUser,
+  removeAcknowledgedOfflineStatements,
+} from "../offlineQueue";
 
 export type CreditCardPaymentsDeps = {
+
   session: Session | null;
   isOfflineRef: MutableRefObject<boolean>;
   accountObjects: Account[];
@@ -186,6 +192,21 @@ export function useCreditCardPayments(deps: CreditCardPaymentsDeps) {
     // 1b. Load from Supabase if online and session exists
     if (session?.user?.id && !isOfflineRef.current) {
       try {
+        // Flush any pending durable offline statements before querying fresh data
+        const pendingStmts = await getOfflineStatementQueueForUser(session.user.id);
+        if (pendingStmts && pendingStmts.length > 0) {
+          const acked = new Set<string>();
+          for (const s of pendingStmts) {
+            const { error: insErr } = await supabase.from("credit_card_statements").insert(s);
+            if (!insErr || insErr.code === "23505") {
+              acked.add(s.id);
+            }
+          }
+          if (acked.size > 0) {
+            await removeAcknowledgedOfflineStatements(acked);
+          }
+        }
+
         const [stRes, payRes, allocRes] = await Promise.all([
           supabase
             .from("credit_card_statements")
@@ -290,7 +311,12 @@ export function useCreditCardPayments(deps: CreditCardPaymentsDeps) {
       closingBalance: number;
       minimumPayment?: number;
       note?: string;
-    }): Promise<{ success: boolean; statement?: CreditCardStatement; error?: string }> => {
+    }): Promise<{
+      success: boolean;
+      statement?: CreditCardStatement;
+      status?: "synced" | "pending_sync";
+      error?: string;
+    }> => {
       if (!params.accountId) {
         return { success: false, error: "Credit card account is required." };
       }
@@ -321,37 +347,81 @@ export function useCreditCardPayments(deps: CreditCardPaymentsDeps) {
         updatedAt: new Date().toISOString(),
       };
 
+      const rawRow: RawCreditCardStatementRow = {
+        id: newStatement.id,
+        user_id: session?.user?.id || "",
+        account_id: newStatement.accountId,
+        statement_date: newStatement.statementDate,
+        due_date: newStatement.dueDate,
+        opening_balance: newStatement.openingBalance,
+        closing_balance: newStatement.closingBalance,
+        minimum_payment: newStatement.minimumPayment,
+        is_settled: newStatement.isSettled,
+        settled_at: newStatement.settledAt ?? null,
+        note: newStatement.note ?? null,
+      };
+
+      // Cloud insert when online
+      if (session?.user?.id && !isOfflineRef.current) {
+        try {
+          const { error } = await supabase.from("credit_card_statements").insert(rawRow);
+          if (error) {
+            // Duplicate statement date constraint violation
+            if (error.code === "23505" || error.message?.includes("uq_credit_card_statements_account_date")) {
+              return {
+                success: false,
+                error: "A statement cycle for this card and statement date already exists.",
+              };
+            }
+            if (error.code === "42501") {
+              return {
+                success: false,
+                error: "Permission denied while recording credit card statement.",
+              };
+            }
+
+            // On unexpected network or transient server failure, queue to durable offline statement retry queue
+            console.warn("[CreditCardPayments] Cloud statement insert failed, queuing for retry:", error);
+            await enqueueOfflineStatement(rawRow);
+
+            const updatedStatements = [newStatement, ...statementsRef.current];
+            setStatements(updatedStatements);
+            await localforage.setItem(statementsKey, updatedStatements);
+
+            triggerToast("Statement saved locally (offline retry pending)");
+            return { success: true, statement: newStatement, status: "pending_sync" };
+          }
+        } catch (e) {
+          console.warn("[CreditCardPayments] Cloud statement insert exception, queuing:", e);
+          if (session?.user?.id) {
+            await enqueueOfflineStatement(rawRow);
+            const updatedStatements = [newStatement, ...statementsRef.current];
+            setStatements(updatedStatements);
+            await localforage.setItem(statementsKey, updatedStatements);
+
+            triggerToast("Statement saved locally (offline retry pending)");
+            return { success: true, statement: newStatement, status: "pending_sync" };
+          }
+          return { success: false, error: e instanceof Error ? e.message : "Failed to record statement." };
+        }
+      } else if (session?.user?.id && isOfflineRef.current) {
+        // Explicit offline persistence in durable statement queue
+        await enqueueOfflineStatement(rawRow);
+        const updatedStatements = [newStatement, ...statementsRef.current];
+        setStatements(updatedStatements);
+        await localforage.setItem(statementsKey, updatedStatements);
+
+        triggerToast("Statement saved offline (will sync when online)");
+        return { success: true, statement: newStatement, status: "pending_sync" };
+      }
+
+      // Online success path
       const updatedStatements = [newStatement, ...statementsRef.current];
       setStatements(updatedStatements);
       await localforage.setItem(statementsKey, updatedStatements);
 
-      // Cloud sync if available
-      if (session?.user?.id && !isOfflineRef.current) {
-        try {
-          const rawRow: RawCreditCardStatementRow = {
-            id: newStatement.id,
-            user_id: session.user.id,
-            account_id: newStatement.accountId,
-            statement_date: newStatement.statementDate,
-            due_date: newStatement.dueDate,
-            opening_balance: newStatement.openingBalance,
-            closing_balance: newStatement.closingBalance,
-            minimum_payment: newStatement.minimumPayment,
-            is_settled: newStatement.isSettled,
-            settled_at: newStatement.settledAt ?? null,
-            note: newStatement.note ?? null,
-          };
-          const { error } = await supabase.from("credit_card_statements").insert(rawRow);
-          if (error && error.code !== "42P01" && error.code !== "42703") {
-            console.warn("[CreditCardPayments] Cloud insert statement failed:", error);
-          }
-        } catch (e) {
-          console.warn("[CreditCardPayments] Cloud statement insert error:", e);
-        }
-      }
-
       triggerToast("Statement recorded successfully");
-      return { success: true, statement: newStatement };
+      return { success: true, statement: newStatement, status: "synced" };
     },
     [session, isOfflineRef, statementsKey, triggerToast]
   );
@@ -366,6 +436,7 @@ export function useCreditCardPayments(deps: CreditCardPaymentsDeps) {
       amount: number;
       paymentType: CreditCardPaymentType;
       note?: string;
+      operationId?: string; // Durable client operation ID for safe retries
     }): Promise<{
       success: boolean;
       paymentId?: string;
@@ -420,7 +491,7 @@ export function useCreditCardPayments(deps: CreditCardPaymentsDeps) {
       }
       const sanitizedAmount = roundCurrency(numAmount);
       const paymentDate = params.paymentDate || new Date().toISOString().split("T")[0];
-      const operationId = crypto.randomUUID();
+      const operationId = params.operationId || crypto.randomUUID();
 
       // 3. Invoke Atomic RPC: record_credit_card_repayment
       try {

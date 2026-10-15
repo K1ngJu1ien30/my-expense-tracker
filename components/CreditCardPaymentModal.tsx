@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence, PanInfo } from "framer-motion";
 import {
   X,
@@ -93,6 +93,7 @@ export default function CreditCardPaymentModal({
   const [minimumPayment, setMinimumPayment] = useState<string>("");
   const [stNote, setStNote] = useState<string>("");
   const [isSavingStatement, setIsSavingStatement] = useState(false);
+  const paymentOperationIdRef = useRef<string | null>(null);
 
   // ─── Initialize selected card and source ─────────────────────────────────
   useEffect(() => {
@@ -102,6 +103,7 @@ export default function CreditCardPaymentModal({
       setStep("edit");
       setErrorMessage(null);
       setShowAddStatement(false);
+      paymentOperationIdRef.current = null;
       return;
     }
 
@@ -273,6 +275,9 @@ export default function CreditCardPaymentModal({
       return;
     }
 
+    if (!paymentOperationIdRef.current) {
+      paymentOperationIdRef.current = crypto.randomUUID();
+    }
     NativeHaptics.successMedium();
     setStep("review");
   };
@@ -290,6 +295,10 @@ export default function CreditCardPaymentModal({
     setIsSubmitting(true);
     setErrorMessage(null);
 
+    if (!paymentOperationIdRef.current) {
+      paymentOperationIdRef.current = crypto.randomUUID();
+    }
+
     const numAmount = Number(amount);
     const res = await recordCreditCardPayment({
       accountId: currentCard.id || currentCard.name,
@@ -299,11 +308,13 @@ export default function CreditCardPaymentModal({
       amount: numAmount,
       paymentType: preset,
       note: note ? note.trim() : undefined,
+      operationId: paymentOperationIdRef.current,
     });
 
     setIsSubmitting(false);
 
     if (res.success) {
+      paymentOperationIdRef.current = null;
       NativeHaptics.successMedium();
       setStep("success");
       triggerToast(
@@ -697,7 +708,10 @@ export default function CreditCardPaymentModal({
                   <button
                     type="button"
                     disabled={isSubmitting}
-                    onClick={() => setStep("edit")}
+                    onClick={() => {
+                      paymentOperationIdRef.current = null;
+                      setStep("edit");
+                    }}
                     className="flex-1 py-3 text-xs font-bold bg-muted hover:bg-border rounded-xl transition-colors disabled:opacity-50"
                   >
                     Back to Edit

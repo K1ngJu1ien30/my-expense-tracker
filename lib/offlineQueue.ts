@@ -1,7 +1,8 @@
 import localforage from "localforage";
-import type { Transaction } from "./types";
+import type { RawCreditCardStatementRow, Transaction } from "./types";
 
 const OFFLINE_QUEUE_KEY = "offline_tx_queue";
+const OFFLINE_STATEMENT_QUEUE_KEY = "offline_statement_queue";
 
 /**
  * Single-flight serializer lock for offline transaction queue operations.
@@ -88,3 +89,46 @@ export async function removeAcknowledgedOfflineTxs(acknowledgedIds: Set<string>)
     return removedCount;
   });
 }
+
+/**
+ * Enqueue a credit card statement to the durable offline statement queue.
+ */
+export async function enqueueOfflineStatement(stmt: RawCreditCardStatementRow): Promise<void> {
+  return withQueueLock(async () => {
+    const existing = (await localforage.getItem<RawCreditCardStatementRow[]>(OFFLINE_STATEMENT_QUEUE_KEY)) || [];
+    // Prevent duplicate entries for the exact same statement id in queue
+    const filtered = existing.filter(s => s.id !== stmt.id);
+    filtered.push(stmt);
+    await localforage.setItem(OFFLINE_STATEMENT_QUEUE_KEY, filtered);
+  });
+}
+
+/**
+ * Retrieve queued offline credit card statements for a specific user.
+ */
+export async function getOfflineStatementQueueForUser(userId: string): Promise<RawCreditCardStatementRow[]> {
+  if (!userId) return [];
+  return withQueueLock(async () => {
+    const queue = (await localforage.getItem<RawCreditCardStatementRow[]>(OFFLINE_STATEMENT_QUEUE_KEY)) || [];
+    return queue.filter(s => s.user_id === userId);
+  });
+}
+
+/**
+ * Safely removes acknowledged statements from the offline queue.
+ */
+export async function removeAcknowledgedOfflineStatements(acknowledgedIds: Set<string>): Promise<number> {
+  if (acknowledgedIds.size === 0) return 0;
+  return withQueueLock(async () => {
+    const currentQueue = (await localforage.getItem<RawCreditCardStatementRow[]>(OFFLINE_STATEMENT_QUEUE_KEY)) || [];
+    const remaining = currentQueue.filter(s => !s.id || !acknowledgedIds.has(s.id));
+    const removedCount = currentQueue.length - remaining.length;
+    if (remaining.length === 0) {
+      await localforage.removeItem(OFFLINE_STATEMENT_QUEUE_KEY);
+    } else {
+      await localforage.setItem(OFFLINE_STATEMENT_QUEUE_KEY, remaining);
+    }
+    return removedCount;
+  });
+}
+

@@ -419,38 +419,16 @@ export function useAccountsState(session: Session | null) {
               };
             }
 
-            // Fallback if migration 010 RPC not yet applied in Supabase: direct table delete
+            // Missing RPC requires database migration — reject unsafe direct table delete fallback
             if (rpcErr.code === "42883" || rpcErr.message?.includes("delete_user_account")) {
-              const { error: directErr } = await supabase
-                .from("user_accounts")
-                .delete()
-                .eq("id", target.id)
-                .eq("user_id", session.user.id);
-
-              if (directErr) {
-                if (
-                  directErr.code === "23503" ||
-                  directErr.message?.includes("foreign key")
-                ) {
-                  return {
-                    success: false,
-                    error:
-                      "Cannot delete this account because it has linked financial records. Please archive it instead.",
-                  };
-                }
-                return { success: false, error: directErr.message };
-              }
-
-              if (target.kind === "credit_card") {
-                await supabase
-                  .from("credit_card_details")
-                  .delete()
-                  .eq("account_id", target.id)
-                  .eq("user_id", session.user.id);
-              }
-            } else {
-              return { success: false, error: rpcErr.message };
+              return {
+                success: false,
+                error:
+                  "Database migration required: please execute 010_safe_account_deletion_and_integrity.sql in Supabase to enable safe account deletion.",
+              };
             }
+
+            return { success: false, error: rpcErr.message };
           }
         } catch (err) {
           console.error("[deleteAccount] Deletion exception:", err);

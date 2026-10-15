@@ -429,6 +429,10 @@ export function calculateFinancialPosition(
       if (res.isEstimated) isEstimatedConversion = true;
       if (!res.isKnown) {
         unconvertedCurrenciesSet.add(cur);
+        // Exclude unconverted nominal amounts from consolidated base-currency totals
+        // to prevent mathematical corruption (e.g. adding 1,000,000 JPY to MYR/USD base total).
+        // Native amounts remain accurately tracked and displayed in byCurrency[cur].
+        return 0;
       }
       return res.amount;
     };

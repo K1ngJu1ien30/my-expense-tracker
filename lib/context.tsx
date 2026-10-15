@@ -205,7 +205,8 @@ type AppContextType = {
     amount: number;
     paymentType: CreditCardPaymentType;
     note?: string;
-  }) => Promise<{ success: boolean; paymentId?: string; status?: "synced" | "pending_sync"; error?: string }>;
+    operationId?: string;
+  }) => Promise<{ success: boolean; paymentId?: string; status?: "synced" | "pending_sync"; error?: string; alreadyProcessed?: boolean }>;
   rewardsConfigs: Record<string, CardRewardsConfig>;
   cashbackRecords: CashbackRecord[];
   saveRewardsConfig: (config: CardRewardsConfig) => Promise<void>;
@@ -216,6 +217,7 @@ type AppContextType = {
     amount: number;
     date: string;
     note?: string;
+    operationId?: string;
   }) => Promise<{ success: boolean; error?: string; record?: CashbackRecord }>;
 };
 
