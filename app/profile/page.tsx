@@ -744,7 +744,7 @@ export default function ProfilePage() {
 
       {/* App Version Info */}
       <div className="text-center py-2 text-xs font-medium text-muted-foreground/60 select-none">
-        Expense Tracker Pro v3.0.0
+        Expense Tracker Pro v3.1.0
       </div>
 
       {/* Clear Data Confirm Modal */}

@@ -485,6 +485,16 @@ export function useCreditCardPayments(deps: CreditCardPaymentsDeps) {
         return { success: false, error: "Source and card account cannot be the same." };
       }
 
+      // Enforce currency matching: cross-currency credit card repayment is unsupported
+      const cardCurrency = (cardAcc.currencyCode || "RM").trim().toUpperCase();
+      const sourceCurrency = (sourceAcc.currencyCode || "RM").trim().toUpperCase();
+      if (cardCurrency !== sourceCurrency) {
+        return {
+          success: false,
+          error: `Cross-currency repayment is not supported. Source account currency (${sourceCurrency}) must match credit card currency (${cardCurrency}).`,
+        };
+      }
+
       const numAmount = Number(params.amount);
       if (isNaN(numAmount) || !isFinite(numAmount) || numAmount <= 0) {
         return { success: false, error: "Payment amount must be greater than zero." };

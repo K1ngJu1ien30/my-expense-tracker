@@ -6,6 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [3.1.0] — Android Release & Financial Integrity Safeguards — 2026-10-15
+
+A targeted maintenance release implementing pre-release financial integrity safeguards, cross-currency repayment validation, and an updated installable Android release package.
+
+### 💳 Credit Card Repayment Safeguards (Migration 013)
+- **Cross-Currency Repayment Guard**: Required source account currency to strictly match credit card currency. Enforced at both the client level (`CreditCardPaymentModal`, `useCreditCardPayments`) and database RPC (`record_credit_card_repayment`) to prevent unbalanced nominal transfers across differing currency accounts.
+- **Unsupported Cross-Currency Notice**: Replaced deceptive conversion estimate debit previews with clear user notices and disabled submission until a matching-currency source is selected.
+- **Repayment Without Debt Guard**: Rejected repayment submissions when credit card debt is zero or when the card has a positive credit balance (overpaid/refunded).
+- **Overpayment Guard**: Enforced that repayment amounts cannot exceed live outstanding card debt (+0.01 tolerance).
+- **Legitimate Repayments Preserved**: Maintained full statement balance, minimum due, custom partial, and full outstanding repayments.
+
+### 📱 Android Release Compilation
+- **Version Bumps**: Set `versionName = "3.1.0"` and `versionCode = 30100` in `android/app/build.gradle` (strictly greater than previous `30000`).
+- **Seamless Upgrade Path**: Preserved `com.tracker.app` package ID, display name `Tracker`, native Android safe areas, and Android debug keystore signature, enabling non-destructive update installation over v3.0.0.
+
+---
+
 ## [3.0.0 Patches] — Post-Release Maintenance, Security Hardening & Concurrency Integrity — 2026-10-15
 
 A series of verified maintenance fixes and security hardening patches addressing database access controls, repayment concurrency locking, client idempotency, statement persistence, and multi-currency edge cases.

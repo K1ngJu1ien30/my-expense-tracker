@@ -1,4 +1,4 @@
-# Expense Tracker Pro — User Manual (v3.0.0)
+# Expense Tracker Pro — User Manual (v3.1.0)
 
 Welcome to **Expense Tracker Pro**. This user manual provides complete documentation of the application's interface, accounting principles, navigation workflows, and financial features.
 

@@ -1,10 +1,10 @@
 # Expense Tracker Pro
 
-### Native Multi-Currency Financial Engine & Credit Card Architecture — v3.0.0
+### Native Multi-Currency Financial Engine & Credit Card Architecture — v3.1.0
 
 A production-grade, offline-first personal finance application built with Next.js and compiled to a native Android binary via Capacitor. Engineered with strict integer-cents precision, double-entry accounting integrity separating cash assets from credit liabilities, a complete optional credit-card lifecycle engine, resilient multi-queue offline synchronization, and bank-grade PostgreSQL Row Level Security.
 
-> **Quality Baseline (v3.0.0):**
+> **Quality Baseline (v3.1.0):**
 > - TypeScript Strict: `npx tsc --noEmit` → 0 errors
 > - ESLint 9 Flat Config: `npm run lint` → 0 errors / 0 warnings
 > - Next.js Static Export: 16/16 pages statically prerendered to `out/`

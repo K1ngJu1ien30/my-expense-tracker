@@ -619,6 +619,13 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
+    -- SAFEGUARD A: Enforce matching currency between card and payment source
+    IF v_card_currency <> v_source_currency THEN
+        RAISE EXCEPTION 'CURRENCY_MISMATCH: Source account currency (%) must match credit card currency (%). Cross-currency repayments are not supported.',
+            v_source_currency, v_card_currency
+            USING ERRCODE = '22023';
+    END IF;
+
     SELECT 
         - (
             COALESCE(u.opening_balance, 0.00)
@@ -643,7 +650,15 @@ BEGIN
     WHERE u.id = p_card_account_id AND u.user_id = v_user_id
     GROUP BY u.opening_balance, u.name;
 
-    IF v_current_debt IS NOT NULL AND v_current_debt > 0.00 AND v_amount > (v_current_debt + 0.01) THEN
+    -- SAFEGUARD B1: Reject repayment if card has no outstanding debt or has positive credit balance
+    IF v_current_debt IS NULL OR v_current_debt <= 0.00 THEN
+        RAISE EXCEPTION 'NO_OUTSTANDING_DEBT: Credit card "%" has no outstanding debt (current balance: % %). Repayments cannot be recorded for zero or positive credit balances.',
+            v_card_name, v_card_currency, COALESCE(-v_current_debt, 0.00)
+            USING ERRCODE = '22023';
+    END IF;
+
+    -- SAFEGUARD B2: Reject repayment if amount exceeds current debt (+0.01 tolerance)
+    IF v_amount > (v_current_debt + 0.01) THEN
         RAISE EXCEPTION 'AMOUNT_EXCEEDS_DEBT: Payment amount (% %) exceeds current card debt (% %). Unsupported overpayment.',
             v_card_currency, v_amount, v_card_currency, v_current_debt
             USING ERRCODE = '22023';

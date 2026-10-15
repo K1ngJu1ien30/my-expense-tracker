@@ -22,7 +22,7 @@ import {
   calculateStatementRemaining,
   calculateMinimumRemaining,
 } from "@/lib/hooks/useCreditCardPayments";
-import { calculateAccountBalances, convertCurrencySafe } from "@/lib/balance";
+import { calculateAccountBalances } from "@/lib/balance";
 import type { CreditCardPaymentType } from "@/lib/types";
 
 export default function CreditCardPaymentModal({
@@ -46,7 +46,6 @@ export default function CreditCardPaymentModal({
     creditCardAllocations,
     addCreditCardStatement,
     recordCreditCardPayment,
-    exchangeRates,
   } = useAppContext();
 
   // ─── Filter credit cards & liquid payment sources ────────────────────────
@@ -135,11 +134,6 @@ export default function CreditCardPaymentModal({
   const cardCurrency = (currentCard?.currencyCode || currency).trim().toUpperCase();
   const sourceCurrency = (currentSource?.currencyCode || currency).trim().toUpperCase();
   const isCurrencyMismatch = cardCurrency !== sourceCurrency;
-
-  const conversionEstimate = useMemo(() => {
-    if (!isCurrencyMismatch || !amount || isNaN(Number(amount)) || Number(amount) <= 0) return null;
-    return convertCurrencySafe(Number(amount), cardCurrency, sourceCurrency, { liveRates: exchangeRates });
-  }, [isCurrencyMismatch, amount, cardCurrency, sourceCurrency, exchangeRates]);
 
   // Balances calculation
   const balancesData = useMemo(
@@ -266,11 +260,29 @@ export default function CreditCardPaymentModal({
       return;
     }
 
-    // Check unsupported overpayment (> current outstanding debt when debt > 0)
-    if (currentCardDebt > 0 && num > currentCardDebt + 0.01) {
+    // Enforce matching currencies (unsupported cross-currency repayment)
+    if (isCurrencyMismatch) {
       NativeHaptics.errorShake();
       setErrorMessage(
-        `Amount exceeds current total card debt (${cardCurrency} ${currentCardDebt.toFixed(2)}). Unsupported overpayment.`
+        `Cross-currency repayment is not supported. Source account currency (${sourceCurrency}) must match credit card currency (${cardCurrency}).`
+      );
+      return;
+    }
+
+    // Reject repayments when card has zero debt or positive credit balance
+    if (currentCardDebt <= 0) {
+      NativeHaptics.errorShake();
+      setErrorMessage(
+        `Credit card "${currentCard.name}" has no outstanding debt (${cardCurrency} 0.00). Repayments cannot be recorded for zero or positive credit balances.`
+      );
+      return;
+    }
+
+    // Check unsupported overpayment (> current outstanding debt)
+    if (num > currentCardDebt + 0.01) {
+      NativeHaptics.errorShake();
+      setErrorMessage(
+        `Payment amount (${cardCurrency} ${num.toFixed(2)}) exceeds current outstanding card debt (${cardCurrency} ${currentCardDebt.toFixed(2)}). Unsupported overpayment.`
       );
       return;
     }
@@ -665,11 +677,6 @@ export default function CreditCardPaymentModal({
                       <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">
                         {cardCurrency} {Number(amount).toFixed(2)}
                       </span>
-                      {isCurrencyMismatch && conversionEstimate && conversionEstimate.isKnown && (
-                        <span className="text-[10px] text-muted-foreground block font-medium">
-                          ≈ {sourceCurrency} {conversionEstimate.amount.toFixed(2)} (estimated debit)
-                        </span>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -683,10 +690,7 @@ export default function CreditCardPaymentModal({
                   <div className="flex justify-between pl-5">
                     <span>{currentSource?.name} Balance:</span>
                     <span className="font-mono font-bold">
-                      {sourceCurrency}{" "}
-                      {isCurrencyMismatch && conversionEstimate && conversionEstimate.isKnown
-                        ? `${(sourceBalance - conversionEstimate.amount).toFixed(2)} (est.)`
-                        : (sourceBalance - Number(amount)).toFixed(2)}
+                      {sourceCurrency} {(sourceBalance - Number(amount)).toFixed(2)}
                     </span>
                   </div>
                   <div className="flex justify-between pl-5">
@@ -1129,21 +1133,28 @@ export default function CreditCardPaymentModal({
                     />
                   </div>
 
-                  {/* Multi-Currency Repayment Notice Banner */}
-                  {isCurrencyMismatch && (
-                    <div className="mt-2.5 p-3 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-xs space-y-1 text-blue-600 dark:text-blue-300">
+                  {/* Zero Debt Notice Banner */}
+                  {currentCardDebt <= 0 && currentCard && (
+                    <div className="mt-2.5 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-xs space-y-1 text-emerald-700 dark:text-emerald-400">
                       <div className="flex items-center gap-1.5 font-bold">
-                        <Info className="w-4 h-4 shrink-0" />
-                        <span>Multi-Currency Repayment Notice</span>
+                        <CheckCircle2 className="w-4 h-4 shrink-0" />
+                        <span>No Outstanding Debt</span>
                       </div>
                       <p className="text-[11px] leading-relaxed">
-                        Paying to <strong>{currentCard?.name}</strong> ({cardCurrency}) from{" "}
-                        <strong>{currentSource?.name}</strong> ({sourceCurrency}).
-                        {conversionEstimate && conversionEstimate.isKnown ? (
-                          <span> Estimated deduction: <strong>{sourceCurrency} {conversionEstimate.amount.toFixed(2)}</strong> for {cardCurrency} {Number(amount || 0).toFixed(2)} payment.</span>
-                        ) : (
-                          <span> Exchange rate is unrated; repayment will be recorded with exact nominal units between accounts.</span>
-                        )}
+                        Credit card <strong>{currentCard.name}</strong> currently has no outstanding debt ({cardCurrency} 0.00). Repayments cannot be submitted for zero or positive credit balances.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Unsupported Cross-Currency Repayment Notice Banner */}
+                  {isCurrencyMismatch && (
+                    <div className="mt-2.5 p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-xs space-y-1 text-amber-700 dark:text-amber-400">
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <AlertTriangle className="w-4 h-4 shrink-0" />
+                        <span>Unsupported Cross-Currency Repayment</span>
+                      </div>
+                      <p className="text-[11px] leading-relaxed">
+                        Cross-currency credit card repayment is not supported. The card uses <strong>{cardCurrency}</strong>, while <strong>{currentSource?.name}</strong> is in <strong>{sourceCurrency}</strong>. Please select a payment source account in <strong>{cardCurrency}</strong> to proceed.
                       </p>
                     </div>
                   )}
@@ -1188,14 +1199,11 @@ export default function CreditCardPaymentModal({
                   </div>
 
                   {/* Insufficient Source Balance Warning (Non-blocking) */}
-                  {((!isCurrencyMismatch && Number(amount) > sourceBalance) ||
-                    (isCurrencyMismatch && conversionEstimate?.isKnown && conversionEstimate.amount > sourceBalance)) &&
-                    sourceBalance > 0 && (
+                  {!isCurrencyMismatch && Number(amount) > sourceBalance && sourceBalance > 0 && (
                     <div className="mt-2 p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-600 dark:text-amber-400 text-xs flex items-center gap-2">
                       <AlertTriangle className="w-4 h-4 shrink-0" />
                       <span>
-                        Source balance appears insufficient ({sourceCurrency} {sourceBalance.toFixed(2)} available
-                        {isCurrencyMismatch && conversionEstimate?.isKnown ? `, estimated required: ${sourceCurrency} ${conversionEstimate.amount.toFixed(2)}` : ""}).
+                        Source balance appears insufficient ({sourceCurrency} {sourceBalance.toFixed(2)} available).
                         You may still proceed if your account has external funds.
                       </span>
                     </div>
@@ -1249,17 +1257,21 @@ export default function CreditCardPaymentModal({
                 <div className="pt-2">
                   <button
                     type="button"
-                    disabled={isOffline}
+                    disabled={isOffline || isCurrencyMismatch || currentCardDebt <= 0}
                     onClick={handleProceedToReview}
                     className={cn(
                       "w-full py-3.5 rounded-2xl font-bold text-sm shadow-soft transition-all flex items-center justify-center gap-2",
-                      isOffline
+                      isOffline || isCurrencyMismatch || currentCardDebt <= 0
                         ? "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
                         : "bg-primary text-white hover:opacity-95 cursor-pointer"
                     )}
                   >
                     {isOffline ? (
                       <span>Offline — Connect to Submit</span>
+                    ) : currentCardDebt <= 0 ? (
+                      <span>No Outstanding Debt</span>
+                    ) : isCurrencyMismatch ? (
+                      <span>Select {cardCurrency} Payment Source</span>
                     ) : (
                       <>
                         <span>Review Payment</span>

@@ -13,7 +13,7 @@ let queueLock: Promise<unknown> = Promise.resolve();
 
 function withQueueLock<T>(op: () => Promise<T>): Promise<T> {
   const next = queueLock.then(op);
-  queueLock = next.catch(() => {});
+  queueLock = next.catch(() => { });
   return next;
 }
 
