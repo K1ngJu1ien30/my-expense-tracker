@@ -69,19 +69,34 @@ function ScrollPillSelector({
   ariaLabel?: string;
   accountObjects?: Account[];
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLButtonElement>(null);
 
-  // Center the selected chip whenever selection changes. `block: "nearest"`
-  // on the cross axis keeps vertical scroll of the parent modal untouched.
+  // Center the selected chip inside the horizontal row whenever selection changes.
+  // We explicitly scroll ONLY this horizontal container (`container.scrollTo`)
+  // rather than calling `selectedRef.current.scrollIntoView()` — which would
+  // traverse DOM ancestors and scroll vertical ancestors (like the History page
+  // Virtuoso scroller, <main>, or window) unexpectedly.
   useEffect(() => {
-    if (selectedRef.current) {
-      selectedRef.current.scrollIntoView({
+    const container = containerRef.current;
+    const selected = selectedRef.current;
+    if (!container || !selected) return;
+
+    const frame = requestAnimationFrame(() => {
+      if (!container || !selected || container.clientWidth === 0) return;
+      const containerRect = container.getBoundingClientRect();
+      const selectedRect = selected.getBoundingClientRect();
+      const relativeLeft = selectedRect.left - containerRect.left + container.scrollLeft;
+      const targetScrollLeft = relativeLeft - (container.clientWidth / 2) + (selectedRect.width / 2);
+
+      container.scrollTo({
+        left: Math.max(0, targetScrollLeft),
         behavior: "smooth",
-        inline: "center",
-        block: "nearest",
       });
-    }
-  }, [value]);
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [value, options]);
 
   return (
     // Stays inside the parent's padding — we deliberately DON'T use the
@@ -98,6 +113,7 @@ function ScrollPillSelector({
     // fade into the edge" effect but gains predictable alignment across
     // every variant — which is what the user actually notices.
     <div
+      ref={containerRef}
       role="radiogroup"
       aria-label={ariaLabel}
       className="flex gap-2 overflow-x-auto hide-scrollbar pb-1 snap-x"
@@ -347,6 +363,16 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
   // AND we're in add-mode (no editTransactionId). Edits have their own
   // loader in the effect above.
   useEffect(() => {
+    if (isActuallyOpen) {
+      // Actively blur whatever the browser thinks is focused (e.g. the "Edit"
+      // button just tapped in History or a previously focused input).
+      // Blurring on open guarantees no lingering focus pulls the viewport or
+      // triggers unwanted soft keyboards.
+      if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+    }
+
     if (isActuallyOpen && !editTransactionId) {
       setIsClaimable(false);
       setExcludeFromVelocity(null);
@@ -357,22 +383,9 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
       // Don't reset amount/note/category/account here — those are
       // seeded elsewhere and resetting them would wipe a quick-template
       // pre-fill on the way in.
-
-      // Actively blur whatever the browser thinks is focused.
-      //
-      // Why: AppLayout keeps this modal mounted across opens. If the
-      // user saved a transaction with a note in a previous session,
-      // Android WebView sometimes auto-restores focus to that note
-      // <input> when the modal re-appears — which makes the Android
-      // keyboard spring up on the wrong field. Blurring on open
-      // guarantees no field is focused and no keyboard opens. The
-      // user can then tap whichever field they actually want to edit.
-      if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
-        document.activeElement.blur();
-      }
     }
     // Only depend on isActuallyOpen / editTransactionId — we want this
-    // to fire exactly once per "open as fresh add" transition.
+    // to fire exactly once per "open" transition.
   }, [isActuallyOpen, editTransactionId]);
 
   // Load the predictor model once when the modal opens. Reload on every open
@@ -481,7 +494,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
             exit={{ opacity: 0 }}
             onClick={handleClose}
             aria-hidden="true"
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 rounded-[inherit]"
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50"
           />
           <motion.div
             initial={{ y: "100%" }}
@@ -495,7 +508,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
             role="dialog"
             aria-modal="true"
             aria-labelledby="tx-modal-title"
-            className="absolute bottom-0 left-0 right-0 bg-card z-[51] rounded-t-[2rem] shadow-heavy flex flex-col max-h-[90vh]"
+            className="fixed bottom-0 left-0 right-0 max-w-2xl mx-auto bg-card z-[51] rounded-t-[2rem] shadow-heavy flex flex-col max-h-[90vh]"
           >
             <div className="w-12 h-1.5 bg-border rounded-full mx-auto mt-3 mb-4 cursor-grab active:cursor-grabbing" aria-hidden="true" />
 
