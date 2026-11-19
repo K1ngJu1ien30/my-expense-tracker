@@ -8,7 +8,12 @@ import { NativeHaptics } from "../haptics";
 import type { Transaction, Subscription, TransactionSaveResult } from "../types";
 import type { DeletedItemCache } from "../types";
 import { learnAndSaveAsync } from "../categoryPredictor";
-import { enqueueOfflineTx } from "../offlineQueue";
+import { enqueueOfflineTx, removeAcknowledgedOfflineTxs } from "../offlineQueue";
+import {
+  removeCachedTransactionById,
+  upsertCachedTransactions,
+  upsertTransactionSorted,
+} from "../txCache";
 import { roundCurrency } from "../utils";
 import { debugLog } from "../debugLog";
 
@@ -109,6 +114,19 @@ export function validateTransactionInput(tx: Partial<Transaction>): { valid: boo
   return { valid: true };
 }
 
+function isNetworkFailureError(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false;
+  const msg = (error.message || "").toLowerCase();
+  return (
+    !error.code ||
+    msg.includes("failed to fetch") ||
+    msg.includes("network") ||
+    msg.includes("timeout") ||
+    error.code.startsWith("08") ||
+    error.code.startsWith("XX")
+  );
+}
+
 export function useMoneyState(deps: MoneyStateDeps) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -120,9 +138,33 @@ export function useMoneyState(deps: MoneyStateDeps) {
     transactionsRef.current = transactions;
   }, [transactions]);
 
-  const { session, isOfflineRef, triggerWhaleAlert, maybeTriggerPenguinAlert, cacheDeletedItem } = deps;
+  // Per-transaction serialization & version guards for background cloud writes.
+  // Ensures rapid sequences on the same tx (e.g. Add -> immediate Edit/Delete)
+  // execute against Supabase in strict user order and stale responses never
+  // overwrite or resurrect a newer optimistic state.
+  const txMutationChainsRef = useRef<Map<string, Promise<void>>>(new Map());
+  const txMutationVersionRef = useRef<Map<string, number>>(new Map());
 
-  // ─── Transactions ──────────────────────────────────────────────────────
+  const nextTxVersion = useCallback((id: string): number => {
+    const next = (txMutationVersionRef.current.get(id) ?? 0) + 1;
+    txMutationVersionRef.current.set(id, next);
+    return next;
+  }, []);
+
+  const enqueueTxCloudOp = useCallback((id: string, task: () => Promise<void>) => {
+    const prev = txMutationChainsRef.current.get(id) ?? Promise.resolve();
+    const next = prev.catch(() => {}).then(task);
+    txMutationChainsRef.current.set(id, next);
+    void next.finally(() => {
+      if (txMutationChainsRef.current.get(id) === next) {
+        txMutationChainsRef.current.delete(id);
+      }
+    });
+  }, []);
+
+  const { session, isOfflineRef, triggerToast, triggerWhaleAlert, maybeTriggerPenguinAlert, cacheDeletedItem } = deps;
+
+  // ─── Transactions (Durable Optimistic Local-First Pipeline) ────────────
 
   const addTransaction = useCallback(
     async (tx: Partial<Transaction>): Promise<TransactionSaveResult> => {
@@ -134,6 +176,7 @@ export function useMoneyState(deps: MoneyStateDeps) {
         };
       }
 
+      const userId = session?.user?.id;
       const sanitizedAmount = roundCurrency(Number(tx.amount));
       // Client-generated UUID makes the upsert idempotent — safe to retry.
       const clientId = crypto.randomUUID();
@@ -143,126 +186,113 @@ export function useMoneyState(deps: MoneyStateDeps) {
         id: clientId,
         date: tx.date ? new Date(tx.date).toISOString() : new Date().toISOString(),
       };
+      const optimisticTx = { ...txWithId, user_id: userId } as Transaction;
 
-      // Teach the category predictor asynchronously after any successful add.
-      // Only expenses with a non-empty note contribute useful signal — never
-      // blocks transaction saving and never throws.
-      const teachPredictorAsync = () => {
-        if (tx.type !== "Expense" || !tx.note || !tx.category) return;
-        learnAndSaveAsync(tx.note, tx.category, session?.user?.id);
-      };
+      // 1. Durable local persistence FIRST (~5-10ms in IndexedDB).
+      // Guarantees the transaction survives app kills, crashes, or sudden
+      // network loss even though the modal closes immediately.
+      try {
+        await enqueueOfflineTx(optimisticTx);
+      } catch (err) {
+        console.error("[addTransaction] IndexedDB durability write failed:", err);
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : "Failed to save locally",
+        };
+      }
 
-      // Offline queue path: push to IndexedDB, then sync when network returns.
-      // Read isOffline lazily via ref so we always see the latest network state.
+      // 2. Immediate optimistic UI commit (maintains date DESC, id DESC order)
+      const myVersion = nextTxVersion(clientId);
+      setTransactions(prev => upsertTransactionSorted(prev, optimisticTx));
+
+      // 3. Non-blocking local write-through cache + category predictor + alerts
+      if (userId) {
+        void upsertCachedTransactions(userId, [optimisticTx]);
+      }
+      if (tx.type === "Expense" && tx.note && tx.category) {
+        learnAndSaveAsync(tx.note, tx.category, userId);
+      }
+      NativeHaptics.successMedium();
+      if (sanitizedAmount >= WHALE_THRESHOLD) triggerWhaleAlert();
+      if (tx.type === "Expense") maybeTriggerPenguinAlert(sanitizedAmount);
+
+      // 4. Explicit offline mode: already safely enqueued in offline_tx_queue
       if (isOfflineRef.current) {
-        const offlineTx = { ...txWithId, user_id: session?.user?.id } as Transaction;
-        try {
-          // Serialized read-modify-write — only acknowledge once IndexedDB persistence succeeds.
-          await enqueueOfflineTx(offlineTx);
-        } catch (err) {
-          console.error("[addTransaction] IndexedDB persistence failed:", err);
-          return {
-            success: false,
-            error: err instanceof Error ? err.message : "Failed to save offline",
-          };
-        }
-        setTransactions(prev => [offlineTx, ...prev]);
-        teachPredictorAsync();
-        NativeHaptics.successMedium();
-        if (tx.type === "Expense") maybeTriggerPenguinAlert(Number(tx.amount));
         return { success: true, status: "pending_sync" };
       }
 
-      // Online path: attempt insert directly to Supabase.
-      try {
-        const { data, error } = await supabase
-          .from("transactions")
-          .insert({ ...txWithId, user_id: session?.user?.id })
-          .select()
-          .single();
-
-        if (!error && data) {
-          setTransactions(prev => [data as Transaction, ...prev]);
-          teachPredictorAsync();
-          NativeHaptics.successMedium();
-          if (Number(tx.amount) >= WHALE_THRESHOLD) triggerWhaleAlert();
-          if (tx.type === "Expense") maybeTriggerPenguinAlert(Number(tx.amount));
-          return { success: true, status: "synced" };
-        }
-
-        // Schema resilience: if migration 007 columns not yet added in Supabase (code 42703: undefined_column)
-        if (error?.code === "42703") {
-          console.warn("[addTransaction] Column undefined in cloud table — retrying with base schema:", error.message);
-          const fallbackPayload: Record<string, unknown> = { ...txWithId, user_id: session?.user?.id };
-          delete fallbackPayload.credit_card_tx_type;
-          delete fallbackPayload.statement_id;
-          const retryRes = await supabase.from("transactions").insert(fallbackPayload).select().single();
-          if (!retryRes.error && retryRes.data) {
-            const preservedTx = { ...retryRes.data, credit_card_tx_type: txWithId.credit_card_tx_type, statement_id: txWithId.statement_id };
-            setTransactions(prev => [preservedTx as Transaction, ...prev]);
-            teachPredictorAsync();
-            NativeHaptics.successMedium();
-            if (Number(tx.amount) >= WHALE_THRESHOLD) triggerWhaleAlert();
-            if (tx.type === "Expense") maybeTriggerPenguinAlert(Number(tx.amount));
-            return { success: true, status: "synced" };
-          }
-        }
-
-        console.warn("[addTransaction] Cloud insert returned error:", error);
-
-        // Check if this error indicates network/connectivity failure while the browser was ostensibly online
-        const isNetworkFailure =
-          !error?.code ||
-          error.message?.toLowerCase().includes("failed to fetch") ||
-          error.message?.toLowerCase().includes("network") ||
-          error.message?.toLowerCase().includes("timeout") ||
-          error.code.startsWith("08") ||
-          error.code.startsWith("XX");
-
-        if (isNetworkFailure) {
-          debugLog("[addTransaction] Falling back to offline queue due to network/server failure");
-          const offlineTx = { ...txWithId, user_id: session?.user?.id } as Transaction;
-          try {
-            await enqueueOfflineTx(offlineTx);
-            setTransactions(prev => [offlineTx, ...prev]);
-            teachPredictorAsync();
-            NativeHaptics.successMedium();
-            if (tx.type === "Expense") maybeTriggerPenguinAlert(Number(tx.amount));
-            return { success: true, status: "pending_sync" };
-          } catch (storageErr) {
-            console.error("[addTransaction] Offline fallback also failed:", storageErr);
-            return {
-              success: false,
-              error: "Network failed and local storage unavailable",
-            };
-          }
-        }
-
-        // Unrecoverable schema/RLS/constraint database error
-        return {
-          success: false,
-          error: error?.message || "Failed to save transaction to database",
-        };
-      } catch (exception) {
-        console.warn("[addTransaction] Exception during cloud insert — attempting offline fallback:", exception);
+      // 5. Online mode: push idempotently to Supabase in the background so
+      // TransactionModal closes instantaneously without waiting for HTTP RTT.
+      enqueueTxCloudOp(clientId, async () => {
         try {
-          const offlineTx = { ...txWithId, user_id: session?.user?.id } as Transaction;
-          await enqueueOfflineTx(offlineTx);
-          setTransactions(prev => [offlineTx, ...prev]);
-          teachPredictorAsync();
-          NativeHaptics.successMedium();
-          if (tx.type === "Expense") maybeTriggerPenguinAlert(Number(tx.amount));
-          return { success: true, status: "pending_sync" };
-        } catch (storageErr) {
-          console.error("[addTransaction] Offline fallback also failed:", storageErr);
-          return {
-            success: false,
-            error: "Network failed and local storage unavailable",
-          };
+          const { data, error } = await supabase
+            .from("transactions")
+            .upsert(optimisticTx, { onConflict: "id" })
+            .select()
+            .single();
+
+          if (!error && data) {
+            const canonical = data as Transaction;
+            await removeAcknowledgedOfflineTxs(new Set([clientId]));
+            if (txMutationVersionRef.current.get(clientId) === myVersion) {
+              setTransactions(prev => upsertTransactionSorted(prev, canonical));
+              if (userId) void upsertCachedTransactions(userId, [canonical]);
+            }
+            return;
+          }
+
+          // Schema resilience: migration 007 columns not yet present (42703)
+          if (error?.code === "42703") {
+            console.warn("[addTransaction] Column undefined in cloud table — retrying with base schema:", error.message);
+            const fallbackPayload: Record<string, unknown> = { ...optimisticTx };
+            delete fallbackPayload.credit_card_tx_type;
+            delete fallbackPayload.statement_id;
+            const retryRes = await supabase
+              .from("transactions")
+              .upsert(fallbackPayload, { onConflict: "id" })
+              .select()
+              .single();
+            if (!retryRes.error && retryRes.data) {
+              const preservedTx = {
+                ...retryRes.data,
+                credit_card_tx_type: txWithId.credit_card_tx_type,
+                statement_id: txWithId.statement_id,
+              } as Transaction;
+              await removeAcknowledgedOfflineTxs(new Set([clientId]));
+              if (txMutationVersionRef.current.get(clientId) === myVersion) {
+                setTransactions(prev => upsertTransactionSorted(prev, preservedTx));
+                if (userId) void upsertCachedTransactions(userId, [preservedTx]);
+              }
+              return;
+            }
+          }
+
+          if (isNetworkFailureError(error)) {
+            // Already durably queued in offline_tx_queue — will auto-sync on reconnect
+            debugLog("[addTransaction] Network drop during background sync; kept in offline queue");
+            triggerToast("⏳ Connection dropped — saved locally for sync");
+            return;
+          }
+
+          // Hard server rejection (RLS / constraint error): roll back optimistic entry
+          console.error("[addTransaction] Cloud rejected transaction, rolling back:", error);
+          await removeAcknowledgedOfflineTxs(new Set([clientId]));
+          if (txMutationVersionRef.current.get(clientId) === myVersion) {
+            setTransactions(prev => prev.filter(t => t.id !== clientId));
+            if (userId) void removeCachedTransactionById(userId, clientId);
+          }
+          NativeHaptics.errorShake();
+          triggerToast(`❌ Save rejected: ${error?.message || "Database error"}`);
+        } catch (exception) {
+          // Network/fetch exception: kept safely in offline_tx_queue for retry
+          debugLog("[addTransaction] Background sync exception; kept in offline queue:", exception);
+          triggerToast("⏳ Connection dropped — saved locally for sync");
         }
-      }
+      });
+
+      return { success: true, status: "synced" };
     },
-    [session, isOfflineRef, triggerWhaleAlert, maybeTriggerPenguinAlert]
+    [session, isOfflineRef, triggerToast, triggerWhaleAlert, maybeTriggerPenguinAlert, nextTxVersion, enqueueTxCloudOp]
   );
 
   const updateTransaction = useCallback(
@@ -290,60 +320,140 @@ export function useMoneyState(deps: MoneyStateDeps) {
         }
       }
 
-      try {
-        const { data, error } = await supabase
-          .from("transactions")
-          .update(cleanPatch)
-          .eq("id", id)
-          .select()
-          .single();
-        if (error) {
-          if (error.code === "42703") {
+      const userId = session?.user?.id;
+      const previousTx = transactionsRef.current.find(t => t.id === id);
+      if (!previousTx) {
+        return { success: false, error: "Record not found" };
+      }
+
+      const optimisticUpdated: Transaction = { ...previousTx, ...cleanPatch };
+      const myVersion = nextTxVersion(id);
+
+      // 1. Immediate optimistic UI & local cache update
+      setTransactions(prev =>
+        cleanPatch.date !== undefined && cleanPatch.date !== previousTx.date
+          ? upsertTransactionSorted(prev, optimisticUpdated)
+          : prev.map(t => (t.id === id ? optimisticUpdated : t))
+      );
+      if (userId) void upsertCachedTransactions(userId, [optimisticUpdated]);
+      NativeHaptics.lightTick();
+
+      // 2. Background Supabase update with automatic rollback on failure
+      enqueueTxCloudOp(id, async () => {
+        try {
+          const { data, error } = await supabase
+            .from("transactions")
+            .update(cleanPatch)
+            .eq("id", id)
+            .select()
+            .single();
+
+          if (!error && data) {
+            if (txMutationVersionRef.current.get(id) === myVersion) {
+              const canonical = { ...optimisticUpdated, ...(data as Transaction) };
+              setTransactions(prev => prev.map(t => (t.id === id ? canonical : t)));
+              if (userId) void upsertCachedTransactions(userId, [canonical]);
+            }
+            return;
+          }
+
+          if (error?.code === "42703") {
             const fallbackPatch: Record<string, unknown> = { ...cleanPatch };
             delete fallbackPatch.credit_card_tx_type;
             delete fallbackPatch.statement_id;
-            const retryRes = await supabase.from("transactions").update(fallbackPatch).eq("id", id).select().single();
+            const retryRes = await supabase
+              .from("transactions")
+              .update(fallbackPatch)
+              .eq("id", id)
+              .select()
+              .single();
             if (!retryRes.error && retryRes.data) {
-              const updated = { ...retryRes.data, credit_card_tx_type: cleanPatch.credit_card_tx_type, statement_id: cleanPatch.statement_id };
-              setTransactions(prev => prev.map(t => (t.id === id ? (updated as Transaction) : t)));
-              NativeHaptics.lightTick();
-              return { success: true };
+              if (txMutationVersionRef.current.get(id) === myVersion) {
+                const updated = {
+                  ...retryRes.data,
+                  credit_card_tx_type: cleanPatch.credit_card_tx_type,
+                  statement_id: cleanPatch.statement_id,
+                } as Transaction;
+                setTransactions(prev => prev.map(t => (t.id === id ? updated : t)));
+                if (userId) void upsertCachedTransactions(userId, [updated]);
+              }
+              return;
             }
           }
-          console.error("[updateTransaction] Supabase error:", error);
-          return { success: false, error: error.message };
+
+          console.error("[updateTransaction] Supabase error, reverting:", error);
+          if (txMutationVersionRef.current.get(id) === myVersion) {
+            setTransactions(prev => upsertTransactionSorted(prev, previousTx));
+            if (userId) void upsertCachedTransactions(userId, [previousTx]);
+          }
+          NativeHaptics.errorShake();
+          triggerToast(`❌ Update failed: ${error?.message || "Changes reverted"}`);
+        } catch (err) {
+          console.error("[updateTransaction] Exception, reverting:", err);
+          if (txMutationVersionRef.current.get(id) === myVersion) {
+            setTransactions(prev => upsertTransactionSorted(prev, previousTx));
+            if (userId) void upsertCachedTransactions(userId, [previousTx]);
+          }
+          NativeHaptics.errorShake();
+          triggerToast("❌ Update failed — changes reverted.");
         }
-        if (data) {
-          setTransactions(prev => prev.map(t => (t.id === id ? { ...t, ...data } : t)));
-          NativeHaptics.lightTick();
-          return { success: true };
-        }
-        return { success: false, error: "Record not found" };
-      } catch (err) {
-        console.error("[updateTransaction] Exception:", err);
-        return { success: false, error: err instanceof Error ? err.message : "Update failed" };
-      }
+      });
+
+      return { success: true };
     },
-    []
+    [session?.user?.id, triggerToast, nextTxVersion, enqueueTxCloudOp]
   );
 
   const deleteTransaction = useCallback(
     async (id: string) => {
-      // Capture pre-delete copy via ref so deleteTransaction stays referentially stable.
+      const userId = session?.user?.id;
       const item = transactionsRef.current.find(t => t.id === id);
       const now = new Date().toISOString();
-      // Soft delete — never physically remove rows.
-      const { error } = await supabase
-        .from("transactions")
-        .update({ deleted_at: now })
-        .eq("id", id);
-      if (!error) {
-        setTransactions(prev => prev.map(t => (t.id === id ? { ...t, deleted_at: now } : t)));
-        NativeHaptics.heavyDoubleThud();
-        if (item) cacheDeletedItem("transaction", item);
+      const myVersion = nextTxVersion(id);
+
+      // 1. Immediate optimistic soft-delete in state + IndexedDB cache
+      setTransactions(prev => prev.map(t => (t.id === id ? { ...t, deleted_at: now } : t)));
+      if (userId) void removeCachedTransactionById(userId, id);
+      NativeHaptics.heavyDoubleThud();
+      if (item) cacheDeletedItem("transaction", item);
+
+      // Remove from pending offline queue too so deleting an unsynced offline
+      // entry prevents it from resurrecting on next reconnect.
+      const removedFromOfflineQueue = await removeAcknowledgedOfflineTxs(new Set([id]));
+
+      // 2. Background cloud soft-delete (rollback only if cloud update fails
+      // for a row that actually existed on the server)
+      if (isOfflineRef.current && removedFromOfflineQueue > 0) {
+        return;
       }
+
+      enqueueTxCloudOp(id, async () => {
+        try {
+          const { error } = await supabase
+            .from("transactions")
+            .update({ deleted_at: now })
+            .eq("id", id);
+          if (error) {
+            console.error("[deleteTransaction] Cloud soft-delete failed, reverting:", error);
+            if (item && txMutationVersionRef.current.get(id) === myVersion) {
+              setTransactions(prev => upsertTransactionSorted(prev, item));
+              if (userId) void upsertCachedTransactions(userId, [item]);
+            }
+            NativeHaptics.errorShake();
+            triggerToast(`❌ Delete failed: ${error.message}`);
+          }
+        } catch (err) {
+          console.error("[deleteTransaction] Cloud soft-delete exception, reverting:", err);
+          if (item && txMutationVersionRef.current.get(id) === myVersion) {
+            setTransactions(prev => upsertTransactionSorted(prev, item));
+            if (userId) void upsertCachedTransactions(userId, [item]);
+          }
+          NativeHaptics.errorShake();
+          triggerToast("❌ Delete failed — transaction restored.");
+        }
+      });
     },
-    [cacheDeletedItem]
+    [session?.user?.id, isOfflineRef, cacheDeletedItem, triggerToast, nextTxVersion, enqueueTxCloudOp]
   );
 
   // ─── Subscriptions / Utilities (shared `subscriptions` table) ──────────

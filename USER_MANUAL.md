@@ -82,7 +82,7 @@ To avoid ambiguity, the application uses standardized financial terminology thro
 4. Select the **Account** (e.g. *Maybank Current* or *GrabPay*).
 5. Choose a **Category** (e.g. *Food & Dining*). As you type a note, the on-device category predictor suggests likely categories cleanly after a brief pause without interrupting typing.
 6. Optional: Enter a note (e.g. `"Chicken rice and iced lemon tea"`). Your in-progress amount and note are draft-protected and will never be cleared by background cloud syncing or startup hydration.
-7. Tap **Save Transaction**. The entry immediately updates your account balance and persists safely (directly to Supabase when online, or to the durable local offline queue when disconnected).
+7. Tap **Save Transaction**. The entry is saved durably to your device first, closes the form instantaneously, updates your balances immediately, and syncs to Supabase in the background (or stays safely queued if you are offline).
 
 ### B. Account Transfers
 

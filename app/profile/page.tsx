@@ -7,7 +7,14 @@ import { useAppData } from "@/lib/context";
 import { exportDataToCSV } from "@/lib/exportUtils";
 import { motion, AnimatePresence } from "framer-motion";
 import localforage from "localforage";
-import { getUserDataCacheKey, getUserMetaCacheKey, getUserPredictorKey } from "@/lib/cacheKeys";
+import {
+  getUserDataCacheKey,
+  getUserMetaCacheKey,
+  getUserPredictorKey,
+  getUserRecentTransactionsCacheKey,
+  getUserSyncWatermarkKey,
+  getUserTransactionsCacheKey,
+} from "@/lib/cacheKeys";
 import { supabase } from "@/lib/supabase";
 import { ClearDataModal } from "@/components/profile/ClearDataModal";
 import { ExportModal } from "@/components/profile/ExportModal";
@@ -133,6 +140,9 @@ export default function ProfilePage() {
       try {
         await Promise.all([
           localforage.removeItem(getUserDataCacheKey(session.user.id)),
+          localforage.removeItem(getUserTransactionsCacheKey(session.user.id)),
+          localforage.removeItem(getUserRecentTransactionsCacheKey(session.user.id)),
+          localforage.removeItem(getUserSyncWatermarkKey(session.user.id)),
           localforage.removeItem(getUserPredictorKey(session.user.id)),
         ]);
         localStorage.removeItem(getUserMetaCacheKey(session.user.id));

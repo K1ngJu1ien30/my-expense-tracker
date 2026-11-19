@@ -60,18 +60,21 @@ A production-grade, offline-first personal finance application built with Next.j
 
 ### A. Offline-First Dual-Layer Architecture
 
-1. **Instant Local-First Cold Boot (< 50ms hydration)**: On launch, `AppProvider` restores user-scoped cached accounts, categories, transactions, and pending offline items from IndexedDB first, immediately unlocks UI interaction, and refreshes live Supabase data in the background with a subtle non-blocking `Syncing…` indicator.
-2. **Tiered Local Persistence**: IndexedDB (`LocalForage`) serves as the primary persistent store for full datasets, while `localStorage` stores only a tiny `{ accounts, categories }` metadata slice (`tracker_meta_cache_<userId>`) — eliminating redundant multi-megabyte JSON serialization on the main thread.
-3. **Volatile UI Isolation (`AppDataContext`)**: Data-heavy views consume `useAppData()`, insulating Dashboard, History, Analytics, and Hub modules from re-rendering when toasts appear/dismiss, modals toggle, or background sync status updates.
-4. **Durable Mutex-Locked Offline Queues & Batched Sync**:
+1. **Instant Local-First Cold Boot (< 50ms hydration)**: On launch, `AppProvider` restores a tiny top-100 recent transaction slice (`tracker_tx_recent_<userId>`) alongside cached accounts, categories, and pending offline items from IndexedDB first, immediately unlocks UI interaction, streams full local history, and runs incremental delta sync in the background with a subtle non-blocking `Syncing…` indicator.
+2. **Durable Optimistic Local-First Mutations**: Saving, editing, or soft-deleting regular transactions persists durably to IndexedDB first (`offline_tx_queue` + write-through `lib/txCache.ts`) and updates React state immediately (~10–25ms modal close), while idempotent Supabase pushes run asynchronously with per-transaction serialization, seamless offline fallback on network drops, and automatic rollback on hard database rejections.
+3. **Split Local Persistence**: IndexedDB (`LocalForage`) isolates transactions (`tracker_tx_recent_<userId>` + `tracker_tx_cache_<userId>`) from smaller domain collections (`tracker_data_cache_<userId>`) and sync watermarks (`tracker_tx_watermark_<userId>`), while `localStorage` stores only a tiny `{ accounts, categories }` metadata slice (`tracker_meta_cache_<userId>`).
+4. **Volatile UI Context Isolation (`AppDataContext`)**: Data-heavy views consume `useAppData()`, insulating Dashboard, History, Analytics, and Hub modules from re-rendering when toasts appear/dismiss, modals toggle, or background sync status updates.
+5. **Durable Mutex-Locked Offline Queues & Batched Sync**:
    - `offline_tx_queue`: Unsynced transactions are queued locally under a serialized single-flight mutex (`withQueueLock`), synced in idempotent batches of 25 on reconnect (with per-item fallback isolating malformed records), and merged incrementally into local state and IndexedDB without re-downloading full history.
    - `offline_statement_queue`: Credit card statement creations that encounter network dropouts are captured in a dedicated offline queue and flushed automatically upon reconnection.
-5. **Integer Cents Precision**: All financial amounts in storage and context math are stored as integer cents (`Math.round(amount * 100)`). Display formatting divides by 100 at the render boundary, eliminating floating-point rounding errors (e.g. `0.1 + 0.2 = 0.30000000000000004`).
-6. **Soft Deletions**: Transactions use a `deleted_at` timestamp rather than physical row deletion, filtered directly at the PostgreSQL query level (`deleted_at IS NULL`) to prevent downloading deleted rows while preserving cross-device conflict safety and shake-to-undo recovery.
+6. **Integer Cents Precision**: All financial amounts in storage and context math are stored as integer cents (`Math.round(amount * 100)`). Display formatting divides by 100 at the render boundary, eliminating floating-point rounding errors (e.g. `0.1 + 0.2 = 0.30000000000000004`).
+7. **Soft Deletions**: Transactions use a `deleted_at` timestamp rather than physical row deletion, filtered directly at the PostgreSQL query level (`deleted_at IS NULL`) on full fetches and propagated cleanly via `updated_at` on delta syncs.
 
-### B. High-Volume Keyset Pagination
+### B. High-Volume Keyset Pagination & Incremental Delta Sync
 
-To prevent O(N²) offset scans, memory spikes, and duplicate/skipped rows under concurrent writes when scaling to thousands of transactions, `lib/transactionPagination.ts` implements true cursor-based keyset batch loading on `(date DESC, id DESC)` with DB-level `deleted_at IS NULL` filtering (backed by partial composite index `idx_transactions_user_date_id_active` in Migration 014) and zero `{ count: "exact" }` overhead.
+To prevent O(N²) offset scans, memory spikes, and redundant full-history downloads when scaling to thousands of transactions, `lib/transactionPagination.ts` combines:
+- **Incremental Delta Sync (Migration 015)**: Warm launches query only rows modified since the stored `updated_at` watermark (including remote soft-deletes) using index `idx_transactions_user_updated_at`, with automatic fallback if Migration 015 is not yet applied (`42703`) or if changes exceed the overflow threshold.
+- **Cursor-Based Keyset Pagination + Progressive First-Page Commit (Migration 014)**: Cold launches and fallbacks paginate deterministically on `(date DESC, id DESC)` with DB-level `deleted_at IS NULL` filtering (backed by partial composite index `idx_transactions_user_date_id_active`), zero `{ count: "exact" }` overhead, and an immediate 200-row first-page commit so History paints without waiting for older pages.
 
 ---
 
@@ -217,6 +220,7 @@ All functions specify `SET search_path = public, auth` to prevent search-path in
   12. `012_security_hardening_and_integrity.sql` — Permission hardening, concurrency locking, and live debt checks
   13. `013_repayment_release_safeguards.sql` — Cross-currency repayment and zero-debt / overpayment guards
   14. `014_transactions_keyset_pagination_index.sql` — Partial composite index `(user_id, date DESC, id DESC) WHERE deleted_at IS NULL` for keyset pagination
+  15. `015_transactions_delta_sync_updated_at.sql` — `updated_at` column, auto-stamp trigger, and `(user_id, updated_at DESC)` index for incremental delta sync
 
 ---
 

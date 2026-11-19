@@ -18,6 +18,21 @@ export function getUserMetaCacheKey(userId?: string): string {
   return userId ? `tracker_meta_cache_${userId}` : "tracker_meta_cache";
 }
 
+/** Dedicated IndexedDB key for the user's full active transaction ledger. */
+export function getUserTransactionsCacheKey(userId?: string): string {
+  return userId ? `tracker_txs_cache_${userId}` : "tracker_txs_cache";
+}
+
+/** Tiny IndexedDB slice of the newest 100 transactions for near-0ms cold paint. */
+export function getUserRecentTransactionsCacheKey(userId?: string): string {
+  return userId ? `tracker_recent_txs_${userId}` : "tracker_recent_txs";
+}
+
+/** Sync watermark (`lastSyncedAt`) used for incremental delta sync (Migration 015). */
+export function getUserSyncWatermarkKey(userId?: string): string {
+  return userId ? `tracker_tx_watermark_${userId}` : "tracker_tx_watermark";
+}
+
 export function getUserPredictorKey(userId?: string): string {
   return userId ? `category_predictor_v1_${userId}` : LEGACY_PREDICTOR_KEY;
 }

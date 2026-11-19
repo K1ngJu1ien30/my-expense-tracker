@@ -7,8 +7,24 @@ import { supabase } from "../supabase";
 import { migrateAccounts } from "./useAccountsState";
 import { loadModel, rebuildFromHistory } from "../categoryPredictor";
 import { getOfflineQueueForUser, removeAcknowledgedOfflineTxs } from "../offlineQueue";
-import { getUserDataCacheKey, getUserMetaCacheKey, migrateLegacyCacheToUser } from "../cacheKeys";
-import { fetchPaginatedTransactions } from "../transactionPagination";
+import {
+  getUserDataCacheKey,
+  getUserMetaCacheKey,
+  getUserSyncWatermarkKey,
+  migrateLegacyCacheToUser,
+} from "../cacheKeys";
+import {
+  extractMaxUpdatedAt,
+  fetchDeltaTransactions,
+  fetchPaginatedTransactions,
+} from "../transactionPagination";
+import {
+  mergeTransactionsWithDeletes,
+  readFullCachedTransactions,
+  readRecentCachedTransactions,
+  upsertCachedTransactions,
+  writeCachedTransactions,
+} from "../txCache";
 import { debugLog } from "../debugLog";
 import type {
   Account,
@@ -140,6 +156,8 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
 
   /** Tracks which user has already been hydrated from local cache. */
   const hydratedUserIdRef = useRef<string | null>(null);
+  /** In-memory baseline of full hydrated cloud transactions for delta sync. */
+  const cachedCloudTransactionsRef = useRef<{ userId: string; rows: Transaction[] } | null>(null);
 
   /** Tracks previous offline state reliably across web & Capacitor listeners. */
   const wasOfflineRef = useRef(false);
@@ -152,6 +170,11 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
   }, [setters]);
 
   // ─── Fast local-first cache hydration (non-network) ────────────────────
+  // Two-stage read:
+  //   1. Reads the tiny top-100 recent slice + non-tx collections + offline
+  //      queue in parallel so History & Dashboard become interactive in <15ms.
+  //   2. Loads the full dedicated transactions cache in parallel / right after
+  //      (with automatic fallback to legacy monolithic cache from v3.5.0).
   const hydrateFromCache = useCallback(
     async (currentUser: { id: string; user_metadata?: Record<string, unknown> }): Promise<boolean> => {
       const s = settersRef.current;
@@ -162,7 +185,8 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
       try {
         await migrateLegacyCacheToUser(currentUser.id);
         const userCacheKey = getUserDataCacheKey(currentUser.id);
-        const [data, offlineQueue] = await Promise.all([
+        const [recentSlice, data, offlineQueue] = await Promise.all([
+          readRecentCachedTransactions(currentUser.id),
           localforage.getItem<CachedAppPayload>(userCacheKey),
           getOfflineQueueForUser(currentUser.id),
         ]);
@@ -172,26 +196,20 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
           return false;
         }
 
+        const mergeOffline = (base: Transaction[]): Transaction[] => {
+          if (!offlineQueue || offlineQueue.length === 0) return base;
+          const baseIds = new Set(base.map(t => t.id));
+          const offlineTxs = offlineQueue
+            .filter(tx => !tx.id || !baseIds.has(tx.id))
+            .map((tx, i) => ({
+              ...tx,
+              id: tx.id || `offline-${Date.now()}-${i}`,
+              user_id: currentUser.id,
+            })) as Transaction[];
+          return offlineTxs.length > 0 ? [...offlineTxs, ...base] : base;
+        };
+
         if (data) {
-          debugLog("[hydrateFromCache] Cache found! Hydrating state...");
-          let cachedTx = (data.transactions ?? []) as Transaction[];
-
-          if (offlineQueue && offlineQueue.length > 0) {
-            const cachedIds = new Set(cachedTx.map(t => t.id));
-            const offlineTxs = offlineQueue
-              .filter(tx => !tx.id || !cachedIds.has(tx.id))
-              .map((tx, i) => ({
-                ...tx,
-                id: tx.id || `offline-${Date.now()}-${i}`,
-                user_id: currentUser.id,
-              })) as Transaction[];
-            if (offlineTxs.length > 0) {
-              cachedTx = [...offlineTxs, ...cachedTx];
-              debugLog("[hydrateFromCache] Prepended", offlineTxs.length, "offline queue items.");
-            }
-          }
-
-          s.setTransactions(cachedTx);
           s.setGoals(data.goals ?? []);
           s.setSubscriptions(data.subscriptions ?? []);
           s.setFixedBills(data.fixedBills ?? []);
@@ -200,27 +218,43 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
           s.setAssets(data.assets ?? []);
           s.setAccountObjects(data.accounts ? migrateAccounts(data.accounts) : fallbackAccounts);
           if (data.categories?.length) s.setCategoriesRaw(data.categories);
+        } else {
+          s.setAccountObjects(fallbackAccounts);
+        }
 
+        // Fast paint with tiny top-100 slice if available
+        if (recentSlice && recentSlice.length > 0) {
+          s.setTransactions(mergeOffline(recentSlice));
+        }
+
+        // Load full dedicated transactions cache (falls back to legacy data.transactions)
+        const fullCachedTxs = await readFullCachedTransactions(currentUser.id, data);
+        if (activeUserIdRef.current && activeUserIdRef.current !== currentUser.id) {
+          return false;
+        }
+
+        if (fullCachedTxs) {
+          cachedCloudTransactionsRef.current = {
+            userId: currentUser.id,
+            rows: fullCachedTxs,
+          };
+          const combined = mergeOffline(fullCachedTxs);
+          s.setTransactions(combined);
           hydratedUserIdRef.current = currentUser.id;
           debugLog("[hydrateFromCache] Local hydration complete.", {
-            tx: cachedTx.length,
-            goals: (data.goals ?? []).length,
+            tx: combined.length,
+            goals: (data?.goals ?? []).length,
           });
           return true;
         }
 
-        // No cache yet — still seed fallback accounts & any pending offline items
-        s.setAccountObjects(fallbackAccounts);
+        // No cache yet — still seed any pending offline items
+        cachedCloudTransactionsRef.current = null;
         if (offlineQueue && offlineQueue.length > 0) {
-          const offlineTxs = offlineQueue.map((tx, i) => ({
-            ...tx,
-            id: tx.id || `offline-${Date.now()}-${i}`,
-            user_id: currentUser.id,
-          })) as Transaction[];
-          s.setTransactions(offlineTxs);
+          s.setTransactions(mergeOffline([]));
         }
-        debugLog("[hydrateFromCache] No local cache found for user.");
-        return false;
+        debugLog("[hydrateFromCache] No local transaction cache found for user.");
+        return Boolean(data);
       } catch (cacheErr) {
         console.error("[hydrateFromCache] Local cache hydration failed:", cacheErr);
         s.setAccountObjects(fallbackAccounts);
@@ -230,7 +264,7 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
     []
   );
 
-  // ─── refreshData (background network sync) ─────────────────────────────
+  // ─── refreshData (delta-first background network sync) ─────────────────
   const refreshData = useCallback(
     async (currentUser: { id: string; user_metadata?: Record<string, unknown> }) => {
       const s = settersRef.current;
@@ -244,9 +278,72 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
 
       try {
         debugLog("[refreshData] Fetching live data...");
-        const [parsedTransactions, gls, subs, plannerRes, assetsRes, accountsRes, categoriesRes, cardDetailsRes] =
+
+        const watermarkKey = getUserSyncWatermarkKey(currentUser.id);
+        const cachedForUser =
+          cachedCloudTransactionsRef.current?.userId === currentUser.id
+            ? cachedCloudTransactionsRef.current.rows
+            : null;
+        const storedWatermark = cachedForUser
+          ? await localforage.getItem<string>(watermarkKey).catch(() => null)
+          : null;
+
+        // Build transaction fetch strategy:
+        //   1. Warm start with cache + watermark → try ultra-fast delta sync
+        //      (0–5 rows, ~100ms, requires Migration 015 `updated_at`).
+        //   2. Fallback (first login / Migration 015 not applied / overflow) →
+        //      keyset pagination with progressive first-page commit (200 rows)
+        //      on cold login so History paints immediately.
+        const fetchTransactionsSmart = async (): Promise<{
+          rows: Transaction[];
+          mode: "delta" | "full";
+          changedCount: number;
+          nextWatermark: string | null;
+        }> => {
+          if (cachedForUser && storedWatermark) {
+            const parsedMs = Date.parse(storedWatermark);
+            if (!Number.isNaN(parsedMs)) {
+              // 2-second safety overlap absorbs clock skew & in-flight commits
+              const sinceIso = new Date(parsedMs - 2000).toISOString();
+              const delta = await fetchDeltaTransactions(currentUser.id, sinceIso);
+              if (delta.supported && !delta.overflow) {
+                const merged =
+                  delta.rows.length > 0
+                    ? mergeTransactionsWithDeletes(cachedForUser, delta.rows)
+                    : cachedForUser;
+                return {
+                  rows: merged,
+                  mode: "delta",
+                  changedCount: delta.rows.length,
+                  nextWatermark: delta.latestUpdatedAt || storedWatermark,
+                };
+              }
+            }
+          }
+
+          const hasLocalTxs = Boolean(cachedForUser && cachedForUser.length > 0);
+          const allRows = await fetchPaginatedTransactions(currentUser.id, {
+            firstPageSize: hasLocalTxs ? undefined : 200,
+            onFirstPage: hasLocalTxs
+              ? undefined
+              : (firstBatch) => {
+                  if (activeUserIdRef.current && activeUserIdRef.current !== currentUser.id) return;
+                  s.setTransactions(firstBatch);
+                },
+          });
+
+          const maxUpdated = extractMaxUpdatedAt(allRows);
+          return {
+            rows: allRows,
+            mode: "full",
+            changedCount: allRows.length,
+            nextWatermark: maxUpdated,
+          };
+        };
+
+        const [txSyncResult, gls, subs, plannerRes, assetsRes, accountsRes, categoriesRes, cardDetailsRes] =
           await Promise.all([
-            fetchPaginatedTransactions(currentUser.id),
+            fetchTransactionsSmart(),
             supabase.from("goals").select("id,user_id,title,current_amount,target_amount,is_pinned,created_at").eq("user_id", currentUser.id).order("created_at", { ascending: false }),
             supabase.from("subscriptions").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false }),
             supabase.from("salary_planner").select("id,user_id,category,item_name,amount,created_at").eq("user_id", currentUser.id).order("created_at", { ascending: false }),
@@ -256,6 +353,8 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
             supabase.from("user_categories").select("name").eq("user_id", currentUser.id).order("sort_order", { ascending: true }),
             supabase.from("credit_card_details").select("account_id,user_id,issuer,card_last_four,statement_day,grace_period_days,due_day,apr,card_color,reminder_days_before,created_at,updated_at").eq("user_id", currentUser.id),
           ]);
+
+        const parsedTransactions = txSyncResult.rows;
 
         // Abort if user signed out or switched accounts while fetch was in flight
         if (activeUserIdRef.current && activeUserIdRef.current !== currentUser.id) {
@@ -409,7 +508,9 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
         const parsedAssets = assetsRes.data as Asset[];
 
         debugLog("[refreshData] Live data fetch successful.", {
+          mode: txSyncResult.mode,
           tx: parsedTransactions.length,
+          deltaChanged: txSyncResult.changedCount,
           goals: parsedGoals.length,
           subs: parsedSubscriptions.length,
           utils: parsedUtilities.length,
@@ -418,6 +519,11 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
         });
 
         // ─── Commit to state ──────────────────────────────────────────────
+        cachedCloudTransactionsRef.current = {
+          userId: currentUser.id,
+          rows: parsedTransactions,
+        };
+
         // Merge any uncommitted offline queue items belonging to this user
         const pendingOffline = await getOfflineQueueForUser(currentUser.id);
         if (activeUserIdRef.current && activeUserIdRef.current !== currentUser.id) {
@@ -429,7 +535,11 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
           .map((t, idx) => ({ ...t, id: t.id || `offline-${Date.now()}-${idx}`, user_id: currentUser.id })) as Transaction[];
         const finalTransactions = uncommittedOffline.length > 0 ? [...uncommittedOffline, ...parsedTransactions] : parsedTransactions;
 
-        s.setTransactions(finalTransactions);
+        // On zero-change delta sync, skip re-setting `transactions` if the
+        // array already matches so heavy pages skip unnecessary recalculations.
+        if (txSyncResult.mode === "full" || txSyncResult.changedCount > 0 || uncommittedOffline.length > 0) {
+          s.setTransactions(finalTransactions);
+        }
         s.setGoals(parsedGoals);
         s.setSubscriptions(parsedSubscriptions);
         s.setFixedBills(parsedFixedBills);
@@ -440,10 +550,10 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
         hydratedUserIdRef.current = currentUser.id;
 
         // ─── Background post-commit work (non-blocking) ───────────────────
-        // Defer IndexedDB persistence and category-predictor bootstrap so
-        // they never block UI availability or delay `isSyncing` completion.
-        const cachePayload: CachedAppPayload = {
-          transactions: parsedTransactions,
+        // Store transactions in their dedicated IndexedDB keys (`recent` + `full`)
+        // separately from smaller non-transaction domain collections so account/
+        // category writes never rewrite the entire transaction history.
+        const nonTxCachePayload: CachedAppPayload = {
           goals: parsedGoals,
           subscriptions: parsedSubscriptions,
           fixedBills: parsedFixedBills,
@@ -468,11 +578,17 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
           }
         }
 
-        // Primary persistent cache write in IndexedDB (detached)
+        // Persist non-tx collections + dedicated transaction caches + delta watermark
         void localforage
-          .setItem(userCacheKey, cachePayload)
-          .then(() => debugLog("[refreshData] IndexedDB cache saved for user:", currentUser.id))
+          .setItem(userCacheKey, nonTxCachePayload)
           .catch(storageErr => console.warn("[refreshData] localforage.setItem failed:", storageErr));
+
+        if (txSyncResult.mode === "full" || txSyncResult.changedCount > 0) {
+          void writeCachedTransactions(currentUser.id, parsedTransactions);
+        }
+        if (txSyncResult.nextWatermark) {
+          void localforage.setItem(watermarkKey, txSyncResult.nextWatermark).catch(() => {});
+        }
 
         // Category predictor bootstrap (detached, never blocks UI)
         if (parsedTransactions.length > 0) {
@@ -653,23 +769,18 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
           );
         }
 
-        // Update local state and IndexedDB cache incrementally from the
-        // canonical server upsert rows — avoids re-downloading the entire
-        // transaction history after every offline sync.
+        // Update local state and dedicated IndexedDB transaction cache
+        // incrementally from canonical server upsert rows — avoids re-downloading
+        // full history after every offline sync.
         if (syncedRows.length > 0 && activeUserIdRef.current === userId) {
           settersRef.current.setTransactions(prev => mergeTransactionsById(prev, syncedRows));
-
-          const userCacheKey = getUserDataCacheKey(userId);
-          void localforage
-            .getItem<CachedAppPayload>(userCacheKey)
-            .then(cached => {
-              if (!cached) return;
-              const updatedTxs = mergeTransactionsById(cached.transactions ?? [], syncedRows);
-              return localforage.setItem(userCacheKey, { ...cached, transactions: updatedTxs });
-            })
-            .catch(() => {
-              /* non-fatal cache update */
-            });
+          if (cachedCloudTransactionsRef.current?.userId === userId) {
+            cachedCloudTransactionsRef.current = {
+              userId,
+              rows: mergeTransactionsWithDeletes(cachedCloudTransactionsRef.current.rows, syncedRows),
+            };
+          }
+          void upsertCachedTransactions(userId, syncedRows);
         }
       }
     } catch (err) {

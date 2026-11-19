@@ -53,6 +53,7 @@ export type Transaction = {
   is_claimable?: boolean;
   claim_status?: string;
   deleted_at?: string | null;
+  updated_at?: string | null;
   /**
    * Per-transaction override for the Spending Velocity calculation.
    *

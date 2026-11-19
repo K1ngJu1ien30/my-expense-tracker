@@ -127,6 +127,14 @@ export function buildKeysetOrFilter(cursor: TransactionCursor): string {
 
 export type PaginatedFetchOptions = {
   pageSize?: number;
+  /**
+   * Optional smaller size for page 1 (e.g. 200) to accelerate cold-start
+   * progressive rendering via `onFirstPage` before fetching older pages at
+   * full `pageSize` (1,000).
+   */
+  firstPageSize?: number;
+  /** Fired as soon as page 1 arrives so UI can render recent history early. */
+  onFirstPage?: (rows: Transaction[]) => void;
   onProgress?: (progress: {
     pageIndex: number;
     fetchedInBatch: number;
@@ -134,6 +142,86 @@ export type PaginatedFetchOptions = {
     serverReportedTotal: number | null;
   }) => void;
 };
+
+export type DeltaFetchResult =
+  | { supported: false }
+  | { supported: true; overflow: true }
+  | {
+      supported: true;
+      overflow: false;
+      rows: Transaction[];
+      latestUpdatedAt: string | null;
+    };
+
+/**
+ * Extracts the latest `updated_at` timestamp from a batch of server rows, or
+ * returns null if Migration 015 (`updated_at`) is not present on the schema.
+ */
+export function extractMaxUpdatedAt(rows: Transaction[]): string | null {
+  let maxIso: string | null = null;
+  let maxMs = -Infinity;
+  for (const row of rows) {
+    if (!row.updated_at) continue;
+    const ms = Date.parse(row.updated_at);
+    if (!Number.isNaN(ms) && ms > maxMs) {
+      maxMs = ms;
+      maxIso = row.updated_at;
+    }
+  }
+  return maxIso;
+}
+
+/**
+ * Incremental delta fetch for warm launches (requires Migration 015 `updated_at`).
+ *
+ * Intentionally includes soft-deleted rows (`deleted_at IS NOT NULL`) so
+ * deletions made on another device propagate cleanly and are purged locally.
+ *
+ * Automatically returns `{ supported: false }` if the `updated_at` column does
+ * not exist yet (Postgres code `42703`), allowing callers to fall back
+ * transparently to full keyset pagination.
+ */
+export async function fetchDeltaTransactions(
+  userId: string,
+  sinceIso: string,
+  limit: number = 500
+): Promise<DeltaFetchResult> {
+  if (!userId || !sinceIso) return { supported: false };
+
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("*")
+    .eq("user_id", userId)
+    .gte("updated_at", sinceIso)
+    .order("updated_at", { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    // 42703 = undefined_column (`updated_at` not migrated yet)
+    if (error.code === "42703" || error.message?.toLowerCase().includes("updated_at")) {
+      debugLog("[fetchDeltaTransactions] updated_at column unavailable — falling back to keyset full fetch");
+      return { supported: false };
+    }
+    throw new Error(`Delta transaction fetch failed: ${error.message || error.code}`);
+  }
+
+  if (!Array.isArray(data)) {
+    throw new Error("Supabase returned invalid non-array data on delta fetch");
+  }
+
+  const rows = data as Transaction[];
+  if (rows.length >= limit) {
+    debugLog("[fetchDeltaTransactions] Delta exceeded threshold — falling back to full keyset sync");
+    return { supported: true, overflow: true };
+  }
+
+  return {
+    supported: true,
+    overflow: false,
+    rows,
+    latestUpdatedAt: extractMaxUpdatedAt(rows),
+  };
+}
 
 export type PaginatedFetchResult = {
   transactions: Transaction[];
@@ -191,6 +279,11 @@ export async function fetchPaginatedTransactionsDetailed(
   );
 
   while (true) {
+    const currentLimit =
+      pageIndex === 0 && options?.firstPageSize && options.firstPageSize > 0
+        ? Math.min(options.firstPageSize, pageSize)
+        : pageSize;
+
     let query = supabase
       .from("transactions")
       .select("*")
@@ -204,7 +297,7 @@ export async function fetchPaginatedTransactionsDetailed(
     const { data, error } = await query
       .order("date", { ascending: false })
       .order("id", { ascending: false })
-      .limit(pageSize);
+      .limit(currentLimit);
 
     if (error) {
       console.error(
@@ -240,6 +333,12 @@ export async function fetchPaginatedTransactionsDetailed(
       }
     }
 
+    // Progressive first-page callback so cold startups can paint recent
+    // history immediately while older pages load in the background.
+    if (pageIndex === 0 && options?.onFirstPage && transactions.length > 0) {
+      options.onFirstPage(transactions.slice());
+    }
+
     pageIndex++;
 
     if (options?.onProgress) {
@@ -258,7 +357,7 @@ export async function fetchPaginatedTransactionsDetailed(
 
     // Termination Condition 1:
     // Fewer rows returned than requested means we've reached the end.
-    if (batchRows.length < pageSize) {
+    if (batchRows.length < currentLimit) {
       break;
     }
 
