@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useAppContext } from "@/lib/context";
+import { useAppData } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
 import { deriveQuickTemplates, type QuickTemplate } from "@/lib/quickTemplates";
 
@@ -15,7 +15,7 @@ const LONG_PRESS_MS = 450;
 
 export default function BottomNav({ onOpenAdd }: { onOpenAdd: () => void }) {
   const pathname = usePathname();
-  const { accentColor, transactions, addTransaction, triggerToast, formatCurrency, accounts } = useAppContext();
+  const { accentColor, transactions, addTransaction, triggerToast, formatCurrency, accounts, accountObjects } = useAppData();
   const activeColor = accentColor || "#3b82f6";
 
   const isHome = pathname === "/";
@@ -93,11 +93,16 @@ export default function BottomNav({ onOpenAdd }: { onOpenAdd: () => void }) {
         return;
       }
       const targetAccount = tpl.account || (accounts && accounts[0]) || "Cash";
+      const matchedAcc = accountObjects.find(
+        (a) => a.name.trim().toLowerCase() === targetAccount.trim().toLowerCase() || a.id === targetAccount
+      );
       const res = await addTransaction({
         type: "Expense",
         amount: parsedAmount,
         category: tpl.category || "General",
-        account: targetAccount,
+        account: matchedAcc?.name || targetAccount,
+        account_id: matchedAcc?.id,
+        credit_card_tx_type: matchedAcc?.kind === "credit_card" ? "purchase" : null,
         note: tpl.note,
         date: new Date().toISOString(),
         status: "cleared",
@@ -115,7 +120,7 @@ export default function BottomNav({ onOpenAdd }: { onOpenAdd: () => void }) {
         triggerToast(`❌ Failed to quick-add: ${res.error || "Please try again."}`);
       }
     },
-    [addTransaction, triggerToast, accounts]
+    [addTransaction, triggerToast, accounts, accountObjects]
   );
 
   return (

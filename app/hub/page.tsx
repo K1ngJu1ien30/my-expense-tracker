@@ -3,14 +3,14 @@
 import { useMemo } from "react";
 import { ChevronRight, Calendar as CalendarIcon } from "lucide-react";
 import Link from "next/link";
-import { useAppContext } from "@/lib/context";
+import { useAppData } from "@/lib/context";
 import { getHeatmapTileStyle } from "../calendar/page";
 
 export default function HubPage() {
   const {
     accentColor, enableFoodBudget, enableSalaryPlanner, isVaultEnabled,
     isClaimsEnabled, transactions, accountObjects,
-  } = useAppContext();
+  } = useAppData();
 
   // ─── Heatmap Calendar Data Derivation ──────────────────────────────────────
   const now = new Date();

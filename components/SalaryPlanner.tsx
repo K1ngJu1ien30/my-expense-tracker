@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { Trash2, Plus, MonitorPlay, FileText, Zap, Repeat, Check, Edit2, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useAppContext } from "@/lib/context";
+import { useAppData } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
 import type { Subscription } from "@/lib/types";
 import { calculateAvailableCash } from "@/lib/balance";
@@ -21,7 +21,7 @@ export default function SalaryPlanner() {
     fixedBills, addFixedBill, updateFixedBill, deleteFixedBill,
     utilities, addUtility, updateUtility, deleteUtility,
     confirmAction, accentColor, transactions, accounts, accountObjects, includeSavings, currency, formatCurrency, triggerToast, exchangeRates
-  } = useAppContext();
+  } = useAppData();
 
   // Current Month for Paid/Pending tracking (YYYY-MM)
   const now = new Date();

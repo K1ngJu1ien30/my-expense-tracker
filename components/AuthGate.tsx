@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Fingerprint, Delete, ShieldCheck } from "lucide-react";
-import { useAppContext } from "@/lib/context";
+import { useAppData } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
 import { getUserPinKey, LEGACY_PIN_KEY } from "@/lib/cacheKeys";
 
@@ -76,49 +76,61 @@ async function tryBiometric(): Promise<boolean> {
 }
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
-  const { isPinEnabled, isBiometricEnabled, session, authLoading } = useAppContext();
+  const { isPinEnabled, isBiometricEnabled, session, authLoading } = useAppData();
+  const userId = session?.user?.id ?? null;
   const [isLocked, setIsLocked] = useState(true);
   const [pinInput, setPinInput] = useState("");
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(true);
+  const unlockedUserIdRef = useRef<string | null>(null);
 
   const unlock = useCallback(() => {
+    unlockedUserIdRef.current = userId;
     setIsLocked(false);
     setPinInput("");
     setError("");
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
-    if (!session || authLoading) return;
+    if (!userId || authLoading) {
+      if (!userId) unlockedUserIdRef.current = null;
+      return;
+    }
 
     if (!isPinEnabled) {
-      // PIN-gate disabled → unlock synchronously. This is a legitimate
-      // "sync external config into UI lock state" pattern; it runs once
-      // per toggle so there's no cascading-render risk.
+      // PIN-gate disabled → unlock synchronously.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsLocked(false);
-       
       setChecking(false);
       return;
     }
 
-     
+    // Already unlocked for this user session — do not re-lock or re-prompt
+    // biometrics on JWT token refresh or user_metadata updates.
+    if (unlockedUserIdRef.current === userId) {
+      setIsLocked(false);
+      setChecking(false);
+      return;
+    }
+
     setChecking(true);
+    let cancelled = false;
     const attemptUnlock = async () => {
       if (isBiometricEnabled) {
         const success = await tryBiometric();
-        if (success) {
+        if (!cancelled && success) {
           unlock();
           setChecking(false);
           return;
         }
       }
-      // Biometric not available or failed — fall through to PIN pad
-      // (the locked UI below is always rendered whenever checking=false).
-      setChecking(false);
+      if (!cancelled) setChecking(false);
     };
-    attemptUnlock();
-  }, [isPinEnabled, isBiometricEnabled, session, authLoading, unlock]);
+    void attemptUnlock();
+    return () => {
+      cancelled = true;
+    };
+  }, [isPinEnabled, isBiometricEnabled, userId, authLoading, unlock]);
 
   const verifyPin = useCallback(async (pin: string) => {
     const stored = await getStoredPin(session?.user?.id);

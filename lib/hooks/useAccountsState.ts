@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { Session } from "@supabase/supabase-js";
 import localforage from "localforage";
 import { supabase } from "../supabase";
 import type { Account, AccountKind, CreditCardDetails } from "../types";
-import { getUserDataCacheKey } from "../cacheKeys";
+import { getUserDataCacheKey, getUserMetaCacheKey } from "../cacheKeys";
 
 const DEFAULT_ACCOUNTS: Account[] = [
   { id: "default-bank", name: "Bank", currencyCode: "RM", isArchived: false, kind: "bank", openingBalance: 0 },
@@ -119,8 +119,12 @@ export function useAccountsState(session: Session | null) {
   // ─── Accounts ──────────────────────────────────────────────────────────
   const [accountObjects, setAccountObjects] = useState<Account[]>(DEFAULT_ACCOUNTS);
 
-  // Derived: non-archived account names for consumers
-  const accounts = accountObjects.filter(a => !a.isArchived).map(a => a.name);
+  // Derived: non-archived account names for consumers (memoized so reference
+  // stays stable across unrelated provider re-renders).
+  const accounts = useMemo(
+    () => accountObjects.filter(a => !a.isArchived).map(a => a.name),
+    [accountObjects]
+  );
 
   /** Compat setter for consumers that pass a bare string[] */
   const setAccounts = useCallback((val: string[]) => {
@@ -199,9 +203,23 @@ export function useAccountsState(session: Session | null) {
   const handleUpdateAccounts = useCallback(
     async (newAccountsArray: Account[]) => {
       setAccountObjects(newAccountsArray);
-      const cacheKey = getUserDataCacheKey(session?.user?.id);
+      const userId = session?.user?.id;
+      const cacheKey = getUserDataCacheKey(userId);
+      const metaKey = getUserMetaCacheKey(userId);
 
-      // 1. IndexedDB cache
+      // 1. Lightweight localStorage metadata mirror (tiny — no transactions)
+      if (typeof window !== "undefined") {
+        try {
+          const raw = localStorage.getItem(metaKey);
+          const lsMeta = raw ? JSON.parse(raw) : {};
+          lsMeta.accounts = newAccountsArray;
+          localStorage.setItem(metaKey, JSON.stringify(lsMeta));
+        } catch {
+          /* swallow */
+        }
+      }
+
+      // 2. IndexedDB cache (primary persistent store)
       try {
         const data =
           ((await localforage.getItem(cacheKey)) as Record<string, unknown> | null) || {};
@@ -209,18 +227,6 @@ export function useAccountsState(session: Session | null) {
         await localforage.setItem(cacheKey, data);
       } catch {
         /* swallow */
-      }
-
-      // 2. localStorage fallback
-      if (typeof window !== "undefined") {
-        try {
-          const raw = localStorage.getItem(cacheKey);
-          const lsData = raw ? JSON.parse(raw) : {};
-          lsData.accounts = newAccountsArray;
-          localStorage.setItem(cacheKey, JSON.stringify(lsData));
-        } catch {
-          /* swallow */
-        }
       }
 
       if (!session?.user) return;
@@ -460,8 +466,10 @@ export function useAccountsState(session: Session | null) {
   // ─── Categories ────────────────────────────────────────────────────────
   const [categories, setCategoriesRaw] = useState<string[]>(DEFAULT_CATEGORIES);
 
-  // User-isolated cache hydration: loads only for the authenticated user,
-  // and resets to clean defaults when logged out.
+  // User-isolated cache hydration: loads lightweight metadata synchronously
+  // from localStorage for instant first-paint accounts/categories without
+  // parsing the full transactions cache. Full IndexedDB hydration is handled
+  // once by useSyncState.hydrateFromCache().
   useEffect(() => {
     const userId = session?.user?.id;
     if (!userId) {
@@ -470,11 +478,11 @@ export function useAccountsState(session: Session | null) {
       return;
     }
 
-    const cacheKey = getUserDataCacheKey(userId);
-    // 1. Try sync read from user's localStorage cache for immediate paint
+    const metaKey = getUserMetaCacheKey(userId);
+    const legacyFullKey = getUserDataCacheKey(userId);
     if (typeof window !== "undefined") {
       try {
-        const cached = localStorage.getItem(cacheKey);
+        const cached = localStorage.getItem(metaKey) || localStorage.getItem(legacyFullKey);
         if (cached) {
           const data = JSON.parse(cached);
           if (Array.isArray(data.categories) && data.categories.length > 0) {
@@ -488,15 +496,6 @@ export function useAccountsState(session: Session | null) {
         /* swallow */
       }
     }
-
-    // 2. Async hydration from user's IndexedDB cache
-    localforage
-      .getItem<{ categories?: string[]; accounts?: unknown }>(cacheKey)
-      .then(data => {
-        if (data?.categories?.length) setCategoriesRaw(data.categories);
-        if (data?.accounts) setAccountObjects(migrateAccounts(data.accounts));
-      })
-      .catch(() => {});
   }, [session?.user?.id]);
 
   // Ref mirror — used by the provider's refreshData to avoid stale closures
@@ -541,10 +540,25 @@ export function useAccountsState(session: Session | null) {
     []
   );
 
-  /** Persist categories to IndexedDB + localStorage + Supabase. */
+  /** Persist categories to IndexedDB + lightweight localStorage meta + Supabase. */
   const persistCategories = useCallback(
     async (newCats: string[]) => {
-      const cacheKey = getUserDataCacheKey(session?.user?.id);
+      const userId = session?.user?.id;
+      const cacheKey = getUserDataCacheKey(userId);
+      const metaKey = getUserMetaCacheKey(userId);
+
+      // Lightweight localStorage metadata mirror (for instant cold-boot)
+      if (typeof window !== "undefined") {
+        try {
+          const raw = localStorage.getItem(metaKey);
+          const lsMeta = raw ? JSON.parse(raw) : {};
+          lsMeta.categories = newCats;
+          localStorage.setItem(metaKey, JSON.stringify(lsMeta));
+        } catch {
+          /* swallow */
+        }
+      }
+
       // IndexedDB cache — source of truth when cloud is unreachable.
       try {
         const data =
@@ -554,15 +568,6 @@ export function useAccountsState(session: Session | null) {
           > | null) || {};
         data.categories = newCats;
         await localforage.setItem(cacheKey, data);
-      } catch {
-        /* swallow */
-      }
-      // localStorage fallback (for cold-boot useState initializer)
-      try {
-        const raw = localStorage.getItem(cacheKey);
-        const lsData = raw ? JSON.parse(raw) : {};
-        lsData.categories = newCats;
-        localStorage.setItem(cacheKey, JSON.stringify(lsData));
       } catch {
         /* swallow */
       }

@@ -1,13 +1,21 @@
 // ============================================================================
 // lib/transactionPagination.ts
-// Universal Expense Tracker — Stage D: Supabase Transaction Pagination
+// Universal Expense Tracker — Keyset / Cursor Transaction Pagination
 // ============================================================================
-// Fetches the complete transaction history for an authenticated user using
-// safe, deterministic range pagination that respects Supabase / PostgREST
-// per-request row limits (default 1,000 rows).
+// Fetches all active (non-deleted) transactions for an authenticated user
+// using deterministic keyset pagination ordered by (date DESC, id DESC).
+//
+// Why keyset instead of OFFSET / .range(from, to):
+//   1. O(N) total DB work instead of O(N²) offset scans at thousands of rows.
+//   2. Immune to duplicate/skipped rows under concurrent inserts or deletes.
+//   3. Matches partial composite index:
+//        ON transactions (user_id, date DESC, id DESC) WHERE deleted_at IS NULL
+//   4. Filters soft-deleted rows at the database level (`deleted_at IS NULL`)
+//      and avoids an expensive `{ count: "exact" }` full-table scan.
 // ============================================================================
 
 import { supabase } from "./supabase";
+import { debugLog } from "./debugLog";
 import type { Transaction } from "./types";
 
 /**
@@ -79,15 +87,42 @@ export function setTestTransactionPageSize(size: number | null): void {
     try {
       localStorage.removeItem(TEST_PAGE_SIZE_STORAGE_KEY);
     } catch {}
-    console.log(`[Pagination] Reset transaction page size to default (${DEFAULT_TRANSACTION_PAGE_SIZE})`);
+    debugLog(`[Pagination] Reset transaction page size to default (${DEFAULT_TRANSACTION_PAGE_SIZE})`);
   } else {
     const valid = Math.floor(size);
     window.__TEST_TRANSACTION_PAGE_SIZE = valid;
     try {
       localStorage.setItem(TEST_PAGE_SIZE_STORAGE_KEY, String(valid));
     } catch {}
-    console.log(`[Pagination] Test transaction page size set to: ${valid}`);
+    debugLog(`[Pagination] Test transaction page size set to: ${valid}`);
   }
+}
+
+export type TransactionCursor = {
+  date: string;
+  id: string;
+};
+
+/**
+ * Escapes a literal value for inclusion inside a PostgREST `.or(...)` filter
+ * expression. Double-quoting preserves timestamps containing `:` and `+`
+ * (e.g. `2026-04-12T10:30:00.123456+00:00`) verbatim.
+ */
+function quotePostgrestValue(val: string): string {
+  return `"${val.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+/**
+ * Builds the PostgREST keyset filter expression for `(date DESC, id DESC)`:
+ *   date < cursor.date OR (date = cursor.date AND id < cursor.id)
+ *
+ * Uses the raw database timestamp string from `cursor.date` (without passing
+ * through JS `Date`) so Postgres microsecond precision is preserved verbatim.
+ */
+export function buildKeysetOrFilter(cursor: TransactionCursor): string {
+  const qDate = quotePostgrestValue(cursor.date);
+  const qId = quotePostgrestValue(cursor.id);
+  return `date.lt.${qDate},and(date.eq.${qDate},id.lt.${qId})`;
 }
 
 export type PaginatedFetchOptions = {
@@ -109,17 +144,18 @@ export type PaginatedFetchResult = {
 };
 
 /**
- * Fetches the complete transaction history for a user across multiple pages.
+ * Fetches the complete active transaction history for a user using keyset
+ * pagination ordered by `date DESC, id DESC`, filtering `deleted_at IS NULL`
+ * directly at the database level.
  *
  * Guarantees:
- * 1. Deterministic Ordering: Ordered by `date DESC, id DESC`.
- *    Because `id` is the unique primary key, no two rows share identical sort values.
- * 2. Deduplication: Maintains a `seenIds` set across page fetches to absorb any
- *    offset shifts caused by concurrent inserts or deletions.
- * 3. Atomic Reliability: If any page request fails (network error, timeout, HTTP 5xx),
- *    the function aborts and throws an exception. It NEVER returns a partial list,
- *    preventing callers from overwriting valid local caches with incomplete data.
- * 4. Infinite Loop Protection: Stops if a page returns 0 new unique records.
+ * 1. Deterministic Ordering: Ordered by `date DESC, id DESC` (unique PK tiebreaker).
+ * 2. Safe Under Concurrent Inserts: Keyset cursor anchors to `(lastDate, lastId)`,
+ *    so new inserts at the top never shift subsequent pages.
+ * 3. Deduplication & Loop Guard: Maintains a `seenIds` set and cursor progress
+ *    check so pathological responses can never duplicate rows or loop forever.
+ * 4. Atomic Reliability: Any network/DB error aborts and throws — never returns
+ *    a truncated list that would overwrite a valid local cache.
  */
 export async function fetchPaginatedTransactions(
   userId: string,
@@ -145,51 +181,48 @@ export async function fetchPaginatedTransactionsDetailed(
   const transactions: Transaction[] = [];
   const seenIds = new Set<string>();
 
-  let from = 0;
+  let cursor: TransactionCursor | null = null;
   let pageIndex = 0;
-  let serverReportedTotal: number | null = null;
   let duplicatesSkipped = 0;
 
-  console.log(
-    `[fetchPaginatedTransactions] Starting fetch for user ${userId.slice(0, 8)}... ` +
+  debugLog(
+    `[fetchPaginatedTransactions] Starting keyset fetch for user ${userId.slice(0, 8)}... ` +
     `(Batch size: ${pageSize}${pageSize !== DEFAULT_TRANSACTION_PAGE_SIZE ? " [TEST OVERRIDE ACTIVE]" : ""})`
   );
 
   while (true) {
-    const to = from + pageSize - 1;
-
-    // Request total count on the first batch to provide progress diagnostics
-    const query = supabase
+    let query = supabase
       .from("transactions")
-      .select("*", pageIndex === 0 ? { count: "exact" } : undefined)
+      .select("*")
       .eq("user_id", userId)
+      .is("deleted_at", null);
+
+    if (cursor) {
+      query = query.or(buildKeysetOrFilter(cursor));
+    }
+
+    const { data, error } = await query
       .order("date", { ascending: false })
       .order("id", { ascending: false })
-      .range(from, to);
-
-    const { data, error, count } = await query;
+      .limit(pageSize);
 
     if (error) {
       console.error(
-        `[fetchPaginatedTransactions] Fatal network/DB error on batch ${pageIndex + 1} (range [${from}, ${to}]):`,
+        `[fetchPaginatedTransactions] Fatal network/DB error on batch ${pageIndex + 1}:`,
         error
       );
       throw new Error(
-        `Failed to fetch transactions batch ${pageIndex + 1} [${from}..${to}]: ${error.message || error.code}`
+        `Failed to fetch transactions batch ${pageIndex + 1}: ${error.message || error.code}`
       );
     }
 
     if (!data || !Array.isArray(data)) {
       console.error(
-        `[fetchPaginatedTransactions] Invalid null/non-array response on batch ${pageIndex + 1} (range [${from}, ${to}])`
+        `[fetchPaginatedTransactions] Invalid null/non-array response on batch ${pageIndex + 1}`
       );
       throw new Error(
         `Supabase returned invalid null/non-array data on transactions batch ${pageIndex + 1}`
       );
-    }
-
-    if (pageIndex === 0 && typeof count === "number") {
-      serverReportedTotal = count;
     }
 
     const batchRows = data as Transaction[];
@@ -197,6 +230,7 @@ export async function fetchPaginatedTransactionsDetailed(
 
     for (const row of batchRows) {
       if (!row || !row.id) continue;
+      if (row.deleted_at) continue;
       if (seenIds.has(row.id)) {
         duplicatesSkipped++;
       } else {
@@ -213,31 +247,24 @@ export async function fetchPaginatedTransactionsDetailed(
         pageIndex,
         fetchedInBatch: batchRows.length,
         cumulativeTotal: transactions.length,
-        serverReportedTotal,
+        serverReportedTotal: null,
       });
     }
 
-    console.log(
-      `[fetchPaginatedTransactions] Batch ${pageIndex} [${from}..${to}]: ` +
-      `received ${batchRows.length} rows (${newUniqueInBatch} new, cumulative: ${transactions.length}` +
-      `${serverReportedTotal !== null ? ` / ${serverReportedTotal}` : ""})`
+    debugLog(
+      `[fetchPaginatedTransactions] Batch ${pageIndex}: ` +
+      `received ${batchRows.length} rows (${newUniqueInBatch} new, cumulative: ${transactions.length})`
     );
 
     // Termination Condition 1:
-    // If the server returned fewer rows than requested in this page, we've reached the end of the table.
+    // Fewer rows returned than requested means we've reached the end.
     if (batchRows.length < pageSize) {
       break;
     }
 
     // Termination Condition 2:
-    // If the server count was exact and we have accumulated all records, finish.
-    if (serverReportedTotal !== null && transactions.length >= serverReportedTotal) {
-      break;
-    }
-
-    // Termination Condition 3:
-    // Safety guard against infinite loops caused by pathological concurrent data shifting.
-    if (newUniqueInBatch === 0 && batchRows.length > 0) {
+    // Safety guard against infinite loops if a batch yields 0 new rows.
+    if (newUniqueInBatch === 0) {
       console.warn(
         `[fetchPaginatedTransactions] Batch ${pageIndex} contained 0 new records out of ${batchRows.length} returned. ` +
         `Terminating to prevent infinite loop.`
@@ -245,21 +272,20 @@ export async function fetchPaginatedTransactionsDetailed(
       break;
     }
 
-    from += pageSize;
+    // Advance keyset cursor to the last row of this page (exact raw DB strings).
+    const lastRow = batchRows[batchRows.length - 1];
+    if (!lastRow?.date || !lastRow?.id) {
+      break;
+    }
+    if (cursor && cursor.date === lastRow.date && cursor.id === lastRow.id) {
+      break;
+    }
+    cursor = { date: lastRow.date, id: lastRow.id };
   }
 
-  // Final deterministic descending sort safety check:
-  // Ensures exact sequence: date DESC, id DESC
-  transactions.sort((a, b) => {
-    if (a.date !== b.date) {
-      return b.date.localeCompare(a.date);
-    }
-    return b.id.localeCompare(a.id);
-  });
-
-  console.log(
+  debugLog(
     `[fetchPaginatedTransactions] Completed successfully: ` +
-    `${transactions.length} total transactions fetched in ${pageIndex} batch${pageIndex === 1 ? "" : "es"}. ` +
+    `${transactions.length} active transactions fetched in ${pageIndex} batch${pageIndex === 1 ? "" : "es"}. ` +
     `Duplicates filtered: ${duplicatesSkipped}.`
   );
 
@@ -267,7 +293,7 @@ export async function fetchPaginatedTransactionsDetailed(
     transactions,
     totalBatches: pageIndex,
     totalTransactions: transactions.length,
-    serverReportedTotal,
+    serverReportedTotal: null,
     duplicatesSkipped,
   };
 }
@@ -294,7 +320,7 @@ export const TABLE_PAGINATION_RISK_AUDIT = [
     table: "transactions",
     typicalGrowthRate: "High (3-10 records/day; 1,000-3,600/year)",
     estimatedTimeTo1kRows: "3-12 months",
-    currentMitigation: "Stage D: Safe deterministic range pagination (fetchPaginatedTransactions)",
+    currentMitigation: "Keyset cursor pagination on (date DESC, id DESC) with DB-level deleted_at IS NULL filter",
     riskLevel: "CRITICAL (Addressed)",
   },
   {

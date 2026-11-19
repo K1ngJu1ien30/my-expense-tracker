@@ -1,10 +1,10 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Share2, Loader2 } from "lucide-react";
 import MonthlyReceipt from "./MonthlyReceipt";
-import { useAppContext } from "@/lib/context";
+import { useAppData } from "@/lib/context";
 import { deriveReceiptPayload, type ReceiptMonth } from "@/lib/receiptData";
 import { shareReceipt } from "@/lib/receiptShare";
 import { NativeHaptics } from "@/lib/haptics";
@@ -27,18 +27,25 @@ export default function MonthlyReceiptModal({
   onClose: () => void;
   target?: ReceiptMonth;
 }) {
-  const { transactions, userName, formatCurrency, triggerToast, accentColor } = useAppContext();
+  const { transactions, userName, formatCurrency, triggerToast, accentColor } = useAppData();
   const receiptRef = useRef<HTMLDivElement>(null);
   const [sharing, setSharing] = useState(false);
 
   // Default target = previous month (the one that just ended).
-  const now = new Date();
-  const resolvedTarget: ReceiptMonth = target ?? {
-    year: now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear(),
-    month: now.getMonth() === 0 ? 11 : now.getMonth() - 1,
-  };
-
-  const payload = isOpen ? deriveReceiptPayload(transactions, resolvedTarget) : null;
+  const targetYear = target?.year;
+  const targetMonth = target?.month;
+  const payload = useMemo(() => {
+    if (!isOpen) return null;
+    const now = new Date();
+    const resolvedTarget: ReceiptMonth =
+      targetYear !== undefined && targetMonth !== undefined
+        ? { year: targetYear, month: targetMonth }
+        : {
+            year: now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear(),
+            month: now.getMonth() === 0 ? 11 : now.getMonth() - 1,
+          };
+    return deriveReceiptPayload(transactions, resolvedTarget);
+  }, [isOpen, transactions, targetYear, targetMonth]);
 
   const handleShare = async () => {
     if (!receiptRef.current) return;

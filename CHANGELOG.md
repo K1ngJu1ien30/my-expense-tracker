@@ -6,6 +6,36 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [3.5.0] — Performance, Startup Fluidity & Input Reliability — 2026-11-19
+
+A comprehensive engineering and performance release focused on instant local-first startup, rock-solid transaction input reliability, true keyset database pagination, batched offline synchronization, and silky-smooth mobile WebView fluidity.
+
+### 🛡️ Critical Input & UX Reliability Fixes
+- **Fixed Amount / Note Disappearing Bug in `TransactionModal`**: Separated add-mode open resets (`closed → open` only) from single-shot edit-mode initialization (`initializedEditIdRef`), added `hasUserDraftRef` draft protection, and memoized the derived `accounts` array in `useAccountsState`. Background syncs, cache hydrations, exchange-rate loads, toasts, and predictor updates can no longer erase user-typed amounts or notes.
+- **Fixed Credit Card Payment Modal Card Switching**: Prevented `initialCardId` from snapping the selected card back when switching cards inside the modal, and gated full-ledger balance recalculation on `isOpen` so closed modals do zero background work.
+- **Fixed PIN / Biometric Mid-Session Re-Lock**: Keyed `AuthGate` lock hydration on `session?.user?.id` + `unlockedUserIdRef` so Supabase JWT token refreshes and preference updates (`USER_UPDATED`) never re-lock or re-prompt biometrics mid-session.
+- **Fixed Calendar Timezone Date Off-by-One**: Parsed day-drawer dates as local midnight (`YYYY-MM-DDT00:00:00`) instead of UTC midnight.
+- **Fixed Quick Add & Claims Account Linkage**: Preserved `account_id` (and `credit_card_tx_type` for credit card quick-add templates) across Quick Add and Claims reimbursement income records.
+- **Fixed Clear Data Cache Purge**: Wiped user-scoped IndexedDB cache, category predictor cache, and `localStorage` metadata during full data reset so deleted rows cannot flash back on reload.
+
+### ⚡ Startup, Rendering & Mobile WebView Fluidity
+- **Local-First Instant Startup**: Decoupled UI availability from full network sync — `AppProvider` restores user-scoped IndexedDB cache and pending offline transactions first, renders immediately, and runs Supabase `refreshData()` asynchronously with a subtle non-blocking `Syncing…` status pill.
+- **Volatile UI Context Isolation (`AppDataContext` / `useAppData`)**: Separated volatile UI state (`toast`, modal flags, `isSyncing`, Easter-egg alerts) from stable financial data so Dashboard, History, Analytics, Calendar, Goals, Hub, Claims, Credit Cards, Vault, Profile, BottomNav, AuthGate, FoodBudgetCard, SalaryPlanner, and MonthlyReceiptModal skip re-rendering on UI churn.
+- **Non-Blocking Category Predictor & Cheap Keystrokes**: Added in-memory caching + in-flight deduplication to `lib/categoryPredictor.ts`, switched post-save learning to fire-and-forget `learnAndSaveAsync()`, debounced note predictions (200ms) while keeping controlled inputs synchronous, memoized `TransactionModal` pill selectors and account lookup maps, and replaced `height: "auto"` Framer Motion disclosure animations with lightweight CSS transitions.
+- **History & Analytics Optimization**: Deferred History search filtering with `useDeferredValue`, memoized `SwipeableTransactionRow` (fixing render-phase `animate()` side-effects) with precomputed date headers; unified Analytics into a single-pass `parsedTransactions` cache, gated Compare tab and Historic Receipts scans lazily, and replaced linear Dashboard account `.find()` scans with O(1) lookup maps.
+- **Capacitor Listener & Production Logging Hygiene**: Switched `App` and `Network` listeners to per-handle `remove()` cleanup, fixed Capacitor reconnect `wasOfflineRef` race, added 6-hour TTL to cache-first exchange rates, pruned oversized full-payload `localStorage` mirrors in favor of IndexedDB + tiny metadata keys, and gated verbose diagnostic logs behind `lib/debugLog.ts`.
+
+### 🗄️ Database & Sync Efficiency (Migration 014)
+- **Keyset / Cursor Pagination + DB Soft-Delete Filter**: Replaced `.range(from, to)` + `{ count: "exact" }` in `lib/transactionPagination.ts` with keyset pagination on `(date DESC, id DESC)` and `.is("deleted_at", null)` directly at the database level using raw microsecond-precision Postgres timestamps.
+- **Migration 014 (`014_transactions_keyset_pagination_index.sql`)**: Added partial composite index `idx_transactions_user_date_id_active ON public.transactions (user_id, date DESC, id DESC) WHERE deleted_at IS NULL` with pre-flight checks and safe rollback script.
+- **Batched Offline Queue Sync & Incremental Merge**: Upgraded `syncOfflineQueue` to idempotent batches of 25 with per-item malformed-row isolation and incremental local state/cache merging instead of full history re-downloads.
+- **Eliminated Duplicate Credit Card / Cashback Queries**: Keyed `useCreditCardPayments` and `useCashbackRewards` strictly on `userId`, parallelized cashback queries, and prevented redundant full refreshes on `TOKEN_REFRESHED` / `USER_UPDATED`.
+
+### 📱 Android Release Compilation
+- **Version Bumps**: Set `versionName = "3.5.0"` and `versionCode = 30500` in `android/app/build.gradle` (strictly greater than v3.1.0's `30100` for seamless in-place upgrade).
+
+---
+
 ## [3.1.0] — Android Release & Financial Integrity Safeguards — 2026-10-15
 
 A targeted maintenance release implementing pre-release financial integrity safeguards, cross-currency repayment validation, and an updated installable Android release package.

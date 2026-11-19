@@ -138,19 +138,21 @@ export function useCreditCardPayments(deps: CreditCardPaymentsDeps) {
     triggerToast,
   } = deps;
 
+  const userId = session?.user?.id;
   const [statements, setStatements] = useState<CreditCardStatement[]>([]);
   const [payments, setPayments] = useState<CreditCardPayment[]>([]);
   const [allocations, setAllocations] = useState<CreditCardPaymentAllocation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const statementsKey = getUserCreditCardStatementsKey(session?.user?.id);
-  const paymentsKey = getUserCreditCardPaymentsKey(session?.user?.id);
-  const allocationsKey = getUserCreditCardAllocationsKey(session?.user?.id);
+  const statementsKey = getUserCreditCardStatementsKey(userId);
+  const paymentsKey = getUserCreditCardPaymentsKey(userId);
+  const allocationsKey = getUserCreditCardAllocationsKey(userId);
 
   // Sync state refs to prevent race conditions
   const statementsRef = useRef(statements);
   const paymentsRef = useRef(payments);
   const allocationsRef = useRef(allocations);
+  const activeUserIdRef = useRef(userId);
 
   useEffect(() => {
     statementsRef.current = statements;
@@ -164,8 +166,20 @@ export function useCreditCardPayments(deps: CreditCardPaymentsDeps) {
     allocationsRef.current = allocations;
   }, [allocations]);
 
-  // ─── 1. Load data from local cache and cloud ────────────────────────────
+  useEffect(() => {
+    activeUserIdRef.current = userId;
+  }, [userId]);
+
+  // ─── 1. Load data from local cache and cloud (keyed strictly by userId) ─
   const loadData = useCallback(async () => {
+    if (!userId) {
+      setStatements([]);
+      setPayments([]);
+      setAllocations([]);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
 
     // 1a. Load from local cache
@@ -175,6 +189,8 @@ export function useCreditCardPayments(deps: CreditCardPaymentsDeps) {
         localforage.getItem<CreditCardPayment[]>(paymentsKey),
         localforage.getItem<CreditCardPaymentAllocation[]>(allocationsKey),
       ]);
+
+      if (activeUserIdRef.current !== userId) return;
 
       if (Array.isArray(localSt)) {
         setStatements(localSt);
@@ -190,10 +206,10 @@ export function useCreditCardPayments(deps: CreditCardPaymentsDeps) {
     }
 
     // 1b. Load from Supabase if online and session exists
-    if (session?.user?.id && !isOfflineRef.current) {
+    if (!isOfflineRef.current) {
       try {
         // Flush any pending durable offline statements before querying fresh data
-        const pendingStmts = await getOfflineStatementQueueForUser(session.user.id);
+        const pendingStmts = await getOfflineStatementQueueForUser(userId);
         if (pendingStmts && pendingStmts.length > 0) {
           const acked = new Set<string>();
           for (const s of pendingStmts) {
@@ -210,20 +226,22 @@ export function useCreditCardPayments(deps: CreditCardPaymentsDeps) {
         const [stRes, payRes, allocRes] = await Promise.all([
           supabase
             .from("credit_card_statements")
-            .select("*")
-            .eq("user_id", session.user.id)
+            .select("id,user_id,account_id,statement_date,due_date,opening_balance,closing_balance,minimum_payment,is_settled,settled_at,note,created_at,updated_at")
+            .eq("user_id", userId)
             .order("statement_date", { ascending: false }),
           supabase
             .from("credit_card_payments")
-            .select("*")
-            .eq("user_id", session.user.id)
+            .select("id,user_id,account_id,source_account_id,statement_id,transaction_id,payment_date,amount,payment_type,note,created_at")
+            .eq("user_id", userId)
             .order("payment_date", { ascending: false }),
           supabase
             .from("credit_card_payment_allocations")
-            .select("*")
-            .eq("user_id", session.user.id)
+            .select("id,user_id,payment_id,statement_id,allocated_amount,created_at")
+            .eq("user_id", userId)
             .order("created_at", { ascending: false }),
         ]);
+
+        if (activeUserIdRef.current !== userId) return;
 
         if (!stRes.error && Array.isArray(stRes.data)) {
           const mappedSt: CreditCardStatement[] = (stRes.data as RawCreditCardStatementRow[]).map(
@@ -244,7 +262,7 @@ export function useCreditCardPayments(deps: CreditCardPaymentsDeps) {
             })
           );
           setStatements(mappedSt);
-          await localforage.setItem(statementsKey, mappedSt);
+          void localforage.setItem(statementsKey, mappedSt).catch(() => {});
         } else if (stRes.error && stRes.error.code !== "42P01" && stRes.error.code !== "42703") {
           console.warn("[CreditCardPayments] Failed to fetch statements:", stRes.error);
         }
@@ -266,7 +284,7 @@ export function useCreditCardPayments(deps: CreditCardPaymentsDeps) {
             })
           );
           setPayments(mappedPay);
-          await localforage.setItem(paymentsKey, mappedPay);
+          void localforage.setItem(paymentsKey, mappedPay).catch(() => {});
         } else if (payRes.error && payRes.error.code !== "42P01" && payRes.error.code !== "42703") {
           console.warn("[CreditCardPayments] Failed to fetch payments:", payRes.error);
         }
@@ -283,7 +301,7 @@ export function useCreditCardPayments(deps: CreditCardPaymentsDeps) {
             })
           );
           setAllocations(mappedAlloc);
-          await localforage.setItem(allocationsKey, mappedAlloc);
+          void localforage.setItem(allocationsKey, mappedAlloc).catch(() => {});
         } else if (allocRes.error && allocRes.error.code !== "42P01" && allocRes.error.code !== "42703") {
           console.warn("[CreditCardPayments] Failed to fetch allocations:", allocRes.error);
         }
@@ -292,8 +310,10 @@ export function useCreditCardPayments(deps: CreditCardPaymentsDeps) {
       }
     }
 
-    setIsLoading(false);
-  }, [session, isOfflineRef, statementsKey, paymentsKey, allocationsKey]);
+    if (activeUserIdRef.current === userId) {
+      setIsLoading(false);
+    }
+  }, [userId, isOfflineRef, statementsKey, paymentsKey, allocationsKey]);
 
   useEffect(() => {
     // Initial hydration of cached statements & payments from storage and Supabase

@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Target, Plus, ShieldAlert, Pin, Trash2, X, Check, CreditCard, Zap, MonitorPlay, Music, Wifi, Smartphone, Droplet } from "lucide-react";
-import { useAppContext } from "@/lib/context";
+import { useAppData } from "@/lib/context";
 import FoodBudgetCard from "@/components/FoodBudgetCard";
 import SalaryPlanner from "@/components/SalaryPlanner";
 
@@ -24,7 +24,7 @@ export default function GoalsPage() {
   const { 
     goals, addGoal, updateGoal, deleteGoal, confirmAction, 
     enableFoodBudget, enableSalaryPlanner, currency
-  } = useAppContext();
+  } = useAppData();
   
   // Goal modals state
   const [activeAddFunds, setActiveAddFunds] = useState<string | null>(null);

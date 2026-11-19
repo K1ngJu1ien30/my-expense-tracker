@@ -1,15 +1,16 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import type { MutableRefObject } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "../supabase";
 import { NativeHaptics } from "../haptics";
 import type { Transaction, Subscription, TransactionSaveResult } from "../types";
 import type { DeletedItemCache } from "../types";
-import { learn, loadModel, saveModel } from "../categoryPredictor";
+import { learnAndSaveAsync } from "../categoryPredictor";
 import { enqueueOfflineTx } from "../offlineQueue";
 import { roundCurrency } from "../utils";
+import { debugLog } from "../debugLog";
 
 /** Threshold above which an income/expense triggers the 🐋 whale alert. */
 const WHALE_THRESHOLD = 5000;
@@ -114,6 +115,11 @@ export function useMoneyState(deps: MoneyStateDeps) {
   const [fixedBills, setFixedBills] = useState<Subscription[]>([]);
   const [utilities, setUtilities] = useState<Subscription[]>([]);
 
+  const transactionsRef = useRef(transactions);
+  useEffect(() => {
+    transactionsRef.current = transactions;
+  }, [transactions]);
+
   const { session, isOfflineRef, triggerWhaleAlert, maybeTriggerPenguinAlert, cacheDeletedItem } = deps;
 
   // ─── Transactions ──────────────────────────────────────────────────────
@@ -138,14 +144,12 @@ export function useMoneyState(deps: MoneyStateDeps) {
         date: tx.date ? new Date(tx.date).toISOString() : new Date().toISOString(),
       };
 
-      // Teach the category predictor after any successful add. Only expenses
-      // with a non-empty note contribute useful signal — transfers/income are
-      // structural, not learned.
-      const teachPredictor = async () => {
+      // Teach the category predictor asynchronously after any successful add.
+      // Only expenses with a non-empty note contribute useful signal — never
+      // blocks transaction saving and never throws.
+      const teachPredictorAsync = () => {
         if (tx.type !== "Expense" || !tx.note || !tx.category) return;
-        const model = await loadModel(session?.user?.id);
-        learn(model, tx.note, tx.category);
-        await saveModel(model, session?.user?.id);
+        learnAndSaveAsync(tx.note, tx.category, session?.user?.id);
       };
 
       // Offline queue path: push to IndexedDB, then sync when network returns.
@@ -163,7 +167,7 @@ export function useMoneyState(deps: MoneyStateDeps) {
           };
         }
         setTransactions(prev => [offlineTx, ...prev]);
-        await teachPredictor();
+        teachPredictorAsync();
         NativeHaptics.successMedium();
         if (tx.type === "Expense") maybeTriggerPenguinAlert(Number(tx.amount));
         return { success: true, status: "pending_sync" };
@@ -179,7 +183,7 @@ export function useMoneyState(deps: MoneyStateDeps) {
 
         if (!error && data) {
           setTransactions(prev => [data as Transaction, ...prev]);
-          await teachPredictor();
+          teachPredictorAsync();
           NativeHaptics.successMedium();
           if (Number(tx.amount) >= WHALE_THRESHOLD) triggerWhaleAlert();
           if (tx.type === "Expense") maybeTriggerPenguinAlert(Number(tx.amount));
@@ -196,7 +200,7 @@ export function useMoneyState(deps: MoneyStateDeps) {
           if (!retryRes.error && retryRes.data) {
             const preservedTx = { ...retryRes.data, credit_card_tx_type: txWithId.credit_card_tx_type, statement_id: txWithId.statement_id };
             setTransactions(prev => [preservedTx as Transaction, ...prev]);
-            await teachPredictor();
+            teachPredictorAsync();
             NativeHaptics.successMedium();
             if (Number(tx.amount) >= WHALE_THRESHOLD) triggerWhaleAlert();
             if (tx.type === "Expense") maybeTriggerPenguinAlert(Number(tx.amount));
@@ -216,12 +220,12 @@ export function useMoneyState(deps: MoneyStateDeps) {
           error.code.startsWith("XX");
 
         if (isNetworkFailure) {
-          console.log("[addTransaction] Falling back to offline queue due to network/server failure");
+          debugLog("[addTransaction] Falling back to offline queue due to network/server failure");
           const offlineTx = { ...txWithId, user_id: session?.user?.id } as Transaction;
           try {
             await enqueueOfflineTx(offlineTx);
             setTransactions(prev => [offlineTx, ...prev]);
-            await teachPredictor();
+            teachPredictorAsync();
             NativeHaptics.successMedium();
             if (tx.type === "Expense") maybeTriggerPenguinAlert(Number(tx.amount));
             return { success: true, status: "pending_sync" };
@@ -245,7 +249,7 @@ export function useMoneyState(deps: MoneyStateDeps) {
           const offlineTx = { ...txWithId, user_id: session?.user?.id } as Transaction;
           await enqueueOfflineTx(offlineTx);
           setTransactions(prev => [offlineTx, ...prev]);
-          await teachPredictor();
+          teachPredictorAsync();
           NativeHaptics.successMedium();
           if (tx.type === "Expense") maybeTriggerPenguinAlert(Number(tx.amount));
           return { success: true, status: "pending_sync" };
@@ -325,8 +329,8 @@ export function useMoneyState(deps: MoneyStateDeps) {
 
   const deleteTransaction = useCallback(
     async (id: string) => {
-      // Capture pre-delete copy for shake-to-undo restore.
-      const item = transactions.find(t => t.id === id);
+      // Capture pre-delete copy via ref so deleteTransaction stays referentially stable.
+      const item = transactionsRef.current.find(t => t.id === id);
       const now = new Date().toISOString();
       // Soft delete — never physically remove rows.
       const { error } = await supabase
@@ -339,7 +343,7 @@ export function useMoneyState(deps: MoneyStateDeps) {
         if (item) cacheDeletedItem("transaction", item);
       }
     },
-    [transactions, cacheDeletedItem]
+    [cacheDeletedItem]
   );
 
   // ─── Subscriptions / Utilities (shared `subscriptions` table) ──────────

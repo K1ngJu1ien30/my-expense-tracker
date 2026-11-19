@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Trash2, X, Package, ChevronDown } from "lucide-react";
-import { useAppContext } from "@/lib/context";
+import { useAppData } from "@/lib/context";
 import AssetDetailOverlay from "@/components/AssetDetailOverlay";
 import CustomDatePicker from "@/components/CustomDatePicker";
 import { roundCurrency } from "@/lib/utils";
@@ -11,7 +11,7 @@ import { roundCurrency } from "@/lib/utils";
 const EMOJI_OPTIONS = ["📱", "💻", "📸", "👟", "⌚", "🎧", "🎮", "🚗", "🏠", "🛋️", "🧳", "👜", "📦", "🔧", "🎸"];
 
 export default function VaultPage() {
-  const { assets, addAsset, deleteAsset, confirmAction, accentColor, triggerToast, currency } = useAppContext();
+  const { assets, addAsset, deleteAsset, confirmAction, accentColor, triggerToast, currency } = useAppData();
 
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);

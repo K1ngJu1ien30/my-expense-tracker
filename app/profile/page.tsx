@@ -3,9 +3,11 @@
 import { Trash2, Tags, Moon, ChevronRight, Edit2, Check, CircleDollarSign, ShieldAlert, Palette, Database, LogOut, Lock, Wallet, PiggyBank, UtensilsCrossed, TrendingUp, Fingerprint, Package, CreditCard, FileSpreadsheet, Upload } from "lucide-react";
 import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
-import { useAppContext } from "@/lib/context";
+import { useAppData } from "@/lib/context";
 import { exportDataToCSV } from "@/lib/exportUtils";
 import { motion, AnimatePresence } from "framer-motion";
+import localforage from "localforage";
+import { getUserDataCacheKey, getUserMetaCacheKey, getUserPredictorKey } from "@/lib/cacheKeys";
 import { supabase } from "@/lib/supabase";
 import { ClearDataModal } from "@/components/profile/ClearDataModal";
 import { ExportModal } from "@/components/profile/ExportModal";
@@ -51,7 +53,7 @@ export default function ProfilePage() {
     enableTimeBasedGreeting, toggleTimeBasedGreeting,
     enableFridayThe13th, toggleFridayThe13th,
     session
-  } = useAppContext();
+  } = useAppData();
 
   const hasSavingsAccount = accountObjects.some(acc => isSavingsAccount(acc));
 
@@ -126,6 +128,17 @@ export default function ProfilePage() {
       
       const { error } = await supabase.from('transactions').delete().eq('user_id', session.user.id);
       if (error) throw new Error(error.message);
+
+      // Clear local persistent caches so wiped transactions cannot flash back on reload
+      try {
+        await Promise.all([
+          localforage.removeItem(getUserDataCacheKey(session.user.id)),
+          localforage.removeItem(getUserPredictorKey(session.user.id)),
+        ]);
+        localStorage.removeItem(getUserMetaCacheKey(session.user.id));
+      } catch {
+        /* non-fatal */
+      }
       
       triggerToast("✅ All data wiped successfully.");
       setShowClearModal(false);
@@ -744,7 +757,7 @@ export default function ProfilePage() {
 
       {/* App Version Info */}
       <div className="text-center py-2 text-xs font-medium text-muted-foreground/60 select-none">
-        Expense Tracker Pro v3.1.0
+        Expense Tracker Pro v3.5.0
       </div>
 
       {/* Clear Data Confirm Modal */}

@@ -1,14 +1,14 @@
 # Expense Tracker Pro
 
-### Native Multi-Currency Financial Engine & Credit Card Architecture — v3.1.0
+### Native Multi-Currency Financial Engine & Credit Card Architecture — v3.5.0
 
-A production-grade, offline-first personal finance application built with Next.js and compiled to a native Android binary via Capacitor. Engineered with strict integer-cents precision, double-entry accounting integrity separating cash assets from credit liabilities, a complete optional credit-card lifecycle engine, resilient multi-queue offline synchronization, and bank-grade PostgreSQL Row Level Security.
+A production-grade, offline-first personal finance application built with Next.js and compiled to a native Android binary via Capacitor. Engineered with strict integer-cents precision, instant local-first startup, draft-protected transaction entry, double-entry accounting integrity separating cash assets from credit liabilities, a complete optional credit-card lifecycle engine, resilient batched offline synchronization, keyset PostgreSQL pagination, and bank-grade Row Level Security.
 
-> **Quality Baseline (v3.1.0):**
+> **Quality Baseline (v3.5.0):**
 > - TypeScript Strict: `npx tsc --noEmit` → 0 errors
 > - ESLint 9 Flat Config: `npm run lint` → 0 errors / 0 warnings
 > - Next.js Static Export: 16/16 pages statically prerendered to `out/`
-> - Android Native Compilation: Gradle 8.14.3 / SDK 36 `BUILD SUCCESSFUL`
+> - Android Native Compilation: Gradle 8.14.3 / SDK 36 (`versionName = "3.5.0"`, `versionCode = 30500`) `BUILD SUCCESSFUL`
 
 ---
 
@@ -60,16 +60,18 @@ A production-grade, offline-first personal finance application built with Next.j
 
 ### A. Offline-First Dual-Layer Architecture
 
-1. **Instant Cold Boot (< 200ms)**: On launch, the application hydrates cached accounts, categories, transactions, and preferences from IndexedDB (scoped by `user_id`) before initiating network requests.
-2. **Durable Mutex-Locked Offline Queues**:
-   - `offline_tx_queue`: Unsynced transactions are queued locally under a serialized single-flight mutex (`withQueueLock`), preventing race conditions when transactions are logged rapidly.
+1. **Instant Local-First Cold Boot (< 50ms hydration)**: On launch, `AppProvider` restores user-scoped cached accounts, categories, transactions, and pending offline items from IndexedDB first, immediately unlocks UI interaction, and refreshes live Supabase data in the background with a subtle non-blocking `Syncing…` indicator.
+2. **Tiered Local Persistence**: IndexedDB (`LocalForage`) serves as the primary persistent store for full datasets, while `localStorage` stores only a tiny `{ accounts, categories }` metadata slice (`tracker_meta_cache_<userId>`) — eliminating redundant multi-megabyte JSON serialization on the main thread.
+3. **Volatile UI Isolation (`AppDataContext`)**: Data-heavy views consume `useAppData()`, insulating Dashboard, History, Analytics, and Hub modules from re-rendering when toasts appear/dismiss, modals toggle, or background sync status updates.
+4. **Durable Mutex-Locked Offline Queues & Batched Sync**:
+   - `offline_tx_queue`: Unsynced transactions are queued locally under a serialized single-flight mutex (`withQueueLock`), synced in idempotent batches of 25 on reconnect (with per-item fallback isolating malformed records), and merged incrementally into local state and IndexedDB without re-downloading full history.
    - `offline_statement_queue`: Credit card statement creations that encounter network dropouts are captured in a dedicated offline queue and flushed automatically upon reconnection.
-3. **Integer Cents Precision**: All financial amounts in storage and context math are stored as integer cents (`Math.round(amount * 100)`). Display formatting divides by 100 at the render boundary, eliminating floating-point rounding errors (e.g. `0.1 + 0.2 = 0.30000000000000004`).
-4. **Soft Deletions**: Transactions use a `deleted_at` timestamp rather than physical row deletion, preventing sync conflicts across devices and enabling shake-to-undo recovery.
+5. **Integer Cents Precision**: All financial amounts in storage and context math are stored as integer cents (`Math.round(amount * 100)`). Display formatting divides by 100 at the render boundary, eliminating floating-point rounding errors (e.g. `0.1 + 0.2 = 0.30000000000000004`).
+6. **Soft Deletions**: Transactions use a `deleted_at` timestamp rather than physical row deletion, filtered directly at the PostgreSQL query level (`deleted_at IS NULL`) to prevent downloading deleted rows while preserving cross-device conflict safety and shake-to-undo recovery.
 
 ### B. High-Volume Keyset Pagination
 
-To prevent memory exhaustion and UI degradation when scaling to tens of thousands of transactions, `lib/transactionPagination.ts` implements cursor-based keyset batch loading (`(date, id)` pagination), ensuring smooth scrolling in `react-virtuoso` lists with fixed memory footprints.
+To prevent O(N²) offset scans, memory spikes, and duplicate/skipped rows under concurrent writes when scaling to thousands of transactions, `lib/transactionPagination.ts` implements true cursor-based keyset batch loading on `(date DESC, id DESC)` with DB-level `deleted_at IS NULL` filtering (backed by partial composite index `idx_transactions_user_date_id_active` in Migration 014) and zero `{ count: "exact" }` overhead.
 
 ---
 
@@ -213,6 +215,8 @@ All functions specify `SET search_path = public, auth` to prevent search-path in
   10. `010_safe_account_deletion_and_integrity.sql` — Dependency checks and safe deletion RPC
   11. `011_cashback_persistence_and_integrity.sql` — Confirmed cashback posting RPC
   12. `012_security_hardening_and_integrity.sql` — Permission hardening, concurrency locking, and live debt checks
+  13. `013_repayment_release_safeguards.sql` — Cross-currency repayment and zero-debt / overpayment guards
+  14. `014_transactions_keyset_pagination_index.sql` — Partial composite index `(user_id, date DESC, id DESC) WHERE deleted_at IS NULL` for keyset pagination
 
 ---
 

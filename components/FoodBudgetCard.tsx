@@ -3,11 +3,11 @@
 import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { UtensilsCrossed } from "lucide-react";
-import { useAppContext } from "@/lib/context";
+import { useAppData } from "@/lib/context";
 import { roundCurrency } from "@/lib/utils";
 
 export default function FoodBudgetCard() {
-  const { currency, transactions, foodDailyLimit, foodMonthlyLimit, accentColor } = useAppContext();
+  const { currency, transactions, foodDailyLimit, foodMonthlyLimit, accentColor } = useAppData();
 
   const { spentToday, spentThisMonth } = useMemo(() => {
     const now = new Date();

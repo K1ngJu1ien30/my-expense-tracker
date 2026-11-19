@@ -168,6 +168,7 @@ type AppContextType = {
   showTransactionModal: boolean;
   setShowTransactionModal: (val: boolean) => void;
   isOffline: boolean;
+  isSyncing: boolean;
   isGodMode: boolean;
   whaleAlert: boolean;
   sharkUndo: boolean;
@@ -221,7 +222,30 @@ type AppContextType = {
   }) => Promise<{ success: boolean; error?: string; record?: CashbackRecord }>;
 };
 
+/**
+ * Volatile UI/status keys excluded from AppDataContext so data-heavy pages
+ * (Dashboard, History, Analytics) do NOT re-render when toasts pop up/dismiss,
+ * modals open/close, sync pills animate, or Easter-egg overlays trigger.
+ */
+type VolatileUIKeys =
+  | "toast"
+  | "editTransactionId"
+  | "activeAssetId"
+  | "showTransactionModal"
+  | "showCreditCardPaymentModal"
+  | "activePaymentCardId"
+  | "isOffline"
+  | "isSyncing"
+  | "whaleAlert"
+  | "sharkUndo"
+  | "penguinAlert"
+  | "dragonAlert"
+  | "phoenixAlert";
+
+export type AppDataContextType = Omit<AppContextType, VolatileUIKeys>;
+
 export const AppContext = createContext<AppContextType | null>(null);
+export const AppDataContext = createContext<AppDataContextType | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -466,8 +490,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     cacheDeletedItem,
   });
 
-  // ─── Sync layer (refreshData, offline queue, network listeners) ─────────
-  const { isOffline, refreshData, syncOfflineQueue: _syncOfflineQueue } = useSyncState(session, {
+  // ─── Sync layer (hydrateFromCache, refreshData, offline queue, network) ─
+  const {
+    isOffline,
+    isSyncing,
+    hydrateFromCache,
+    refreshData,
+    syncOfflineQueue: _syncOfflineQueue,
+  } = useSyncState(session, {
     setTransactions,
     setGoals,
     setSubscriptions,
@@ -554,26 +584,61 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [currency]
   );
 
-  // Exchange rate fetch — non-blocking, cached for offline
-  const fetchExchangeRates = async () => {
-    try {
-      const res = await fetch("https://open.er-api.com/v6/latest/MYR");
-      if (!res.ok) throw new Error("Rate fetch failed");
-      const data = await res.json();
-      if (data.rates) {
-        setExchangeRates(data.rates);
-        try { await localforage.setItem("exchange_rates_cache", data.rates); } catch {}
-      }
-    } catch {
-      try {
-        const cached = await localforage.getItem<Record<string, number>>("exchange_rates_cache");
-        if (cached) setExchangeRates(cached);
-      } catch {}
-    }
-  };
+  // Exchange rate fetch — cache-first, non-blocking, with 6-hour TTL so we
+  // don't hit the remote API on every mount/relaunch while keeping rates fresh.
+  useEffect(() => {
+    const CACHE_KEY = "exchange_rates_cache_v2";
+    const LEGACY_KEY = "exchange_rates_cache";
+    const TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+    let cancelled = false;
 
-  // Fetch rates on mount
-  useEffect(() => { fetchExchangeRates(); }, []);
+    const loadAndMaybeRefreshRates = async () => {
+      let cachedTimestamp = 0;
+
+      // 1. Hydrate immediately from cached rates if available
+      try {
+        const cached = await localforage.getItem<{ rates: Record<string, number>; fetchedAt: number }>(CACHE_KEY);
+        if (!cancelled && cached?.rates) {
+          setExchangeRates(cached.rates);
+          cachedTimestamp = cached.fetchedAt || 0;
+        } else {
+          const legacy = await localforage.getItem<Record<string, number>>(LEGACY_KEY);
+          if (!cancelled && legacy) {
+            setExchangeRates(legacy);
+          }
+        }
+      } catch {
+        /* ignore cache read failure */
+      }
+
+      // 2. Skip network fetch if cached rates are still fresh or device is offline
+      if (Date.now() - cachedTimestamp < TTL_MS) return;
+      if (typeof navigator !== "undefined" && !navigator.onLine) return;
+
+      // 3. Background refresh — never blocks startup or transaction entry
+      try {
+        const res = await fetch("https://open.er-api.com/v6/latest/MYR");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && data?.rates) {
+          setExchangeRates(data.rates);
+          try {
+            await localforage.setItem(CACHE_KEY, {
+              rates: data.rates,
+              fetchedAt: Date.now(),
+            });
+          } catch {}
+        }
+      } catch {
+        /* keep cached rates silently */
+      }
+    };
+
+    void loadAndMaybeRefreshRates();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // 🎃 Friday the 13th — auto-trigger the Derry horror sequence at 13:13
   // local time on any Friday the 13th, behind the `enableFridayThe13th` flag
@@ -687,50 +752,96 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [goals, sessionUserId]
   );
 
+  // Track the last user ID we hydrated/refreshed so TOKEN_REFRESHED or
+  // USER_UPDATED events (e.g. toggling a preference) don't re-trigger a
+  // full multi-table Supabase reload, while switching users always clears
+  // stale state first to guarantee strict cross-user isolation.
+  const lastHydratedUserIdRef = React.useRef<string | null>(null);
+
   useEffect(() => {
+    // Wait until Supabase finishes restoring the initial session so we
+    // don't flash logged-out state or drop isHydrating prematurely.
+    if (authLoading) return;
+
+    let cancelled = false;
+
     if (session?.user) {
-      // Hydrate every user preference / feature flag from user_metadata.
+      const userId = session.user.id;
+      // Always sync user_metadata preferences (cheap synchronous state update)
       prefs.hydrateFromMetadata(session.user.user_metadata, session.user.email);
-      refreshData(session.user).finally(() => setIsHydrating(false));
+
+      // Same user (e.g. TOKEN_REFRESHED or USER_UPDATED): no need to re-hydrate
+      // or re-download the entire transaction history.
+      if (lastHydratedUserIdRef.current === userId) {
+        setIsHydrating(false);
+        return;
+      }
+
+      // Switching from another user on the same device: wipe previous user's
+      // in-memory state immediately before hydrating the new user.
+      if (lastHydratedUserIdRef.current && lastHydratedUserIdRef.current !== userId) {
+        resetAccountsState();
+        setTransactions([]);
+        setGoals([]);
+        setSubscriptions([]);
+        setFixedBills([]);
+        setUtilities([]);
+        setPlannerItems([]);
+        setAssets([]);
+      }
+
+      lastHydratedUserIdRef.current = userId;
+
+      // Local-first startup:
+      // 1. Restore user-scoped IndexedDB cache + pending offline queue quickly.
+      // 2. Unblock the UI as soon as local hydration completes (~10-40ms).
+      // 3. Refresh live Supabase data in the background without blocking input.
+      const userSnapshot = session.user;
+      hydrateFromCache(userSnapshot)
+        .finally(() => {
+          if (!cancelled) setIsHydrating(false);
+        })
+        .then(() => {
+          if (!cancelled) {
+            void refreshData(userSnapshot);
+          }
+        });
     } else {
-       prefs.resetPreferences();
-       resetAccountsState();
-       setTransactions([]);
-       setGoals([]);
-       setSubscriptions([]);
-       setFixedBills([]);
-       setUtilities([]);
-       setPlannerItems([]);
-       setAssets([]);
-       setIsHydrating(false);
+      lastHydratedUserIdRef.current = null;
+      prefs.resetPreferences();
+      resetAccountsState();
+      setTransactions([]);
+      setGoals([]);
+      setSubscriptions([]);
+      setFixedBills([]);
+      setUtilities([]);
+      setPlannerItems([]);
+      setAssets([]);
+      setIsHydrating(false);
     }
-    // This effect fires only when the Supabase session changes. All the
-    // setters, `prefs`, and `refreshData` are stable references produced
-    // by the child hooks and don't need to retrigger hydration — doing so
-    // would cause every state update inside those hooks to re-run the
-    // full hydrate/refresh cycle.
+
+    return () => {
+      cancelled = true;
+    };
+    // Fires on auth readiness and session changes. Child setters and sync
+    // callbacks are stable by contract.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session]);
+  }, [authLoading, session]);
 
   // --- Supabase CRUD (transactions/subs/utilities owned by useMoneyState;
   //     goals/planner owned by usePlanningState; assets/trades owned by
   //     useModulesData — see provider hook calls above) ---
 
-  if (isHydrating || authLoading) {
-    return (
-      <div className="fixed inset-0 z-[999] flex flex-col items-center justify-center bg-background">
-        <p className="text-muted-foreground animate-pulse font-medium text-sm">Loading Tracker...</p>
-      </div>
-    );
-  }
-
-  return (
-    <AppContext.Provider value={{
+  // Stable data + action context: excludes volatile UI flags (toast, modal
+  // visibility, syncing pill, Easter-egg overlays) so heavy consumers like
+  // Dashboard, History, and Analytics skip re-rendering on UI churn.
+  const dataContextValue = useMemo<AppDataContextType>(
+    () => ({
       userName, setUserName,
       currency, setCurrency, formatCurrency, exchangeRates,
       categories, setCategories, addCategory, deleteCategory,
       includeSavings, toggleIncludeSavings,
-      toast, triggerToast,
+      triggerToast,
       subscriptions: visibleSubscriptions,
       addSubscription, updateSubscription, deleteSubscription,
       fixedBills: visibleFixedBills,
@@ -739,7 +850,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addUtility, updateUtility, deleteUtility,
       transactions: visibleTransactions,
       addTransaction, updateTransaction, deleteTransaction,
-      editTransactionId, setEditTransactionId,
+      setEditTransactionId,
       goals: visibleGoals,
       addGoal, updateGoal, deleteGoal,
       accounts, accountObjects, setAccounts, reorderAccounts, addAccount, addCreditCardAccount, updateAccount, updateCreditCardDetails, renameAccount, deleteAccount, toggleArchiveAccount,
@@ -758,19 +869,104 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       isClaimsEnabled, toggleClaims,
       enableTimeBasedGreeting, toggleTimeBasedGreeting,
       enableFridayThe13th, toggleFridayThe13th,
-      activeAssetId, setActiveAssetId,
-      showTransactionModal, setShowTransactionModal,
-      showCreditCardPaymentModal, setShowCreditCardPaymentModal,
-      activePaymentCardId, openCreditCardPayment, closeCreditCardPayment,
+      setActiveAssetId,
+      setShowTransactionModal,
+      setShowCreditCardPaymentModal,
+      openCreditCardPayment, closeCreditCardPayment,
       statements, creditCardPayments, creditCardAllocations,
       addCreditCardStatement, recordCreditCardPayment,
       rewardsConfigs, cashbackRecords,
       saveRewardsConfig, recordConfirmedCashback,
+      isGodMode, derryActive, triggerDerry,
+    }),
+    [
+      userName, setUserName,
+      currency, setCurrency, formatCurrency, exchangeRates,
+      categories, setCategories, addCategory, deleteCategory,
+      includeSavings, toggleIncludeSavings,
+      triggerToast,
+      visibleSubscriptions, addSubscription, updateSubscription, deleteSubscription,
+      visibleFixedBills, addFixedBill, updateFixedBill, deleteFixedBill,
+      visibleUtilities, addUtility, updateUtility, deleteUtility,
+      visibleTransactions, addTransaction, updateTransaction, deleteTransaction,
+      setEditTransactionId,
+      visibleGoals, addGoal, updateGoal, deleteGoal,
+      accounts, accountObjects, setAccounts, reorderAccounts, addAccount, addCreditCardAccount, updateAccount, updateCreditCardDetails, renameAccount, deleteAccount, toggleArchiveAccount,
+      accentColor, setAccentColor,
+      session, authLoading,
+      confirmAction,
+      enableFoodBudget, toggleFoodBudget,
+      enableSalaryPlanner, toggleSalaryPlanner,
+      foodDailyLimit, setFoodDailyLimit,
+      foodMonthlyLimit, setFoodMonthlyLimit,
+      plannerItems, addPlannerItem, deletePlannerItem,
+      isPinEnabled, togglePin,
+      isBiometricEnabled, toggleBiometric,
+      assets, addAsset, updateAsset, deleteAsset,
+      isVaultEnabled, toggleVault,
+      isClaimsEnabled, toggleClaims,
+      enableTimeBasedGreeting, toggleTimeBasedGreeting,
+      enableFridayThe13th, toggleFridayThe13th,
+      setActiveAssetId,
+      setShowTransactionModal,
+      setShowCreditCardPaymentModal,
+      openCreditCardPayment, closeCreditCardPayment,
+      statements, creditCardPayments, creditCardAllocations,
+      addCreditCardStatement, recordCreditCardPayment,
+      rewardsConfigs, cashbackRecords,
+      saveRewardsConfig, recordConfirmedCashback,
+      isGodMode, derryActive, triggerDerry,
+    ]
+  );
+
+  // Full backward-compatible context value (includes volatile UI & sync flags).
+  const contextValue = useMemo<AppContextType>(
+    () => ({
+      ...dataContextValue,
+      toast,
+      editTransactionId,
+      activeAssetId,
+      showTransactionModal,
+      showCreditCardPaymentModal,
+      activePaymentCardId,
       isOffline,
-      isGodMode, whaleAlert, sharkUndo, derryActive, triggerDerry,
-      penguinAlert, dragonAlert, phoenixAlert,
-    }}>
-      {children}
+      isSyncing,
+      whaleAlert,
+      sharkUndo,
+      penguinAlert,
+      dragonAlert,
+      phoenixAlert,
+    }),
+    [
+      dataContextValue,
+      toast,
+      editTransactionId,
+      activeAssetId,
+      showTransactionModal,
+      showCreditCardPaymentModal,
+      activePaymentCardId,
+      isOffline,
+      isSyncing,
+      whaleAlert,
+      sharkUndo,
+      penguinAlert,
+      dragonAlert,
+      phoenixAlert,
+    ]
+  );
+
+  if (isHydrating || authLoading) {
+    return (
+      <div className="fixed inset-0 z-[999] flex flex-col items-center justify-center bg-background">
+        <p className="text-muted-foreground animate-pulse font-medium text-sm">Loading Tracker...</p>
+      </div>
+    );
+  }
+
+  return (
+    <AppDataContext.Provider value={dataContextValue}>
+      <AppContext.Provider value={contextValue}>
+        {children}
 
       {/* Whale Alert Overlay */}
       <AnimatePresence>
@@ -909,12 +1105,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           </div>
         )}
       </AnimatePresence>
-    </AppContext.Provider>
+      </AppContext.Provider>
+    </AppDataContext.Provider>
   );
 }
 
 export function useAppContext() {
   const ctx = useContext(AppContext);
   if (!ctx) throw new Error("useAppContext must be used within an AppProvider");
+  return ctx;
+}
+
+export function useAppData() {
+  const ctx = useContext(AppDataContext);
+  if (!ctx) throw new Error("useAppData must be used within an AppProvider");
   return ctx;
 }

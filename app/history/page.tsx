@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect, useDeferredValue, memo } from "react";
 import { motion, useMotionValue, useTransform, animate, PanInfo } from "framer-motion";
 import { Ghost, Edit2, Trash2, Search, X, CreditCard } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Virtuoso } from "react-virtuoso";
-import { useAppContext } from "@/lib/context";
+import { useAppData } from "@/lib/context";
 import type { Transaction } from "@/lib/types";
 import {
   parseSearchQuery,
@@ -25,8 +25,9 @@ type FilterType = "today" | "week" | "all";
  * buttons remain visible on hover/focus so keyboard users never need the
  * gesture.
  */
-function SwipeableTransactionRow({
+const SwipeableTransactionRow = memo(function SwipeableTransactionRow({
   tx,
+  formattedDate,
   formatCurrency,
   accentColor,
   onEdit,
@@ -36,13 +37,14 @@ function SwipeableTransactionRow({
   onClose,
 }: {
   tx: Transaction;
+  formattedDate: string;
   formatCurrency: (n: number) => string;
   accentColor: string;
-  onEdit: () => void;
-  onDelete: () => void;
+  onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
   isOpen: boolean;
-  onOpen: () => void;
-  onClose: () => void;
+  onOpen: (id: string) => void;
+  onClose: (id: string) => void;
 }) {
   const x = useMotionValue(0);
   const actionsOpacity = useTransform(x, [-160, -40, 0], [1, 0.6, 0]);
@@ -54,18 +56,20 @@ function SwipeableTransactionRow({
     const shouldOpen = info.offset.x < SNAP_THRESHOLD || info.velocity.x < -300;
     if (shouldOpen) {
       animate(x, OPEN, { type: "spring", damping: 28, stiffness: 280 });
-      onOpen();
+      onOpen(tx.id);
       NativeHaptics.lightTick();
     } else {
       animate(x, 0, { type: "spring", damping: 28, stiffness: 280 });
-      onClose();
+      onClose(tx.id);
     }
   };
 
-  // When another row opens, close this one.
-  if (!isOpen && x.get() !== 0) {
-    animate(x, 0, { type: "spring", damping: 30, stiffness: 320 });
-  }
+  // When another row opens, smoothly close this one via effect (never during render).
+  useEffect(() => {
+    if (!isOpen && x.get() !== 0) {
+      animate(x, 0, { type: "spring", damping: 30, stiffness: 320 });
+    }
+  }, [isOpen, x]);
 
   return (
     <div className="relative overflow-hidden rounded-3xl">
@@ -77,7 +81,7 @@ function SwipeableTransactionRow({
       >
         <button
           type="button"
-          onClick={onEdit}
+          onClick={() => onEdit(tx.id)}
           className="pointer-events-auto flex flex-col items-center justify-center w-16 h-full bg-primary/15 rounded-2xl text-primary"
         >
           <Edit2 className="w-5 h-5 mb-0.5" />
@@ -85,7 +89,7 @@ function SwipeableTransactionRow({
         </button>
         <button
           type="button"
-          onClick={onDelete}
+          onClick={() => onDelete(tx.id)}
           className="pointer-events-auto flex flex-col items-center justify-center w-16 h-full bg-rose-500/15 rounded-2xl text-rose-500"
         >
           <Trash2 className="w-5 h-5 mb-0.5" />
@@ -100,7 +104,7 @@ function SwipeableTransactionRow({
         dragElastic={0.1}
         style={{ x }}
         onDragEnd={handleDragEnd}
-        onClick={() => { if (isOpen) { animate(x, 0); onClose(); } }}
+        onClick={() => { if (isOpen) { animate(x, 0); onClose(tx.id); } }}
         className="relative bg-card p-3 sm:p-4 rounded-2xl sm:rounded-3xl shadow-soft border border-border/40 group hover:border-primary/20 transition-colors touch-pan-y w-full max-w-full"
       >
         <div
@@ -148,7 +152,7 @@ function SwipeableTransactionRow({
                 : tx.category || (tx.type === "Income" ? "Income" : tx.type === "Transfer" ? "Transfer" : "General")}
             </h3>
             <p className="text-[10px] text-muted-foreground/70 font-medium mt-0.5 truncate">
-              {new Date(tx.date).toLocaleDateString()} {tx.note ? `- ${tx.note}` : ""}
+              {formattedDate} {tx.note ? `- ${tx.note}` : ""}
             </p>
           </div>
           <h3
@@ -166,17 +170,12 @@ function SwipeableTransactionRow({
           </h3>
         </div>
 
-        {/* Keyboard / mouse fallback controls — desktop only.
-            On mobile users swipe-left to reveal edit/delete, so rendering
-            this row on a touch device just wastes ~55px of vertical space
-            per row (it was `opacity-0` but still consumed layout). Hidden
-            on mobile, visible on ≥md viewports where hover / focus-within
-            actually reveal it. */}
+        {/* Keyboard / mouse fallback controls — desktop only. */}
         <div className="hidden md:flex justify-end gap-2 pl-2 mt-3 border-t border-border/30 pt-3 opacity-0 group-hover:opacity-80 group-focus-within:opacity-80 transition-opacity">
           <button
             type="button"
             aria-label={`Edit ${tx.type.toLowerCase()} of ${formatCurrency(Number(tx.amount))}`}
-            onClick={(e) => { e.stopPropagation(); onEdit(); }}
+            onClick={(e) => { e.stopPropagation(); onEdit(tx.id); }}
             className="flex items-center justify-center p-2 rounded-xl bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors focus:outline-none"
             style={{ borderColor: `${accentColor}15` }}
           >
@@ -185,7 +184,7 @@ function SwipeableTransactionRow({
           <button
             type="button"
             aria-label={`Delete ${tx.type.toLowerCase()} of ${formatCurrency(Number(tx.amount))}`}
-            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            onClick={(e) => { e.stopPropagation(); onDelete(tx.id); }}
             className="flex items-center justify-center p-2 rounded-xl bg-muted text-muted-foreground hover:bg-rose-500/10 hover:text-rose-500 transition-colors focus:outline-none"
           >
             <Trash2 className="w-4 h-4" aria-hidden="true" />
@@ -194,7 +193,7 @@ function SwipeableTransactionRow({
       </motion.div>
     </div>
   );
-}
+});
 
 export default function HistoryPage() {
   const {
@@ -206,15 +205,17 @@ export default function HistoryPage() {
     formatCurrency,
     categories,
     setShowTransactionModal,
-  } = useAppContext();
+  } = useAppData();
 
   // Legacy shortcut pills, still useful above the power-search bar.
   const [filter, setFilter] = useState<FilterType>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
-  // Power Search state
+  // Power Search state — keep controlled input synchronous/instant while
+  // deferring query parsing & full-list filtering so typing never stutters.
   const [searchRaw, setSearchRaw] = useState("");
-  const parsedQuery: SearchQuery = useMemo(() => parseSearchQuery(searchRaw), [searchRaw]);
+  const deferredSearch = useDeferredValue(searchRaw);
+  const parsedQuery: SearchQuery = useMemo(() => parseSearchQuery(deferredSearch), [deferredSearch]);
   const chips = useMemo(() => describeChips(parsedQuery), [parsedQuery]);
 
   // Track which row is in swipe-open state — only one at a time.
@@ -222,8 +223,10 @@ export default function HistoryPage() {
 
   // Derive unique categories present in transactions + user-defined categories.
   const availableCategories = useMemo(() => {
-    const txCats = new Set(transactions.map(tx => tx.category).filter(Boolean));
-    categories.forEach(c => txCats.add(c));
+    const txCats = new Set<string>(categories);
+    for (const tx of transactions) {
+      if (tx.category) txCats.add(tx.category);
+    }
     return Array.from(txCats).sort();
   }, [transactions, categories]);
 
@@ -237,7 +240,7 @@ export default function HistoryPage() {
         const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
         const startOfTomorrow = startOfToday + 86400000;
         result = result.filter(tx => {
-          const t = new Date(tx.date).getTime();
+          const t = Date.parse(tx.date);
           return t >= startOfToday && t < startOfTomorrow;
         });
       } else if (filter === "week") {
@@ -246,7 +249,7 @@ export default function HistoryPage() {
         const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - distanceToMonday).getTime();
         const endOfWeek = startOfWeek + 7 * 86400000;
         result = result.filter(tx => {
-          const t = new Date(tx.date).getTime();
+          const t = Date.parse(tx.date);
           return t >= startOfWeek && t < endOfWeek;
         });
       }
@@ -258,10 +261,26 @@ export default function HistoryPage() {
     }
 
     // Power-search filters AND-apply on top.
-    result = applySearchQuery(result, parsedQuery);
+    if (
+      parsedQuery.terms.length > 0 ||
+      parsedQuery.categories.length > 0 ||
+      parsedQuery.accounts.length > 0 ||
+      parsedQuery.amount ||
+      parsedQuery.date
+    ) {
+      result = applySearchQuery(result, parsedQuery);
+    }
 
     return result;
   }, [transactions, filter, categoryFilter, parsedQuery]);
+
+  const handleOpenRow = useCallback((id: string) => {
+    setOpenRowId(id);
+  }, []);
+
+  const handleCloseRow = useCallback((id: string) => {
+    setOpenRowId((prev) => (prev === id ? null : prev));
+  }, []);
 
   const hasAnyFilter =
     filter !== "all" || categoryFilter !== "all" || searchRaw.trim().length > 0;
@@ -329,6 +348,53 @@ export default function HistoryPage() {
     y.setDate(d.getDate() - 1);
     return { todayDateStr: today, yesterdayDateStr: y.toDateString() };
   }, []);
+
+  // Precompute per-row date headers & formatted date strings once per filtered
+  // list so scrolling Virtuoso never re-parses dates or re-creates strings.
+  const preparedRows = useMemo(() => {
+    const rows: Array<{
+      tx: Transaction;
+      showDateHeader: boolean;
+      dateLabel: string;
+      formattedDate: string;
+    }> = [];
+    let prevDateStr: string | null = null;
+    const labelCache = new Map<string, string>();
+    const shortDateCache = new Map<string, string>();
+
+    for (const tx of filteredTransactions) {
+      const d = new Date(tx.date);
+      const dateStr = d.toDateString();
+      const showDateHeader = dateStr !== prevDateStr;
+      prevDateStr = dateStr;
+
+      let dateLabel = "";
+      if (showDateHeader) {
+        const cachedLabel = labelCache.get(dateStr);
+        if (cachedLabel !== undefined) {
+          dateLabel = cachedLabel;
+        } else {
+          dateLabel =
+            dateStr === todayDateStr
+              ? "Today"
+              : dateStr === yesterdayDateStr
+                ? "Yesterday"
+                : d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+          labelCache.set(dateStr, dateLabel);
+        }
+      }
+
+      let formattedDate = shortDateCache.get(dateStr);
+      if (formattedDate === undefined) {
+        formattedDate = d.toLocaleDateString();
+        shortDateCache.set(dateStr, formattedDate);
+      }
+
+      rows.push({ tx, showDateHeader, dateLabel, formattedDate });
+    }
+
+    return rows;
+  }, [filteredTransactions, todayDateStr, yesterdayDateStr]);
 
   return (
     <div className="animate-in fade-in duration-500 pb-24 overflow-x-hidden max-w-4xl mx-auto">
@@ -506,19 +572,10 @@ export default function HistoryPage() {
           <Virtuoso
             customScrollParent={scrollParent}
             className="w-full"
-            data={filteredTransactions}
+            data={preparedRows}
             increaseViewportBy={{ top: 200, bottom: 600 }}
-            itemContent={(index, tx) => {
-              // Date separator: show a header when the date changes between items
-              const txDate = new Date(tx.date).toDateString();
-              const prevTx = index > 0 ? filteredTransactions[index - 1] : null;
-              const prevDate = prevTx ? new Date(prevTx.date).toDateString() : null;
-              const showDateHeader = index === 0 || txDate !== prevDate;
-
-              const isToday = txDate === todayDateStr;
-              const isYesterday = txDate === yesterdayDateStr;
-              const dateLabel = isToday ? "Today" : isYesterday ? "Yesterday" : new Date(tx.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-
+            itemContent={(_index, row) => {
+              const { tx, showDateHeader, dateLabel, formattedDate } = row;
               return (
                 <div className="w-full">
                   {showDateHeader && (
@@ -530,19 +587,20 @@ export default function HistoryPage() {
                   <div className="pb-2.5">
                     <SwipeableTransactionRow
                       tx={tx}
+                      formattedDate={formattedDate}
                       formatCurrency={formatCurrency}
                       accentColor={accentColor}
                       isOpen={openRowId === tx.id}
-                      onOpen={() => setOpenRowId(tx.id)}
-                      onClose={() => setOpenRowId((prev) => (prev === tx.id ? null : prev))}
-                      onEdit={() => handleEdit(tx.id)}
-                      onDelete={() => handleDelete(tx.id)}
+                      onOpen={handleOpenRow}
+                      onClose={handleCloseRow}
+                      onEdit={handleEdit}
+                      onDelete={handleDelete}
                     />
                   </div>
                 </div>
               );
             }}
-            computeItemKey={(_index, tx) => tx.id}
+            computeItemKey={(_index, row) => row.tx.id}
           />
         </div>
       ) : (

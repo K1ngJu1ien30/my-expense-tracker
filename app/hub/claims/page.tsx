@@ -4,12 +4,12 @@ import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { ArrowLeft, Check, Clock, Receipt } from "lucide-react";
 import Link from "next/link";
-import { useAppContext } from "@/lib/context";
+import { useAppData } from "@/lib/context";
 
 type TabType = "pending" | "cleared";
 
 export default function ClaimsPage() {
-  const { transactions, updateTransaction, addTransaction, accentColor, formatCurrency, triggerToast, confirmAction } = useAppContext();
+  const { transactions, updateTransaction, addTransaction, accentColor, formatCurrency, triggerToast, confirmAction } = useAppData();
   const [activeTab, setActiveTab] = useState<TabType>("pending");
 
   const claimableTransactions = useMemo(
@@ -49,6 +49,7 @@ export default function ClaimsPage() {
           type: "Income",
           amount: Number(tx.amount),
           account: tx.account,
+          account_id: tx.account_id,
           category: "Reimbursement",
           note: `Claim Cleared: ${tx.category}${tx.note ? ` - ${tx.note}` : ""}`,
           date: new Date().toISOString(),
@@ -107,9 +108,8 @@ export default function ClaimsPage() {
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`flex-1 py-2.5 text-sm font-semibold rounded-xl transition-all ${
-                active ? "text-white shadow-sm" : "text-muted-foreground"
-              }`}
+              className={`flex-1 py-2.5 text-sm font-semibold rounded-xl transition-all ${active ? "text-white shadow-sm" : "text-muted-foreground"
+                }`}
               style={active ? { backgroundColor: accentColor } : {}}
             >
               <span className="flex items-center justify-center gap-1.5">
@@ -138,7 +138,7 @@ export default function ClaimsPage() {
               key={tx.id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.04 }}
+              transition={{ delay: Math.min(i * 0.04, 0.3) }}
               className="bg-card p-4 rounded-2xl shadow-sm border border-border/40 relative overflow-hidden"
             >
               <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${activeTab === "pending" ? "bg-amber-500" : "bg-emerald-500"}`} />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type { MutableRefObject } from "react";
 import type { Session } from "@supabase/supabase-js";
 import localforage from "localforage";
@@ -33,53 +33,111 @@ export type CashbackRewardsDeps = {
 export function useCashbackRewards(deps: CashbackRewardsDeps) {
   const { session, isOfflineRef, accountObjects, addTransaction: _addTransaction, setTransactions, triggerToast } = deps;
 
+  const userId = session?.user?.id;
   const [rewardsConfigs, setRewardsConfigs] = useState<Record<string, CardRewardsConfig>>({});
-  const [cashbackRecords, setCashbackRecords] = useState<CashbackRecord[]>([]);
+  const [rawCashbackRecords, setRawCashbackRecords] = useState<CashbackRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const configsKey = getUserCashbackConfigsKey(session?.user?.id);
-  const recordsKey = getUserCashbackRecordsKey(session?.user?.id);
+  const configsKey = getUserCashbackConfigsKey(userId);
+  const recordsKey = getUserCashbackRecordsKey(userId);
 
   const configsRef = useRef(rewardsConfigs);
-  const recordsRef = useRef(cashbackRecords);
+  const recordsRef = useRef(rawCashbackRecords);
+  const accountObjectsRef = useRef(accountObjects);
+  const activeUserIdRef = useRef(userId);
 
   useEffect(() => {
     configsRef.current = rewardsConfigs;
   }, [rewardsConfigs]);
 
   useEffect(() => {
-    recordsRef.current = cashbackRecords;
-  }, [cashbackRecords]);
+    recordsRef.current = rawCashbackRecords;
+  }, [rawCashbackRecords]);
 
-  // ─── 1. Load data from local cache and cloud ────────────────────────────
+  useEffect(() => {
+    accountObjectsRef.current = accountObjects;
+  }, [accountObjects]);
+
+  useEffect(() => {
+    activeUserIdRef.current = userId;
+  }, [userId]);
+
+  // Resolve fresh account display names in memory whenever accountObjects
+  // updates — avoids re-querying IndexedDB/Supabase on account changes.
+  const cashbackRecords = useMemo(() => {
+    if (rawCashbackRecords.length === 0 || accountObjects.length === 0) {
+      return rawCashbackRecords;
+    }
+    const accById = new Map<string, Account>();
+    const accByName = new Map<string, Account>();
+    for (const a of accountObjects) {
+      if (a.id) accById.set(a.id, a);
+      accByName.set(a.name, a);
+    }
+    return rawCashbackRecords.map((rec) => {
+      const cardAcc = accById.get(rec.cardId) || accByName.get(rec.cardId);
+      const destAcc = accById.get(rec.destinationAccountId) || accByName.get(rec.destinationAccountId);
+      const nextCardName = cardAcc?.name || rec.cardName;
+      const nextDestName = destAcc?.name || rec.destinationAccountName;
+      if (nextCardName === rec.cardName && nextDestName === rec.destinationAccountName) {
+        return rec;
+      }
+      return {
+        ...rec,
+        cardName: nextCardName,
+        destinationAccountName: nextDestName,
+      };
+    });
+  }, [rawCashbackRecords, accountObjects]);
+
+  // ─── 1. Load data from local cache and cloud (keyed strictly by userId) ─
   const loadData = useCallback(async () => {
+    if (!userId) {
+      setRewardsConfigs({});
+      setRawCashbackRecords([]);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
 
-    // 1a. Load from local cache first
+    // 1a. Load from local cache in parallel first
     try {
-      const localConfigs = await localforage.getItem<Record<string, CardRewardsConfig>>(configsKey);
+      const [localConfigs, localRecords] = await Promise.all([
+        localforage.getItem<Record<string, CardRewardsConfig>>(configsKey),
+        localforage.getItem<CashbackRecord[]>(recordsKey),
+      ]);
+      if (activeUserIdRef.current !== userId) return;
       if (localConfigs && typeof localConfigs === "object") {
         setRewardsConfigs(localConfigs);
       }
-      const localRecords = await localforage.getItem<CashbackRecord[]>(recordsKey);
       if (Array.isArray(localRecords)) {
-        setCashbackRecords(localRecords);
+        setRawCashbackRecords(localRecords);
       }
     } catch (err) {
       console.warn("[useCashbackRewards] Error reading local cache:", err);
     }
 
-    // 1b. If online and authenticated, fetch from Supabase
-    if (!isOfflineRef.current && session?.user?.id) {
+    // 1b. If online and authenticated, fetch both tables in parallel
+    if (!isOfflineRef.current) {
       try {
-        const { data: rawConfigs, error: cfgErr } = await supabase
-          .from("credit_card_reward_configs")
-          .select("*")
-          .eq("user_id", session.user.id);
+        const [cfgRes, recRes] = await Promise.all([
+          supabase
+            .from("credit_card_reward_configs")
+            .select("account_id,is_enabled,rules,monthly_cap,min_spend_threshold,notes")
+            .eq("user_id", userId),
+          supabase
+            .from("credit_card_cashback_records")
+            .select("id,user_id,account_id,destination_account_id,destination_type,amount,reward_date,transaction_id,note,created_at")
+            .eq("user_id", userId)
+            .order("reward_date", { ascending: false }),
+        ]);
 
-        if (!cfgErr && rawConfigs) {
+        if (activeUserIdRef.current !== userId) return;
+
+        if (!cfgRes.error && cfgRes.data) {
           const mappedConfigs: Record<string, CardRewardsConfig> = {};
-          (rawConfigs as RawRewardConfigRow[]).forEach((row) => {
+          (cfgRes.data as RawRewardConfigRow[]).forEach((row) => {
             const parsedRules =
               typeof row.rules === "string" ? JSON.parse(row.rules) : row.rules || [];
             mappedConfigs[row.account_id] = {
@@ -93,22 +151,17 @@ export function useCashbackRewards(deps: CashbackRewardsDeps) {
             };
           });
           setRewardsConfigs(mappedConfigs);
-          await localforage.setItem(configsKey, mappedConfigs);
+          void localforage.setItem(configsKey, mappedConfigs).catch(() => {});
         }
 
-        const { data: rawRecords, error: recErr } = await supabase
-          .from("credit_card_cashback_records")
-          .select("*")
-          .eq("user_id", session.user.id)
-          .order("reward_date", { ascending: false });
-
-        if (!recErr && rawRecords) {
-          const mappedRecords: CashbackRecord[] = (rawRecords as RawCashbackRecordRow[]).map(
+        if (!recRes.error && recRes.data) {
+          const curAccounts = accountObjectsRef.current;
+          const mappedRecords: CashbackRecord[] = (recRes.data as RawCashbackRecordRow[]).map(
             (row) => {
-              const cardAcc = accountObjects.find(
+              const cardAcc = curAccounts.find(
                 (a) => a.id === row.account_id || a.name === row.account_id
               );
-              const destAcc = accountObjects.find(
+              const destAcc = curAccounts.find(
                 (a) =>
                   a.id === row.destination_account_id || a.name === row.destination_account_id
               );
@@ -129,8 +182,8 @@ export function useCashbackRewards(deps: CashbackRewardsDeps) {
               };
             }
           );
-          setCashbackRecords(mappedRecords);
-          await localforage.setItem(recordsKey, mappedRecords);
+          setRawCashbackRecords(mappedRecords);
+          void localforage.setItem(recordsKey, mappedRecords).catch(() => {});
         }
       } catch (err: unknown) {
         // Table does not exist or network unavailable — offline cache is already loaded
@@ -138,8 +191,10 @@ export function useCashbackRewards(deps: CashbackRewardsDeps) {
       }
     }
 
-    setIsLoading(false);
-  }, [configsKey, recordsKey, isOfflineRef, session, accountObjects]);
+    if (activeUserIdRef.current === userId) {
+      setIsLoading(false);
+    }
+  }, [userId, configsKey, recordsKey, isOfflineRef]);
 
   useEffect(() => {
     // Initial hydration of cached cashback configs and records from storage and Supabase
@@ -260,7 +315,7 @@ export function useCashbackRewards(deps: CashbackRewardsDeps) {
             rpcRecord,
             ...recordsRef.current.filter((r) => r.id !== rpcRecord.id),
           ];
-          setCashbackRecords(nextRecords);
+          setRawCashbackRecords(nextRecords);
           await localforage.setItem(recordsKey, nextRecords);
 
           if (setTransactions && rpcTx) {

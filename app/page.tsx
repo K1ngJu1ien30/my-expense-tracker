@@ -5,7 +5,7 @@ import { motion, AnimatePresence, useMotionValue, useTransform, animate } from "
 import { TrendingUp, Wallet, Target, Clock, HelpCircle, Receipt, CreditCard, AlertTriangle } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer, Tooltip } from "recharts";
 import Link from "next/link";
-import { useAppContext } from "@/lib/context";
+import { useAppData } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
 import { getTimeTheme } from "@/lib/timeTheme";
 import MonthlyReceiptModal from "@/components/MonthlyReceiptModal";
@@ -90,8 +90,23 @@ export default function Dashboard() {
     creditCardPayments,
     creditCardAllocations,
     exchangeRates,
-  } = useAppContext();
-  const pinnedGoals = isGodMode ? goals.map(g => ({ ...g, current: g.target })) : goals.filter(g => g.isPinned);
+  } = useAppData();
+  const pinnedGoals = useMemo(
+    () => (isGodMode ? goals.map(g => ({ ...g, current: g.target })) : goals.filter(g => g.isPinned)),
+    [isGodMode, goals]
+  );
+
+  // Pre-indexed account lookup maps so transaction passes and card renders
+  // run in O(1) instead of scanning accountObjects linearly per transaction.
+  const accountLookup = useMemo(() => {
+    const byId = new Map<string, (typeof accountObjects)[number]>();
+    const byNameLower = new Map<string, (typeof accountObjects)[number]>();
+    for (const a of accountObjects) {
+      if (a.id) byId.set(a.id, a);
+      byNameLower.set(a.name.trim().toLowerCase(), a);
+    }
+    return { byId, byNameLower };
+  }, [accountObjects]);
 
   // ─── Monthly Receipt auto-prompt ───────────────────────────────────────
   // Shows a dismissible card on days 1–7 of each month advertising the
@@ -150,6 +165,13 @@ export default function Dashboard() {
     if (revealTimer.current) clearTimeout(revealTimer.current);
     revealTimer.current = setTimeout(() => setBalanceRevealed(false), 5000);
   };
+
+  useEffect(() => {
+    return () => {
+      if (revealTimer.current) clearTimeout(revealTimer.current);
+      if (godTapTimer.current) clearTimeout(godTapTimer.current);
+    };
+  }, []);
 
   const handleAvatarTap = useCallback(() => {
     godTapCount.current++;
@@ -227,10 +249,10 @@ export default function Dashboard() {
     // Single pass over all transactions for pending income and trends
     transactions.forEach(t => {
       const amtCents = Math.round(Number(t.amount) * 100);
-      const txTime = new Date(t.date).getTime();
-      const txAcc = accountObjects.find(
-        a => (t.account_id && a.id === t.account_id) || a.name.toLowerCase() === (t.account || "").toLowerCase()
-      );
+      const txTime = Date.parse(t.date);
+      const txAcc =
+        (t.account_id ? accountLookup.byId.get(t.account_id) : undefined) ||
+        accountLookup.byNameLower.get((t.account || "").trim().toLowerCase());
       const isSavingsAcc = txAcc ? isSavingsAccount(txAcc) : isSavingsAccount({ name: t.account });
 
       // Pending income
@@ -251,7 +273,7 @@ export default function Dashboard() {
 
       // Trend data
       if (txTime >= weekAgoMs) {
-        const d = new Date(t.date);
+        const d = new Date(txTime);
         const dateKey = `${d.getMonth() + 1}/${d.getDate()}`;
         if (trendMap[dateKey]) {
           if (t.type === "Income") trendMap[dateKey].income += Number(t.amount);
@@ -270,7 +292,7 @@ export default function Dashboard() {
       weeklyTotal: weeklyTotalCents / 100,
       dynamicTrendData: transactions.length > 0 ? trendData : [],
     };
-  }, [transactions, includeSavings, currency, financialPosition, accountObjects]);
+  }, [transactions, includeSavings, currency, financialPosition, accountLookup]);
 
   const { totalBalance, accountBalances, pendingIncome, todayTotal, todayTransactions, weeklyTotal, dynamicTrendData } = dashData;
 
@@ -345,7 +367,7 @@ export default function Dashboard() {
 
     // Visible active accounts
     const visibleAccountNames = accounts.filter(name => {
-      const accObj = accountObjects.find(a => a.name.trim().toLowerCase() === name.trim().toLowerCase());
+      const accObj = accountLookup.byNameLower.get(name.trim().toLowerCase());
       if (accObj?.isArchived) return false;
       const isSavings = accObj ? isSavingsAccount(accObj) : isSavingsAccount({ name });
       if (!includeSavings && isSavings) return false;
@@ -353,7 +375,7 @@ export default function Dashboard() {
     });
 
     const officialCards = visibleAccountNames.map(name => {
-      const accObj = accountObjects.find(a => a.name.trim().toLowerCase() === name.trim().toLowerCase());
+      const accObj = accountLookup.byNameLower.get(name.trim().toLowerCase());
       const isSavings = accObj ? isSavingsAccount(accObj) : isSavingsAccount({ name });
       return {
         name,
@@ -370,7 +392,7 @@ export default function Dashboard() {
       .filter(([name, balance]) => {
         const lower = name.trim().toLowerCase();
         if (allOfficialNames.has(lower)) return false;
-        const accObj = accountObjects.find(a => a.name.trim().toLowerCase() === lower);
+        const accObj = accountLookup.byNameLower.get(lower);
         if (accObj?.isArchived) return false;
         if (!includeSavings && isSavingsAccount({ name })) return false;
         return balance !== 0;
@@ -383,10 +405,10 @@ export default function Dashboard() {
       }));
 
     return [...officialCards, ...ghostCards];
-  }, [accountBalances, accounts, accountObjects, includeSavings, currency]);
+  }, [accountBalances, accounts, accountObjects, accountLookup, includeSavings, currency]);
 
   const getCurrencyPrefix = (accountName: string) => {
-    const accObj = accountObjects.find(a => a.name.toLowerCase() === accountName.toLowerCase());
+    const accObj = accountLookup.byNameLower.get(accountName.trim().toLowerCase());
     return accObj?.currencyCode || currency;
   };
 

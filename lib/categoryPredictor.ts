@@ -54,34 +54,91 @@ export function tokenise(note: string): string[] {
     .filter((t) => t.length >= 2 && !STOP_WORDS.has(t));
 }
 
-/** Load the persisted model for a user, or an empty one if absent. */
-export async function loadModel(userId?: string): Promise<PredictorModel> {
+/** In-memory model cache keyed by user-scoped predictor storage key. */
+const memoryModelCache = new Map<string, PredictorModel>();
+/** In-flight IndexedDB loads keyed by storage key to avoid duplicate reads. */
+const inFlightLoads = new Map<string, Promise<PredictorModel>>();
+
+/** Synchronously return the already-loaded in-memory model if cached. */
+export function getCachedModel(userId?: string): PredictorModel | null {
   const key = getUserPredictorKey(userId);
-  try {
-    let stored = await localforage.getItem<PredictorModel>(key);
-    if (!stored && userId) {
-      // Migrate from legacy un-scoped key if exists
-      const legacy = await localforage.getItem<PredictorModel>(LEGACY_PREDICTOR_KEY);
-      if (legacy) {
-        stored = legacy;
-        await localforage.setItem(key, legacy);
-        await localforage.removeItem(LEGACY_PREDICTOR_KEY);
-      }
-    }
-    return stored || {};
-  } catch {
-    return {};
-  }
+  return memoryModelCache.get(key) ?? null;
 }
 
-/** Persist the model to IndexedDB for a user. Swallows errors silently. */
+/** Load the persisted model for a user, using the in-memory cache first. */
+export async function loadModel(userId?: string): Promise<PredictorModel> {
+  const key = getUserPredictorKey(userId);
+  const cached = memoryModelCache.get(key);
+  if (cached) return cached;
+
+  const pending = inFlightLoads.get(key);
+  if (pending) return pending;
+
+  const loadPromise = (async () => {
+    try {
+      let stored = await localforage.getItem<PredictorModel>(key);
+      if (!stored && userId) {
+        // Migrate from legacy un-scoped key if exists
+        const legacy = await localforage.getItem<PredictorModel>(LEGACY_PREDICTOR_KEY);
+        if (legacy) {
+          stored = legacy;
+          await localforage.setItem(key, legacy);
+          await localforage.removeItem(LEGACY_PREDICTOR_KEY);
+        }
+      }
+      const resolved = stored || {};
+      memoryModelCache.set(key, resolved);
+      return resolved;
+    } catch {
+      return {};
+    } finally {
+      inFlightLoads.delete(key);
+    }
+  })();
+
+  inFlightLoads.set(key, loadPromise);
+  return loadPromise;
+}
+
+/** Persist the model to memory immediately and IndexedDB asynchronously. */
 export async function saveModel(model: PredictorModel, userId?: string): Promise<void> {
   const key = getUserPredictorKey(userId);
+  memoryModelCache.set(key, model);
   try {
     await localforage.setItem(key, model);
   } catch {
-    /* swallow */
+    /* swallow — predictor persistence must never break app flow */
   }
+}
+
+/**
+ * Fire-and-forget incremental learning after a successful transaction save.
+ * Updates the in-memory cache immediately if loaded and persists to IndexedDB
+ * asynchronously. Never throws and never blocks transaction saving.
+ */
+export function learnAndSaveAsync(
+  note: string | undefined,
+  category: string | undefined,
+  userId?: string
+): void {
+  if (!note || !category) return;
+  const key = getUserPredictorKey(userId);
+  const cached = memoryModelCache.get(key);
+
+  if (cached) {
+    learn(cached, note, category);
+    void saveModel(cached, userId).catch(() => {});
+    return;
+  }
+
+  void loadModel(userId)
+    .then((model) => {
+      learn(model, note, category);
+      return saveModel(model, userId);
+    })
+    .catch(() => {
+      /* swallow */
+    });
 }
 
 /**

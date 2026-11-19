@@ -12,7 +12,7 @@ import { useAppContext } from "@/lib/context";
 import { AnimatePresence, motion } from "framer-motion";
 
 import DesktopSidebar from "./DesktopSidebar";
-import { WifiOff } from "lucide-react";
+import { WifiOff, RefreshCw } from "lucide-react";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const {
@@ -20,6 +20,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     session,
     authLoading,
     isOffline,
+    isSyncing,
     showTransactionModal,
     setShowTransactionModal,
     showCreditCardPaymentModal,
@@ -51,20 +52,28 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   // Capacitor hardware back button — uses Next.js router
   useEffect(() => {
-    let cleanup: (() => void) | undefined;
+    let cancelled = false;
+    let handle: { remove: () => Promise<void> } | null = null;
     try {
-      import('@capacitor/app').then(({ App }) => {
-        App.addListener('backButton', ({ canGoBack }: { canGoBack: boolean }) => {
+      import('@capacitor/app').then(async ({ App }) => {
+        const listener = await App.addListener('backButton', ({ canGoBack }: { canGoBack: boolean }) => {
           if (canGoBack) {
             router.back();
           } else {
             App.exitApp();
           }
         });
-        cleanup = () => { App.removeAllListeners().catch(() => {}); };
+        if (cancelled) {
+          listener.remove().catch(() => {});
+        } else {
+          handle = listener;
+        }
       }).catch(() => {});
     } catch {}
-    return () => { if (cleanup) cleanup(); };
+    return () => {
+      cancelled = true;
+      handle?.remove().catch(() => {});
+    };
   }, [router]);
 
   useEffect(() => {
@@ -131,11 +140,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     try { localStorage.removeItem("ai_greeting_cache"); } catch {}
 
-    let cleanup: (() => void) | undefined;
+    let cancelled = false;
+    let handle: { remove: () => Promise<void> } | null = null;
     let backgroundedAt: number | null = null;
     try {
-      import('@capacitor/app').then(({ App }) => {
-        App.addListener('appStateChange', ({ isActive }: { isActive: boolean }) => {
+      import('@capacitor/app').then(async ({ App }) => {
+        const listener = await App.addListener('appStateChange', ({ isActive }: { isActive: boolean }) => {
           const el = document.getElementById('app-privacy-blur');
           if (el) el.style.display = isActive ? 'none' : 'block';
 
@@ -149,10 +159,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             backgroundedAt = null;
           }
         });
-        cleanup = () => {};
+        if (cancelled) {
+          listener.remove().catch(() => {});
+        } else {
+          handle = listener;
+        }
       }).catch(() => {});
     } catch {}
-    return () => { if (cleanup) cleanup(); };
+    return () => {
+      cancelled = true;
+      handle?.remove().catch(() => {});
+    };
   }, []);
 
   if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-background"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"/></div>;
@@ -192,10 +209,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <AuthGate>
       <div className="relative w-full min-h-screen bg-background flex flex-col lg:flex-row overflow-x-hidden">
-        {/* Persistent Offline Sync Reassurance Indicator */}
+        {/* Persistent Offline / Background Sync Status Indicator */}
         <AnimatePresence>
-          {isOffline && (
+          {isOffline ? (
             <motion.div
+              key="offline-pill"
               initial={{ y: -20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: -20, opacity: 0 }}
@@ -207,7 +225,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <WifiOff className="w-3 h-3 text-white shrink-0" />
               <span>Offline — Changes saved locally</span>
             </motion.div>
-          )}
+          ) : isSyncing && !toast ? (
+            <motion.div
+              key="syncing-pill"
+              initial={{ y: -12, opacity: 0 }}
+              animate={{ y: 0, opacity: 0.9 }}
+              exit={{ y: -12, opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              role="status"
+              aria-live="polite"
+              className="fixed top-[calc(0.5rem+var(--safe-area-inset-top,env(safe-area-inset-top,0px)))] sm:top-3 left-1/2 -translate-x-1/2 z-[40] flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-card/85 text-muted-foreground border border-border/50 backdrop-blur-md shadow-sm text-[10px] font-semibold tracking-tight pointer-events-none"
+            >
+              <RefreshCw className="w-2.5 h-2.5 animate-spin shrink-0" aria-hidden="true" />
+              <span>Syncing…</span>
+            </motion.div>
+          ) : null}
         </AnimatePresence>
 
         {/* Global Toast live region (fixed top center) */}

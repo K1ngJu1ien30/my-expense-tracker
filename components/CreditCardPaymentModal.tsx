@@ -93,10 +93,12 @@ export default function CreditCardPaymentModal({
   const [stNote, setStNote] = useState<string>("");
   const [isSavingStatement, setIsSavingStatement] = useState(false);
   const paymentOperationIdRef = useRef<string | null>(null);
+  const wasOpenRef = useRef(false);
 
-  // ─── Initialize selected card and source ─────────────────────────────────
+  // ─── Initialize selected card and source ONLY on closed → open ───────────
   useEffect(() => {
     if (!isOpen) {
+      wasOpenRef.current = false;
       // Form reset on modal dismissal: syncs external visibility prop with internal step state.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setStep("edit");
@@ -106,15 +108,28 @@ export default function CreditCardPaymentModal({
       return;
     }
 
-    if (initialCardId && creditCards.some((c) => c.id === initialCardId || c.name === initialCardId)) {
-      const match = creditCards.find((c) => c.id === initialCardId || c.name === initialCardId);
-      setSelectedCardId(match?.id || initialCardId);
-    } else if (creditCards.length > 0 && (!selectedCardId || !creditCards.some((c) => c.id === selectedCardId))) {
-      setSelectedCardId(creditCards[0].id || creditCards[0].name);
-    }
+    const justOpened = !wasOpenRef.current;
+    wasOpenRef.current = true;
 
-    if (liquidSources.length > 0 && (!sourceAccountId || !liquidSources.some((s) => s.id === sourceAccountId))) {
-      setSourceAccountId(liquidSources[0].id || liquidSources[0].name);
+    if (justOpened) {
+      if (initialCardId && creditCards.some((c) => c.id === initialCardId || c.name === initialCardId)) {
+        const match = creditCards.find((c) => c.id === initialCardId || c.name === initialCardId);
+        setSelectedCardId(match?.id || initialCardId);
+      } else if (creditCards.length > 0 && (!selectedCardId || !creditCards.some((c) => c.id === selectedCardId))) {
+        setSelectedCardId(creditCards[0].id || creditCards[0].name);
+      }
+
+      if (liquidSources.length > 0 && (!sourceAccountId || !liquidSources.some((s) => s.id === sourceAccountId))) {
+        setSourceAccountId(liquidSources[0].id || liquidSources[0].name);
+      }
+    } else {
+      // While open, only seed if empty (e.g. accounts arrived after open)
+      if (!selectedCardId && creditCards.length > 0) {
+        setSelectedCardId(creditCards[0].id || creditCards[0].name);
+      }
+      if (!sourceAccountId && liquidSources.length > 0) {
+        setSourceAccountId(liquidSources[0].id || liquidSources[0].name);
+      }
     }
   }, [isOpen, initialCardId, creditCards, liquidSources, selectedCardId, sourceAccountId]);
 
@@ -135,10 +150,14 @@ export default function CreditCardPaymentModal({
   const sourceCurrency = (currentSource?.currencyCode || currency).trim().toUpperCase();
   const isCurrencyMismatch = cardCurrency !== sourceCurrency;
 
-  // Balances calculation
+  // Balances calculation — gated on `isOpen` so this globally mounted modal
+  // does zero full-ledger work while closed.
   const balancesData = useMemo(
-    () => calculateAccountBalances(accountObjects, transactions),
-    [accountObjects, transactions]
+    () =>
+      isOpen
+        ? calculateAccountBalances(accountObjects, transactions)
+        : { breakdowns: [], balancesByName: {} as Record<string, number>, balancesById: {} as Record<string, number>, orphanedTransactions: [] },
+    [isOpen, accountObjects, transactions]
   );
 
   // Live card debt: in balance engine, credit card debt is negative balance

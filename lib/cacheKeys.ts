@@ -1,4 +1,5 @@
 import localforage from "localforage";
+import { debugLog } from "./debugLog";
 
 export const LEGACY_DATA_CACHE_KEY = "tracker_data_cache";
 export const LEGACY_PREDICTOR_KEY = "category_predictor_v1";
@@ -6,6 +7,15 @@ export const LEGACY_PIN_KEY = "app_lock_pin";
 
 export function getUserDataCacheKey(userId?: string): string {
   return userId ? `tracker_data_cache_${userId}` : LEGACY_DATA_CACHE_KEY;
+}
+
+/**
+ * Lightweight user-scoped metadata cache key (accounts + categories only).
+ * Stored in localStorage for instant synchronous cold-start paint without
+ * duplicating or JSON-stringifying the entire transaction history.
+ */
+export function getUserMetaCacheKey(userId?: string): string {
+  return userId ? `tracker_meta_cache_${userId}` : "tracker_meta_cache";
 }
 
 export function getUserPredictorKey(userId?: string): string {
@@ -54,24 +64,55 @@ export async function migrateLegacyCacheToUser(userId: string): Promise<void> {
       if (legacyCache) {
         await localforage.setItem(userKey, legacyCache);
         await localforage.removeItem(LEGACY_DATA_CACHE_KEY);
-        console.log(`[cacheKeys] Migrated legacy IndexedDB cache to user ${userId}`);
+        debugLog(`[cacheKeys] Migrated legacy IndexedDB cache to user ${userId}`);
       }
     }
   } catch (err) {
     console.warn("[cacheKeys] IndexedDB cache migration failed:", err);
   }
 
-  // 2. localStorage migration
+  // 2. Clean up oversized legacy localStorage mirror (IndexedDB is the primary
+  //    store for transactions; only lightweight metadata belongs in localStorage).
   if (typeof window !== "undefined") {
     try {
-      const userLs = localStorage.getItem(userKey);
-      if (!userLs) {
-        const legacyLs = localStorage.getItem(LEGACY_DATA_CACHE_KEY);
-        if (legacyLs) {
-          localStorage.setItem(userKey, legacyLs);
-          localStorage.removeItem(LEGACY_DATA_CACHE_KEY);
-          console.log(`[cacheKeys] Migrated legacy localStorage cache to user ${userId}`);
+      const legacyLs = localStorage.getItem(LEGACY_DATA_CACHE_KEY);
+      if (legacyLs) {
+        const metaKey = getUserMetaCacheKey(userId);
+        if (!localStorage.getItem(metaKey)) {
+          try {
+            const parsed = JSON.parse(legacyLs);
+            const meta = {
+              accounts: parsed?.accounts,
+              categories: parsed?.categories,
+            };
+            localStorage.setItem(metaKey, JSON.stringify(meta));
+          } catch {
+            /* ignore malformed legacy blob */
+          }
         }
+        localStorage.removeItem(LEGACY_DATA_CACHE_KEY);
+        debugLog(`[cacheKeys] Migrated legacy localStorage metadata to user ${userId}`);
+      }
+      // Also prune any old oversized full-payload localStorage mirror for this user
+      // after extracting its tiny metadata slice.
+      const userFullLs = localStorage.getItem(userKey);
+      if (userFullLs) {
+        const metaKey = getUserMetaCacheKey(userId);
+        if (!localStorage.getItem(metaKey)) {
+          try {
+            const parsed = JSON.parse(userFullLs);
+            localStorage.setItem(
+              metaKey,
+              JSON.stringify({
+                accounts: parsed?.accounts,
+                categories: parsed?.categories,
+              })
+            );
+          } catch {
+            /* ignore */
+          }
+        }
+        localStorage.removeItem(userKey);
       }
     } catch (err) {
       console.warn("[cacheKeys] localStorage cache migration failed:", err);

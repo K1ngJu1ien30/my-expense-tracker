@@ -17,7 +17,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import Link from "next/link";
-import { useAppContext } from "@/lib/context";
+import { useAppData } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 import { calculateAccountBalances } from "@/lib/balance";
@@ -56,7 +56,7 @@ export default function CreditCardsDashboardPage() {
     saveRewardsConfig,
     recordConfirmedCashback,
     addTransaction,
-  } = useAppContext();
+  } = useAppData();
 
   const [showCashbackModal, setShowCashbackModal] = useState(false);
   const [showFinanceChargeModal, setShowFinanceChargeModal] = useState(false);
@@ -149,7 +149,7 @@ export default function CreditCardsDashboardPage() {
       const cardDebt = bal < 0 ? Math.abs(bal) : 0;
       totalDebt += cardDebt;
 
-      const limit = Number(card.creditLimit || card.cardDetails?.accountId || 0);
+      const limit = Number(card.creditLimit || 0);
       if (limit > 0) {
         totalLimit += limit;
         cardsWithLimitCount++;

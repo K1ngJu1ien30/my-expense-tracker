@@ -15,7 +15,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { useAppContext } from "@/lib/context";
+import { useAppData } from "@/lib/context";
 import {
   Receipt,
   Calendar as CalendarIcon,
@@ -150,7 +150,7 @@ const MONTH_NAMES = [
 const WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export default function AnalyticsPage() {
-  const { accentColor, transactions, currency, formatCurrency } = useAppContext();
+  const { accentColor, transactions, currency, formatCurrency } = useAppData();
 
   // Navigation & Filter state
   const [activeTab, setActiveTab] = useState<"overview" | "compare">("overview");
@@ -299,25 +299,59 @@ export default function AnalyticsPage() {
     };
   }, [timeFilter, periodOffset, customStartDate, customEndDate]);
 
+  // ─── Pre-parsed active transactions (single Date-parse pass) ─────────────
+  // Avoids re-parsing `new Date(tx.date)` across 6 separate analytics memos.
+  const parsedTransactions = useMemo(() => {
+    const out: Array<{
+      tx: Transaction;
+      time: number;
+      year: number;
+      month: number;
+      dayOfMonth: number;
+      weekdayIdx: number; // 0=Mon .. 6=Sun
+      amount: number;
+    }> = [];
+    for (const tx of transactions) {
+      if (tx.deleted_at) continue;
+      const d = new Date(tx.date);
+      const time = d.getTime();
+      if (isNaN(time)) continue;
+      const day = d.getDay();
+      out.push({
+        tx,
+        time,
+        year: d.getFullYear(),
+        month: d.getMonth(),
+        dayOfMonth: d.getDate(),
+        weekdayIdx: day === 0 ? 6 : day - 1,
+        amount: Number(tx.amount) || 0,
+      });
+    }
+    return out;
+  }, [transactions]);
+
   // ─── Filtered Transactions (Current Period & Previous Period) ─────────────
-  const { currentPeriodTxs, prevPeriodTxs } = useMemo(() => {
+  const { currentPeriodEntries, currentPeriodTxs, prevPeriodTxs } = useMemo(() => {
+    const startMs = periodStart.getTime();
+    const endMs = periodEnd.getTime();
+    const prevStartMs = prevPeriodStart.getTime();
+    const prevEndMs = prevPeriodEnd.getTime();
+
+    const curEntries: typeof parsedTransactions = [];
     const cur: Transaction[] = [];
     const prev: Transaction[] = [];
 
-    transactions.forEach((tx) => {
-      if (tx.deleted_at) return;
-      const d = new Date(tx.date);
-      if (isNaN(d.getTime())) return;
-
-      if (d >= periodStart && d <= periodEnd) {
-        cur.push(tx);
-      } else if (d >= prevPeriodStart && d <= prevPeriodEnd) {
-        prev.push(tx);
+    for (const entry of parsedTransactions) {
+      if (entry.time >= startMs && entry.time <= endMs) {
+        curEntries.push(entry);
+        cur.push(entry.tx);
+      } else if (entry.time >= prevStartMs && entry.time <= prevEndMs) {
+        prev.push(entry.tx);
       }
-    });
+    }
 
-    return { currentPeriodTxs: cur, prevPeriodTxs: prev };
-  }, [transactions, periodStart, periodEnd, prevPeriodStart, prevPeriodEnd]);
+    return { currentPeriodEntries: curEntries, currentPeriodTxs: cur, prevPeriodTxs: prev };
+  }, [parsedTransactions, periodStart, periodEnd, prevPeriodStart, prevPeriodEnd]);
 
   // ─── KPI Scorecard Computations ──────────────────────────────────────────
   const kpis = useMemo(() => {
@@ -457,17 +491,13 @@ export default function AnalyticsPage() {
     let weekdayTotal = 0;
     let weekendTotal = 0;
 
-    currentPeriodTxs.forEach((tx) => {
-      if (tx.type !== "Expense") return;
-      const d = new Date(tx.date);
-      const day = d.getDay();
-      const idx = day === 0 ? 6 : day - 1; // 0=Mon, 6=Sun
-      const amt = Number(tx.amount) || 0;
-      totals[idx] += amt;
+    for (const entry of currentPeriodEntries) {
+      if (entry.tx.type !== "Expense") continue;
+      totals[entry.weekdayIdx] += entry.amount;
 
-      if (idx >= 5) weekendTotal += amt;
-      else weekdayTotal += amt;
-    });
+      if (entry.weekdayIdx >= 5) weekendTotal += entry.amount;
+      else weekdayTotal += entry.amount;
+    }
 
     const maxVal = Math.max(...totals, 1);
     const data = WEEKDAY_NAMES.map((name, i) => ({
@@ -480,7 +510,7 @@ export default function AnalyticsPage() {
     const weekendPct = totalSpent > 0 ? Math.round((weekendTotal / totalSpent) * 100) : 0;
 
     return { data, weekdayTotal, weekendTotal, weekendPct };
-  }, [currentPeriodTxs]);
+  }, [currentPeriodEntries]);
 
   // ─── Largest Single Purchases ────────────────────────────────────────────
   const largestPurchases = useMemo(() => {
@@ -496,17 +526,17 @@ export default function AnalyticsPage() {
     const data: CashFlowRow[] = [];
     const map: Record<string, CashFlowRow> = {};
     const uniqueCats = new Set<string>();
+    const shortMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-    const chronologicalTxs = [...currentPeriodTxs].reverse();
-
-    chronologicalTxs.forEach((t) => {
-      if (t.type !== "Expense") return;
-      const d = new Date(t.date);
+    for (let i = currentPeriodEntries.length - 1; i >= 0; i--) {
+      const entry = currentPeriodEntries[i];
+      const t = entry.tx;
+      if (t.type !== "Expense") continue;
 
       const key =
         timeFilter === "YEAR"
-          ? `${d.toLocaleString("default", { month: "short" })}`
-          : `${d.getMonth() + 1}/${d.getDate()}`;
+          ? shortMonths[entry.month]
+          : `${entry.month + 1}/${entry.dayOfMonth}`;
 
       if (!map[key]) {
         map[key] = { name: key };
@@ -515,35 +545,35 @@ export default function AnalyticsPage() {
       uniqueCats.add(t.category);
       const prev =
         typeof map[key][t.category] === "number" ? (map[key][t.category] as number) : 0;
-      map[key][t.category] = prev + Number(t.amount);
-    });
+      map[key][t.category] = prev + entry.amount;
+    }
 
     const categoriesArr = Array.from(uniqueCats);
     const colors = categoriesArr.map((cat) => getCategoryColor(cat));
     return { data, categories: categoriesArr, colors };
-  }, [currentPeriodTxs, timeFilter]);
+  }, [currentPeriodEntries, timeFilter]);
 
   // ─── Velocity Projection (Month view) ────────────────────────────────────
   const velocityData = useMemo(() => {
     const now = new Date();
+    const nowYear = now.getFullYear();
+    const nowMonth = now.getMonth();
     const currentDay = now.getDate();
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const daysInMonth = new Date(nowYear, nowMonth + 1, 0).getDate();
 
     const dailySpend: Record<number, number> = {};
     let excludedTotal = 0;
     let excludedCount = 0;
-    transactions.forEach((t) => {
-      const d = new Date(t.date);
-      if (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear()) return;
-      if (t.type !== "Expense" || t.deleted_at) return;
-      if (countsTowardVelocity(t)) {
-        const day = d.getDate();
-        dailySpend[day] = (dailySpend[day] || 0) + Number(t.amount);
+    for (const entry of parsedTransactions) {
+      if (entry.month !== nowMonth || entry.year !== nowYear) continue;
+      if (entry.tx.type !== "Expense") continue;
+      if (countsTowardVelocity(entry.tx)) {
+        dailySpend[entry.dayOfMonth] = (dailySpend[entry.dayOfMonth] || 0) + entry.amount;
       } else {
-        excludedTotal += Number(t.amount);
+        excludedTotal += entry.amount;
         excludedCount += 1;
       }
-    });
+    }
 
     let cumulative = 0;
     const data: { day: number; actual?: number; projected?: number }[] = [];
@@ -565,10 +595,10 @@ export default function AnalyticsPage() {
     let projCumulative = cumulative;
     for (let d = currentDay + 1; d <= daysInMonth; d++) {
       projCumulative += dailyAvg;
-      const existing = data.find((item) => item.day === d);
+      const existing = data[d - 1];
       if (existing) existing.projected = Math.round(projCumulative * 100) / 100;
     }
-    const todayEntry = data.find((item) => item.day === currentDay);
+    const todayEntry = data[currentDay - 1];
     if (todayEntry) todayEntry.projected = cumulative;
 
     const projectedTotal = Math.round(dailyAvg * daysInMonth * 100) / 100;
@@ -583,28 +613,27 @@ export default function AnalyticsPage() {
       excludedTotal,
       excludedCount,
     };
-  }, [transactions]);
+  }, [parsedTransactions]);
 
-  // ─── Available Historic Months ───────────────────────────────────────────
+  // ─── Available Historic Months (computed lazily when modal is open) ──────
   const availableHistoricMonths = useMemo(() => {
+    if (!isHistoricModalOpen) return [];
+
     const map = new Map<string, { year: number; month: number; total: number; count: number }>();
     const now = new Date();
+    const nowYear = now.getFullYear();
+    const nowMonth = now.getMonth();
 
-    transactions.forEach((t) => {
-      if (t.type !== "Expense" || t.deleted_at) return;
-      const d = new Date(t.date);
-      if (isNaN(d.getTime())) return;
-      const year = d.getFullYear();
-      const month = d.getMonth();
-      if (year > now.getFullYear() || (year === now.getFullYear() && month > now.getMonth()))
-        return;
+    for (const entry of parsedTransactions) {
+      if (entry.tx.type !== "Expense") continue;
+      if (entry.year > nowYear || (entry.year === nowYear && entry.month > nowMonth)) continue;
 
-      const key = `${year}-${month}`;
-      const prev = map.get(key) || { year, month, total: 0, count: 0 };
-      prev.total += Number(t.amount);
+      const key = `${entry.year}-${entry.month}`;
+      const prev = map.get(key) || { year: entry.year, month: entry.month, total: 0, count: 0 };
+      prev.total += entry.amount;
       prev.count += 1;
       map.set(key, prev);
-    });
+    }
 
     const list = Array.from(map.values()).sort((a, b) => {
       if (a.year !== b.year) return b.year - a.year;
@@ -615,7 +644,7 @@ export default function AnalyticsPage() {
 
     const fallbackList = [];
     for (let i = 0; i < 12; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const d = new Date(nowYear, nowMonth - i, 1);
       fallbackList.push({
         year: d.getFullYear(),
         month: d.getMonth(),
@@ -624,7 +653,7 @@ export default function AnalyticsPage() {
       });
     }
     return fallbackList;
-  }, [transactions]);
+  }, [parsedTransactions, isHistoricModalOpen]);
 
   // Month selector options for quick jumping in Month mode
   const monthPickerOptions = useMemo(() => {
@@ -641,8 +670,20 @@ export default function AnalyticsPage() {
     return options.reverse();
   }, []);
 
-  // ─── Compare Tab Computations ────────────────────────────────────────────
+  // ─── Compare Tab Computations (only runs when Compare tab is active) ─────
   const comparisonData = useMemo(() => {
+    if (activeTab !== "compare") {
+      return {
+        labelA: "Period A",
+        labelB: "Period B",
+        totalA: 0,
+        totalB: 0,
+        netDiff: 0,
+        pctChange: 0,
+        categoryRows: [] as Array<{ category: string; costA: number; costB: number; delta: number; pct: number }>,
+      };
+    }
+
     const now = new Date();
     let labelA = "Period A";
     let labelB = "Period B";
@@ -685,25 +726,27 @@ export default function AnalyticsPage() {
       endB = comparePeriodBEnd ? new Date(comparePeriodBEnd + "T23:59:59") : new Date();
     }
 
+    const startAMs = startA.getTime();
+    const endAMs = endA.getTime();
+    const startBMs = startB.getTime();
+    const endBMs = endB.getTime();
+
     const catMapA: Record<string, number> = {};
     const catMapB: Record<string, number> = {};
     let totalA = 0;
     let totalB = 0;
 
-    transactions.forEach((t) => {
-      if (t.type !== "Expense" || t.deleted_at) return;
-      const d = new Date(t.date);
-      const amt = Number(t.amount) || 0;
-
-      if (d >= startA && d <= endA) {
-        catMapA[t.category] = (catMapA[t.category] || 0) + amt;
-        totalA += amt;
+    for (const entry of parsedTransactions) {
+      if (entry.tx.type !== "Expense") continue;
+      if (entry.time >= startAMs && entry.time <= endAMs) {
+        catMapA[entry.tx.category] = (catMapA[entry.tx.category] || 0) + entry.amount;
+        totalA += entry.amount;
       }
-      if (d >= startB && d <= endB) {
-        catMapB[t.category] = (catMapB[t.category] || 0) + amt;
-        totalB += amt;
+      if (entry.time >= startBMs && entry.time <= endBMs) {
+        catMapB[entry.tx.category] = (catMapB[entry.tx.category] || 0) + entry.amount;
+        totalB += entry.amount;
       }
-    });
+    }
 
     const netDiff = totalB - totalA;
     const pctChange = totalA > 0 ? (netDiff / totalA) * 100 : 0;
@@ -720,7 +763,7 @@ export default function AnalyticsPage() {
       .sort((a, b) => b.delta - a.delta);
 
     return { labelA, labelB, totalA, totalB, netDiff, pctChange, categoryRows };
-  }, [transactions, comparePreset, comparePeriodAStart, comparePeriodAEnd, comparePeriodBStart, comparePeriodBEnd]);
+  }, [activeTab, parsedTransactions, comparePreset, comparePeriodAStart, comparePeriodAEnd, comparePeriodBStart, comparePeriodBEnd]);
 
   return (
     <div className="p-3.5 sm:p-6 animate-in fade-in duration-500 space-y-3.5 sm:space-y-6 pb-24 relative min-h-screen overflow-x-hidden">
@@ -1209,42 +1252,35 @@ export default function AnalyticsPage() {
                       </button>
 
                       {/* Expanded Category Transactions Deep Dive */}
-                      <AnimatePresence>
-                        {isExpanded && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: "auto", opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            className="px-3.5 pb-3.5 pt-1 space-y-2 border-t border-border/20 bg-muted/20 text-xs"
-                          >
-                            <div className="flex items-center justify-between text-[10px] text-muted-foreground font-bold">
-                              <span>Average: {formatCurrency(cat.avg)}</span>
-                              <span>Top Transactions:</span>
-                            </div>
+                      {isExpanded && (
+                        <div className="px-3.5 pb-3.5 pt-1 space-y-2 border-t border-border/20 bg-muted/20 text-xs animate-in fade-in duration-150">
+                          <div className="flex items-center justify-between text-[10px] text-muted-foreground font-bold">
+                            <span>Average: {formatCurrency(cat.avg)}</span>
+                            <span>Top Transactions:</span>
+                          </div>
 
-                            <div className="space-y-1.5">
-                              {cat.topTxs.map((tx) => (
-                                <div
-                                  key={tx.id}
-                                  className="flex items-center justify-between bg-card p-2 rounded-xl border border-border/30"
-                                >
-                                  <div className="min-w-0 pr-2">
-                                    <p className="font-bold text-foreground text-xs truncate">
-                                      {tx.note || tx.category}
-                                    </p>
-                                    <p className="text-[9px] text-muted-foreground">
-                                      {new Date(tx.date).toLocaleDateString()} • {tx.account}
-                                    </p>
-                                  </div>
-                                  <span className="font-black text-foreground shrink-0 text-xs">
-                                    {formatCurrency(Number(tx.amount))}
-                                  </span>
+                          <div className="space-y-1.5">
+                            {cat.topTxs.map((tx) => (
+                              <div
+                                key={tx.id}
+                                className="flex items-center justify-between bg-card p-2 rounded-xl border border-border/30"
+                              >
+                                <div className="min-w-0 pr-2">
+                                  <p className="font-bold text-foreground text-xs truncate">
+                                    {tx.note || tx.category}
+                                  </p>
+                                  <p className="text-[9px] text-muted-foreground">
+                                    {new Date(tx.date).toLocaleDateString()} • {tx.account}
+                                  </p>
                                 </div>
-                              ))}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+                                <span className="font-black text-foreground shrink-0 text-xs">
+                                  {formatCurrency(Number(tx.amount))}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })

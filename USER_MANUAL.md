@@ -1,4 +1,4 @@
-# Expense Tracker Pro — User Manual (v3.1.0)
+# Expense Tracker Pro — User Manual (v3.5.0)
 
 Welcome to **Expense Tracker Pro**. This user manual provides complete documentation of the application's interface, accounting principles, navigation workflows, and financial features.
 
@@ -80,9 +80,9 @@ To avoid ambiguity, the application uses standardized financial terminology thro
 2. Select **Expense** or **Income**.
 3. Enter the amount (e.g. `24.50`). The app calculates with integer cents (`2450`) to eliminate floating-point rounding errors.
 4. Select the **Account** (e.g. *Maybank Current* or *GrabPay*).
-5. Choose a **Category** (e.g. *Food & Dining*). The app's smart category predictor suggests categories based on your note.
-6. Optional: Enter a note (e.g. `"Chicken rice and iced lemon tea"`).
-7. Tap **Save Transaction**. The entry immediately updates your account balance and persists to local IndexedDB storage before syncing to the cloud.
+5. Choose a **Category** (e.g. *Food & Dining*). As you type a note, the on-device category predictor suggests likely categories cleanly after a brief pause without interrupting typing.
+6. Optional: Enter a note (e.g. `"Chicken rice and iced lemon tea"`). Your in-progress amount and note are draft-protected and will never be cleared by background cloud syncing or startup hydration.
+7. Tap **Save Transaction**. The entry immediately updates your account balance and persists safely (directly to Supabase when online, or to the durable local offline queue when disconnected).
 
 ### B. Account Transfers
 
@@ -261,13 +261,13 @@ On days 1 through 7 of every month, a dismissible banner appears on Home offerin
 
 Expense Tracker Pro was engineered from the ground up for high reliability in low-connectivity environments (such as underground MRT transit or flight travel):
 
-1. **Local Storage First (IndexedDB)**: Every action (adding an expense, recording a transfer, paying a credit card) writes immediately to device storage via LocalForage. You never have to wait for a spinning cloud spinner to finish logging your coffee.
+1. **Instant Local-First Startup**: On launch, Expense Tracker Pro loads your cached balances, accounts, and transaction history immediately from device IndexedDB storage so you can start browsing or logging expenses right away while fresh cloud data syncs silently in the background.
 2. **Durable Mutation Queues**:
    - If the network is unavailable, transactions are enqueued to `offline_tx_queue`.
    - Failed credit card statement creations are safely captured in `offline_statement_queue`.
    - Both queues operate under strict mutex locks (`withQueueLock`) to prevent race conditions during rapid entry.
-3. **Automatic Cloud Sync**: As soon as internet connectivity is restored, the application silently reconciles queued items with Supabase in the background and clears acknowledged entries.
-4. **Visual Sync Indicator**: A discreet status badge in the header alerts you when you are in offline mode, providing reassurance that your records are safely preserved locally.
+3. **Batched Automatic Cloud Sync**: As soon as internet connectivity is restored, the application uploads queued transactions in idempotent batches, isolates any malformed record so valid items still sync, and merges confirmed records directly into your local ledger without stalling the UI.
+4. **Visual Status Indicators**: A discreet amber badge notifies you when operating offline (confirming changes are saved locally), and a subtle non-blocking `Syncing…` pill appears briefly while background cloud updates are in flight.
 
 ---
 

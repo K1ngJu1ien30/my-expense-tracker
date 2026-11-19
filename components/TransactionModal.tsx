@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, memo } from "react";
 import { motion, AnimatePresence, PanInfo } from "framer-motion";
 import { X, ArrowRight, Sparkles, ChevronDown, SlidersHorizontal, CreditCard } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 import { useAppContext } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
-import { loadModel, predict, type Prediction, type PredictorModel } from "@/lib/categoryPredictor";
+import { getCachedModel, loadModel, predict, type Prediction, type PredictorModel } from "@/lib/categoryPredictor";
 import { AUTO_EXCLUDE_CATEGORIES } from "@/lib/velocity";
 import CustomDatePicker from "@/components/CustomDatePicker";
 import type { CreditCardTxType, Account } from "@/lib/types";
@@ -15,7 +15,13 @@ import type { CreditCardTxType, Account } from "@/lib/types";
 type TxType = "Expense" | "Income" | "Transfer";
 
 
-function SegmentedControl({ value, onChange }: { value: TxType; onChange: (val: TxType) => void }) {
+const SegmentedControl = memo(function SegmentedControl({
+  value,
+  onChange,
+}: {
+  value: TxType;
+  onChange: (val: TxType) => void;
+}) {
   const options: TxType[] = ["Expense", "Income", "Transfer"];
   return (
     <div className="flex bg-muted p-1 rounded-2xl relative w-full mb-5">
@@ -40,7 +46,7 @@ function SegmentedControl({ value, onChange }: { value: TxType; onChange: (val: 
       ))}
     </div>
   );
-}
+});
 
 /**
  * Single-row horizontal-scroll pill picker.
@@ -49,34 +55,24 @@ function SegmentedControl({ value, onChange }: { value: TxType; onChange: (val: 
  * Keeps every option discoverable (scrolls with momentum) while collapsing
  * the visual footprint to a single row — roughly 1/3 of the old height for
  * users with many categories.
- *
- * On selection change we smoothly scroll the picked chip into view so a
- * user who picks something that was off-screen sees it confirmed. This is
- * especially important for the Category row since favorites are sorted to
- * the front — a rarely-used category at the end of the list would otherwise
- * vanish the instant it's tapped.
  */
-function ScrollPillSelector({
+const ScrollPillSelector = memo(function ScrollPillSelector({
   options,
   value,
   onChange,
   ariaLabel,
-  accountObjects,
+  creditCardKeys,
 }: {
   options: string[];
   value: string;
   onChange: (val: string) => void;
   ariaLabel?: string;
-  accountObjects?: Account[];
+  creditCardKeys?: ReadonlySet<string>;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLButtonElement>(null);
 
   // Center the selected chip inside the horizontal row whenever selection changes.
-  // We explicitly scroll ONLY this horizontal container (`container.scrollTo`)
-  // rather than calling `selectedRef.current.scrollIntoView()` — which would
-  // traverse DOM ancestors and scroll vertical ancestors (like the History page
-  // Virtuoso scroller, <main>, or window) unexpectedly.
   useEffect(() => {
     const container = containerRef.current;
     const selected = selectedRef.current;
@@ -96,22 +92,9 @@ function ScrollPillSelector({
     });
 
     return () => cancelAnimationFrame(frame);
-  }, [value, options]);
+  }, [value]);
 
   return (
-    // Stays inside the parent's padding — we deliberately DON'T use the
-    // classic `-mx-6 px-6` bleed-to-edge trick here. That trick broke two
-    // things in practice:
-    //   1. On Android WebView the `padding-right` on a horizontally-
-    //      scrollable flex container is routinely dropped, which made the
-    //      last chip touch the screen edge while all other form fields
-    //      had proper 24px insets — visually jarring.
-    //   2. For Transfer, this selector is nested inside a bordered card
-    //      with its own padding. The negative margin pulled chips OUT
-    //      of that card's visual bounds.
-    // Keeping the row within normal padding sacrifices the subtle "chips
-    // fade into the edge" effect but gains predictable alignment across
-    // every variant — which is what the user actually notices.
     <div
       ref={containerRef}
       role="radiogroup"
@@ -120,10 +103,7 @@ function ScrollPillSelector({
     >
       {options.map((opt) => {
         const isActive = value === opt;
-        const accObj = accountObjects?.find(
-          (a) => a.name.trim().toLowerCase() === opt.trim().toLowerCase() || a.id === opt
-        );
-        const isCard = accObj?.kind === "credit_card";
+        const isCard = creditCardKeys ? creditCardKeys.has(opt.trim().toLowerCase()) : false;
 
         return (
           <button
@@ -133,7 +113,7 @@ function ScrollPillSelector({
             aria-checked={isActive}
             onClick={() => onChange(opt)}
             className={cn(
-              "whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium transition-all shrink-0 snap-start inline-flex items-center gap-1.5",
+              "whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium transition-colors shrink-0 snap-start inline-flex items-center gap-1.5",
               isActive
                 ? "bg-primary text-primary-foreground shadow-soft"
                 : "bg-muted text-muted-foreground hover:bg-border"
@@ -150,14 +130,14 @@ function ScrollPillSelector({
       <div className="shrink-0 w-2" aria-hidden="true" />
     </div>
   );
-}
+});
 
 /**
  * Compact option-chip used for the condensed Options row. Replaces the
  * old full-width toggle-card pattern — saves ~60px of vertical space per
  * chip and reads as a single glanceable row rather than a stack of cards.
  */
-function OptionChip({
+const OptionChip = memo(function OptionChip({
   active,
   label,
   onClick,
@@ -180,7 +160,7 @@ function OptionChip({
       aria-label={ariaLabel || label}
       onClick={onClick}
       className={cn(
-        "relative flex-1 px-3 py-2.5 rounded-xl text-[11px] font-bold tracking-wide transition-all border active:scale-[0.97]",
+        "relative flex-1 px-3 py-2.5 rounded-xl text-[11px] font-bold tracking-wide transition-colors border active:scale-[0.97]",
         active
           ? "text-white shadow-sm"
           : "bg-muted text-muted-foreground border-border hover:bg-border"
@@ -196,7 +176,7 @@ function OptionChip({
       )}
     </button>
   );
-}
+});
 
 export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const { categories, triggerToast, accentColor, addTransaction, updateTransaction, transactions, editTransactionId, setEditTransactionId, accounts, accountObjects, currency, exchangeRates, triggerDerry, session, openCreditCardPayment } = useAppContext();
@@ -226,12 +206,26 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
   const [amountError, setAmountError] = useState<string | null>(null);
   const [accountError, setAccountError] = useState<string | null>(null);
 
-  const selectedAcc = accountObjects.find(
-    a => a.name.trim().toLowerCase() === account.trim().toLowerCase() || a.id === account
-  );
-  const selectedToAcc = accountObjects.find(
-    a => a.name.trim().toLowerCase() === toAccount.trim().toLowerCase() || a.id === toAccount
-  );
+  // Pre-indexed account lookup maps so keystrokes never linearly scan accountObjects
+  const { accountLookup, creditCardKeys } = useMemo(() => {
+    const byKey = new Map<string, Account>();
+    const ccKeys = new Set<string>();
+    for (const a of accountObjects) {
+      const lower = a.name.trim().toLowerCase();
+      byKey.set(lower, a);
+      if (a.id) byKey.set(a.id, a);
+      if (a.kind === "credit_card") {
+        ccKeys.add(lower);
+        if (a.id) ccKeys.add(a.id.toLowerCase());
+      }
+    }
+    return { accountLookup: byKey, creditCardKeys: ccKeys };
+  }, [accountObjects]);
+
+  const selectedAcc =
+    accountLookup.get(account) || accountLookup.get(account.trim().toLowerCase());
+  const selectedToAcc =
+    accountLookup.get(toAccount) || accountLookup.get(toAccount.trim().toLowerCase());
   const isCreditCardSource = selectedAcc?.kind === "credit_card";
   const isCreditCardDest = selectedToAcc?.kind === "credit_card";
 
@@ -266,6 +260,38 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
 
   const isActuallyOpen = isOpen || editTransactionId !== null;
 
+  // Refs for reading the latest defaults inside one-shot open/edit effects
+  // without adding volatile collections to effect dependency arrays.
+  const accountsRef = useRef(accounts);
+  const accountObjectsRef = useRef(accountObjects);
+  const categoriesRef = useRef(categories);
+  const currencyRef = useRef(currency);
+  useEffect(() => { accountsRef.current = accounts; }, [accounts]);
+  useEffect(() => { accountObjectsRef.current = accountObjects; }, [accountObjects]);
+  useEffect(() => { categoriesRef.current = categories; }, [categories]);
+  useEffect(() => { currencyRef.current = currency; }, [currency]);
+
+  // Lifecycle & draft-protection refs:
+  //   • wasOpenRef: detects closed → open transitions so add-mode resets
+  //     happen ONLY when the modal opens fresh, never on background updates.
+  //   • initializedEditIdRef: tracks which editTransactionId has already been
+  //     loaded into the form so background `transactions` refreshes cannot
+  //     overwrite in-progress edits.
+  //   • hasUserDraftRef: set as soon as the user types into amount or note,
+  //     guaranteeing background state hydration never erases user input.
+  const wasOpenRef = useRef(false);
+  const initializedEditIdRef = useRef<string | null>(null);
+  const hasUserDraftRef = useRef(false);
+  const userPickedAccountRef = useRef(false);
+  const userPickedToAccountRef = useRef(false);
+
+  // Resolve ONLY the specific transaction being edited (always null in add
+  // mode so changes to `transactions` never even trigger the edit effect).
+  const editTransaction = useMemo(
+    () => (editTransactionId ? transactions.find(t => t.id === editTransactionId) ?? null : null),
+    [editTransactionId, transactions]
+  );
+
   // Category order intentionally follows the user's Settings → Manage
   // Categories drag-order VERBATIM. An earlier iteration tried to
   // re-sort by last-30-day usage frequency, but in practice that:
@@ -277,93 +303,47 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
   // Now we trust the user's own ordering — stable, predictable, tappable
   // by position, and aligned with what Settings shows.
 
+  // Seed default account/toAccount/category ONLY when currently empty or
+  // still holding a stale placeholder default before user selection (e.g.
+  // real accounts arriving right after cold start). Never touches amount,
+  // note, or any user-selected field.
   useEffect(() => {
-    // Seed default accounts once the accounts list arrives from the
-    // context loader. This effect is a one-shot form initializer, not a
-    // render-driven update — silencing the linter is intentional here.
-
-    if (!account && accounts.length > 0) setAccount(accounts[0]);
-
-    if (!toAccount && accounts.length > 1) setToAccount(accounts[1] || accounts[0]);
-    // `account`/`toAccount` deliberately excluded — including them would
-    // re-trigger the seed on every pick and overwrite user selection.
+    if (accounts.length === 0) return;
+    if (!editTransactionId && (!account || (!userPickedAccountRef.current && !accounts.includes(account)))) {
+      setAccount(accounts[0]);
+    }
+    if (!editTransactionId && (!toAccount || (!userPickedToAccountRef.current && !accounts.includes(toAccount)))) {
+      setToAccount(accounts[1] || accounts[0]);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accounts]);
 
   useEffect(() => {
-    if (editTransactionId) {
-       const tx = transactions.find(t => t.id === editTransactionId);
-       if (tx) {
-         // Load-into-form-on-edit — a form initializer, same rationale as
-         // the accounts seed above. Not a cascading-render pattern.
-
-         setTxType(tx.type as TxType);
-         setCategory(tx.category || categories[0]);
-         const matchedAcc = tx.account_id
-           ? accountObjects.find(a => a.id === tx.account_id)?.name || tx.account
-           : tx.account;
-         setAccount(matchedAcc || accounts[0] || "Bank (MBB)");
-         if (tx.to_account || tx.to_account_id) {
-           const matchedTo = tx.to_account_id
-             ? accountObjects.find(a => a.id === tx.to_account_id)?.name || tx.to_account
-             : tx.to_account;
-           setToAccount(matchedTo || accounts[1] || accounts[0]);
-         }
-         setAmount(String(tx.amount));
-         setNote(tx.note || "");
-         setDate(tx.date ? new Date(tx.date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0]);
-         setStatus((tx.status as "cleared" | "pending") || "cleared");
-         setIsClaimable(tx.is_claimable === true);
-         // Normalise undefined to null (see state declaration comment).
-         setExcludeFromVelocity(
-           tx.exclude_from_velocity === true || tx.exclude_from_velocity === false
-             ? tx.exclude_from_velocity
-             : null
-         );
-         // If this row has a manual velocity override, auto-expand "More
-         // options" so the user doesn't have to go hunting for the state
-         // they set previously.
-         if (tx.exclude_from_velocity === true || tx.exclude_from_velocity === false) {
-           setShowMoreOptions(true);
-         }
-         if (tx.credit_card_tx_type) {
-           setCreditCardTxType(tx.credit_card_tx_type);
-         } else {
-           setCreditCardTxType("purchase");
-         }
-         setUserPickedCategory(true); // Editing an existing tx — respect its category
-       }
-    } else {
-
-       setAmount("");
-       setNote("");
-       setDate(new Date().toISOString().split("T")[0]);
-       setStatus("cleared");
-       setIsClaimable(false);
-       setExcludeFromVelocity(null);
-       setShowMoreOptions(false);
-       setCreditCardTxType("purchase");
-       setUserPickedCategory(false);
-       setDismissedForNote("");
-
+    if (categories.length === 0) return;
+    if (!editTransactionId && (!category || (!userPickedCategory && !categories.includes(category)))) {
+      setCategory(categories[0]);
     }
-  }, [editTransactionId, transactions, categories, accounts, accountObjects]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories]);
 
-  // Defensive reset on every fresh open (add-mode, not edit).
-  //
-  // Why this is separate from the effect above: `AppLayout` keeps this
-  // component mounted across opens — it only toggles `isOpen`. Without
-  // this effect, transient state set during one session (isClaimable,
-  // excludeFromVelocity, the draft amount/note) could leak into the
-  // next "New Transaction" session if the `transactions` array didn't
-  // happen to change between opens. That's the reported "claimable
-  // toggle sometimes ticks itself on without me touching it" bug.
-  //
-  // We only reset when transitioning from closed → open (tracked below)
-  // AND we're in add-mode (no editTransactionId). Edits have their own
-  // loader in the effect above.
+  // Responsibility A: Modal open/close transitions & fresh Add-mode reset.
+  // Runs ONLY when `isActuallyOpen` or `editTransactionId` changes — never
+  // when transactions, accounts, categories, exchange rates, sync, or
+  // predictor state change in the background.
   useEffect(() => {
-    if (isActuallyOpen) {
+    if (!isActuallyOpen) {
+      wasOpenRef.current = false;
+      initializedEditIdRef.current = null;
+      hasUserDraftRef.current = false;
+      userPickedAccountRef.current = false;
+      userPickedToAccountRef.current = false;
+      return;
+    }
+
+    const justOpened = !wasOpenRef.current;
+    wasOpenRef.current = true;
+
+    if (justOpened) {
       // Actively blur whatever the browser thinks is focused (e.g. the "Edit"
       // button just tapped in History or a previously focused input).
       // Blurring on open guarantees no lingering focus pulls the viewport or
@@ -373,48 +353,171 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
       }
     }
 
-    if (isActuallyOpen && !editTransactionId) {
+    // Reset the add form ONLY on closed → open (or edit → add) transition.
+    if (!editTransactionId && (justOpened || initializedEditIdRef.current !== null)) {
+      initializedEditIdRef.current = null;
+      hasUserDraftRef.current = false;
+      userPickedAccountRef.current = false;
+      userPickedToAccountRef.current = false;
+
+      const curAccounts = accountsRef.current;
+      const curCategories = categoriesRef.current;
+
+      setTxType("Expense");
+      setModalCurrency(currencyRef.current);
+      setShowCurrencyPicker(false);
+      setAmount("");
+      setNote("");
+      setDate(new Date().toISOString().split("T")[0]);
+      setStatus("cleared");
       setIsClaimable(false);
       setExcludeFromVelocity(null);
       setShowMoreOptions(false);
-      setShowCurrencyPicker(false);
-      setStatus("cleared");
       setCreditCardTxType("purchase");
-      // Don't reset amount/note/category/account here — those are
-      // seeded elsewhere and resetting them would wipe a quick-template
-      // pre-fill on the way in.
+      setUserPickedCategory(false);
+      setDismissedForNote("");
+      setPrediction(null);
+      setAmountError(null);
+      setAccountError(null);
+
+      setAccount(prev => (prev && curAccounts.includes(prev) ? prev : curAccounts[0] || ""));
+      setToAccount(prev => (prev && curAccounts.includes(prev) ? prev : curAccounts[1] || curAccounts[0] || ""));
+      setCategory(prev => (prev && curCategories.includes(prev) ? prev : curCategories[0] || "Food"));
     }
-    // Only depend on isActuallyOpen / editTransactionId — we want this
-    // to fire exactly once per "open" transition.
   }, [isActuallyOpen, editTransactionId]);
 
-  // Load the predictor model once when the modal opens. Reload on every open
-  // so freshly-learned associations from the previous save are available.
+  // Responsibility B: Load existing transaction in Edit mode.
+  // Fires ONLY when `editTransactionId` changes to X or when X first becomes
+  // available before the form has been initialized for X. Never overwrites
+  // once initialized or if the user already started typing into the current tx.
+  useEffect(() => {
+    if (!isActuallyOpen || !editTransactionId || !editTransaction) return;
+    if (initializedEditIdRef.current === editTransactionId) return;
+    // If switching directly from one edit ID to another while open, allow
+    // loading the new target transaction and clear the prior draft flag.
+    const switchingEditTarget =
+      initializedEditIdRef.current !== null && initializedEditIdRef.current !== editTransactionId;
+    if (!switchingEditTarget && hasUserDraftRef.current) return;
+
+    initializedEditIdRef.current = editTransactionId;
+    hasUserDraftRef.current = false;
+    userPickedAccountRef.current = true;
+    userPickedToAccountRef.current = true;
+
+    const curAccounts = accountsRef.current;
+    const curAccountObjects = accountObjectsRef.current;
+    const curCategories = categoriesRef.current;
+
+    setTxType(editTransaction.type as TxType);
+    setModalCurrency(currencyRef.current);
+    setShowCurrencyPicker(false);
+    setCategory(editTransaction.category || curCategories[0] || "Food");
+
+    const matchedAcc = editTransaction.account_id
+      ? curAccountObjects.find(a => a.id === editTransaction.account_id)?.name || editTransaction.account
+      : editTransaction.account;
+    setAccount(matchedAcc || curAccounts[0] || "Bank (MBB)");
+
+    if (editTransaction.to_account || editTransaction.to_account_id) {
+      const matchedTo = editTransaction.to_account_id
+        ? curAccountObjects.find(a => a.id === editTransaction.to_account_id)?.name || editTransaction.to_account
+        : editTransaction.to_account;
+      setToAccount(matchedTo || curAccounts[1] || curAccounts[0] || "");
+    }
+
+    setAmount(String(editTransaction.amount));
+    setNote(editTransaction.note || "");
+    setDate(
+      editTransaction.date
+        ? new Date(editTransaction.date).toISOString().split("T")[0]
+        : new Date().toISOString().split("T")[0]
+    );
+    setStatus((editTransaction.status as "cleared" | "pending") || "cleared");
+    setIsClaimable(editTransaction.is_claimable === true);
+    setExcludeFromVelocity(
+      editTransaction.exclude_from_velocity === true || editTransaction.exclude_from_velocity === false
+        ? editTransaction.exclude_from_velocity
+        : null
+    );
+    setShowMoreOptions(
+      editTransaction.exclude_from_velocity === true || editTransaction.exclude_from_velocity === false
+    );
+    setCreditCardTxType(editTransaction.credit_card_tx_type || "purchase");
+    setUserPickedCategory(true); // Editing an existing tx — respect its category
+    setDismissedForNote("");
+    setPrediction(null);
+    setAmountError(null);
+    setAccountError(null);
+  }, [isActuallyOpen, editTransactionId, editTransaction]);
+
+  // Load the predictor model from in-memory cache first; only read IndexedDB
+  // once in the background if not yet cached. Never blocks typing.
   useEffect(() => {
     if (!isActuallyOpen) return;
-    loadModel(session?.user?.id).then(setPredictorModel).catch(() => setPredictorModel({}));
+    const userId = session?.user?.id;
+    const cached = getCachedModel(userId);
+    if (cached) {
+      setPredictorModel(cached);
+      return;
+    }
+    let cancelled = false;
+    loadModel(userId)
+      .then((m) => {
+        if (!cancelled) setPredictorModel(m);
+      })
+      .catch(() => {
+        if (!cancelled) setPredictorModel({});
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [isActuallyOpen, session?.user?.id]);
 
-  // Re-score the note whenever it changes. Only suggests for new expenses
-  // (editing a transaction respects its saved category) and hides the pill
-  // once the user has dismissed it or manually changed the category.
+  // Debounced category prediction (200ms) so typing in the note field stays
+  // instantaneous — controlled `note` state updates synchronously, while
+  // tokenisation & scoring run only after a brief pause.
+  const txCount = transactions.length;
   useEffect(() => {
+    if (!predictorModel || txType !== "Expense" || editTransactionId || userPickedCategory || !note || note === dismissedForNote) {
+      setPrediction(null);
+      return;
+    }
 
-    if (!predictorModel) { setPrediction(null); return; }
-    if (txType !== "Expense") { setPrediction(null); return; }
-    if (editTransactionId) { setPrediction(null); return; }
-    if (userPickedCategory) { setPrediction(null); return; }
-    if (!note || note === dismissedForNote) { setPrediction(null); return; }
+    const timer = setTimeout(() => {
+      const p = predict(predictorModel, note, txCount);
+      if (p && p.category === category) {
+        setPrediction(null);
+        return;
+      }
+      if (p && !categories.includes(p.category)) {
+        setPrediction(null);
+        return;
+      }
+      setPrediction(p);
+    }, 200);
 
-    const p = predict(predictorModel, note, transactions.length);
-    // Don't suggest what's already selected — no value in reaffirming.
-    if (p && p.category === category) { setPrediction(null); return; }
-    // Also skip if the suggested category isn't in the user's current list
-    // (e.g. they renamed/deleted a category after training).
-    if (p && !categories.includes(p.category)) { setPrediction(null); return; }
-    setPrediction(p);
+    return () => clearTimeout(timer);
+  }, [note, txType, editTransactionId, userPickedCategory, dismissedForNote, predictorModel, txCount, category, categories]);
 
-  }, [note, txType, editTransactionId, userPickedCategory, dismissedForNote, predictorModel, transactions.length, category, categories]);
+  const handleSelectAccount = useCallback((val: string) => {
+    userPickedAccountRef.current = true;
+    setAccount(val);
+    setAccountError(prev => (prev ? null : prev));
+  }, []);
+
+  const handleSelectToAccount = useCallback((val: string) => {
+    userPickedToAccountRef.current = true;
+    setToAccount(val);
+  }, []);
+
+  const handleSelectCategory = useCallback((c: string) => {
+    setCategory(c);
+    setUserPickedCategory(true);
+  }, []);
+
+  const handleToggleClaimable = useCallback(() => {
+    setIsClaimable(prev => !prev);
+  }, []);
 
   const handleDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     if (info.offset.y > 100) handleClose();
@@ -560,6 +663,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                     aria-invalid={!!amountError}
                     value={amount}
                     onChange={(e) => {
+                      hasUserDraftRef.current = true;
                       setAmount(e.target.value);
                       if (amountError) setAmountError(null);
                     }}
@@ -576,29 +680,30 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                   </p>
                 )}
 
-                <AnimatePresence initial={false}>
-                  {showCurrencyPicker && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: "auto", opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="flex bg-muted p-1 rounded-xl mt-3 mx-auto w-fit">
-                        {["RM", "SGD", "USD", "JPY"].map(c => (
-                          <button
-                            key={c}
-                            onClick={() => { setModalCurrency(c); setShowCurrencyPicker(false); }}
-                            style={modalCurrency === c ? { backgroundColor: accentColor, color: "#fff" } : {}}
-                            className={`px-3 py-1.5 text-[10px] font-black tracking-wider rounded-lg transition-all ${modalCurrency === c ? "shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-                          >
-                            {c}
-                          </button>
-                        ))}
-                      </div>
-                    </motion.div>
+                <div
+                  className={cn(
+                    "grid transition-[grid-template-rows,opacity] duration-200 ease-out",
+                    showCurrencyPicker ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0 pointer-events-none"
                   )}
-                </AnimatePresence>
+                  aria-hidden={!showCurrencyPicker}
+                >
+                  <div className="overflow-hidden">
+                    <div className="flex bg-muted p-1 rounded-xl mt-3 mx-auto w-fit">
+                      {["RM", "SGD", "USD", "JPY"].map(c => (
+                        <button
+                          key={c}
+                          type="button"
+                          tabIndex={showCurrencyPicker ? 0 : -1}
+                          onClick={() => { setModalCurrency(c); setShowCurrencyPicker(false); }}
+                          style={modalCurrency === c ? { backgroundColor: accentColor, color: "#fff" } : {}}
+                          className={`px-3 py-1.5 text-[10px] font-black tracking-wider rounded-lg transition-colors ${modalCurrency === c ? "shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                        >
+                          {c}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
 
                 {modalCurrency !== currency && amount && (() => {
                   // Convert: amount is in modalCurrency, show equivalent in base (MYR)
@@ -608,9 +713,9 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                   const foreignRate = exchangeRates[foreignCode];
                   const converted = foreignRate ? (Number(amount) / foreignRate) : null;
                   return converted !== null ? (
-                    <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-2 text-xs font-bold text-muted-foreground bg-background px-3 py-1 rounded-lg border border-border/50 w-fit mx-auto">
+                    <p className="mt-2 text-xs font-bold text-muted-foreground bg-background px-3 py-1 rounded-lg border border-border/50 w-fit mx-auto">
                       ≈ {currency} {converted.toFixed(2)}
-                    </motion.p>
+                    </p>
                   ) : null;
                 })()}
               </div>
@@ -620,7 +725,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                   <div className="p-4 bg-muted/30 rounded-2xl border border-border/50 flex flex-col gap-2">
                     <div>
                       <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1.5">From Account</label>
-                      <ScrollPillSelector options={accounts} value={account} onChange={setAccount} ariaLabel="From account" accountObjects={accountObjects} />
+                      <ScrollPillSelector options={accounts} value={account} onChange={handleSelectAccount} ariaLabel="From account" creditCardKeys={creditCardKeys} />
                     </div>
                     <div className="flex justify-center rounded-full relative z-10 w-full -my-0.5">
                       <div className="bg-card border border-border p-1 rounded-full shadow-sm text-muted-foreground">
@@ -629,7 +734,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                     </div>
                     <div>
                       <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1.5">To Account</label>
-                      <ScrollPillSelector options={accounts} value={toAccount} onChange={setToAccount} ariaLabel="To account" accountObjects={accountObjects} />
+                      <ScrollPillSelector options={accounts} value={toAccount} onChange={handleSelectToAccount} ariaLabel="To account" creditCardKeys={creditCardKeys} />
                     </div>
                     {accounts.length < 2 ? (
                       <p className="text-[11px] font-semibold text-amber-500 bg-amber-500/10 px-3 py-1.5 rounded-xl text-center mt-1">
@@ -647,12 +752,9 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                     <ScrollPillSelector
                       options={accounts}
                       value={account}
-                      onChange={(val) => {
-                        setAccount(val);
-                        if (accountError) setAccountError(null);
-                      }}
+                      onChange={handleSelectAccount}
                       ariaLabel="Account"
-                      accountObjects={accountObjects}
+                      creditCardKeys={creditCardKeys}
                     />
                     {accountError && (
                       <p role="alert" className="text-[11px] font-semibold text-rose-500 mt-1 animate-in fade-in">
@@ -819,7 +921,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                     <ScrollPillSelector
                       options={categories}
                       value={category}
-                      onChange={(c) => { setCategory(c); setUserPickedCategory(true); }}
+                      onChange={handleSelectCategory}
                       ariaLabel="Category"
                     />
                   </div>
@@ -862,7 +964,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                       <OptionChip
                         active={isClaimable}
                         label={isClaimable ? "✓ Claimable" : "Claimable"}
-                        onClick={() => setIsClaimable(!isClaimable)}
+                        onClick={handleToggleClaimable}
                         accentColor={accentColor}
                         ariaLabel="Mark as claimable or split bill"
                       />
@@ -872,7 +974,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                         aria-label="More options"
                         aria-expanded={showMoreOptions}
                         className={cn(
-                          "px-3 py-2.5 rounded-xl text-[11px] font-bold tracking-wide transition-all border active:scale-[0.97] flex items-center gap-1.5 shrink-0",
+                          "px-3 py-2.5 rounded-xl text-[11px] font-bold tracking-wide transition-colors border active:scale-[0.97] flex items-center gap-1.5 shrink-0",
                           showMoreOptions || isVelocityOverride
                             ? "bg-muted text-foreground border-border"
                             : "bg-muted/60 text-muted-foreground border-border/60 hover:bg-muted"
@@ -889,78 +991,67 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                       </button>
                     </div>
 
-                    {/* Velocity-override disclosure — hidden by default since
-                        the category auto-rule handles ~90% of cases. Users
-                        who DO want to override for a one-off can tap "More"
-                        to reveal it. An amber dot on the More button and on
-                        the toggle itself marks an active manual override. */}
-                    <AnimatePresence initial={false}>
-                      {showMoreOptions && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: "auto", opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          className="overflow-hidden"
-                        >
-                          <div
-                            className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border border-border/50 cursor-pointer"
-                            onClick={cycleVelocity}
-                            role="button"
-                            tabIndex={0}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault();
-                                cycleVelocity();
-                              }
-                            }}
-                            aria-label={`Exclude from spending velocity — currently ${
-                              effectivelyExcluded ? "excluded" : "included"
-                            }${isVelocityOverride ? " (manual override)" : " (by category rule)"}`}
-                          >
-                            <div className="min-w-0 flex-1 pr-3">
-                              <p className="text-xs font-bold text-foreground">Exclude from Velocity</p>
-                              <p className="text-[10px] text-muted-foreground font-medium mt-0.5 leading-snug">
-                                {/* Two-state descriptor: shows effective
-                                    state + whether the user has overridden
-                                    the category auto-rule. Keeping this
-                                    flat (no three-way branch) prevents the
-                                    "toggle off but dot still there" UX
-                                    surprise that the old three-state
-                                    cycle produced. */}
-                                {effectivelyExcluded ? (
-                                  <span className="font-semibold" style={{ color: accentColor }}>
-                                    Excluded
-                                  </span>
-                                ) : (
-                                  <span className="font-semibold">Included</span>
-                                )}
-                                <span className="ml-1 text-muted-foreground/70">
-                                  {isVelocityOverride ? "— manual override" : "— category rule"}
-                                </span>
-                              </p>
-                            </div>
-                            <div
-                              className={`w-10 h-6 rounded-full transition-colors relative flex items-center pointer-events-none shrink-0 ${
-                                effectivelyExcluded ? "" : "bg-muted border border-border"
-                              }`}
-                              style={effectivelyExcluded ? { backgroundColor: accentColor } : {}}
-                            >
-                              <div
-                                className={`w-4 h-4 bg-card rounded-full shadow-sm absolute transition-transform ${
-                                  effectivelyExcluded ? "translate-x-[20px]" : "translate-x-[3px]"
-                                }`}
-                              />
-                              {isVelocityOverride && (
-                                <div
-                                  className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-500 ring-2 ring-card"
-                                  aria-hidden="true"
-                                />
-                              )}
-                            </div>
-                          </div>
-                        </motion.div>
+                    {/* Velocity-override disclosure — CSS grid transition avoids
+                        JS height:auto layout measurement on every frame. */}
+                    <div
+                      className={cn(
+                        "grid transition-[grid-template-rows,opacity] duration-200 ease-out",
+                        showMoreOptions ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0 pointer-events-none"
                       )}
-                    </AnimatePresence>
+                      aria-hidden={!showMoreOptions}
+                    >
+                      <div className="overflow-hidden">
+                        <div
+                          className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border border-border/50 cursor-pointer"
+                          onClick={cycleVelocity}
+                          role="button"
+                          tabIndex={showMoreOptions ? 0 : -1}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              cycleVelocity();
+                            }
+                          }}
+                          aria-label={`Exclude from spending velocity — currently ${
+                            effectivelyExcluded ? "excluded" : "included"
+                          }${isVelocityOverride ? " (manual override)" : " (by category rule)"}`}
+                        >
+                          <div className="min-w-0 flex-1 pr-3">
+                            <p className="text-xs font-bold text-foreground">Exclude from Velocity</p>
+                            <p className="text-[10px] text-muted-foreground font-medium mt-0.5 leading-snug">
+                              {effectivelyExcluded ? (
+                                <span className="font-semibold" style={{ color: accentColor }}>
+                                  Excluded
+                                </span>
+                              ) : (
+                                <span className="font-semibold">Included</span>
+                              )}
+                              <span className="ml-1 text-muted-foreground/70">
+                                {isVelocityOverride ? "— manual override" : "— category rule"}
+                              </span>
+                            </p>
+                          </div>
+                          <div
+                            className={`w-10 h-6 rounded-full transition-colors relative flex items-center pointer-events-none shrink-0 ${
+                              effectivelyExcluded ? "" : "bg-muted border border-border"
+                            }`}
+                            style={effectivelyExcluded ? { backgroundColor: accentColor } : {}}
+                          >
+                            <div
+                              className={`w-4 h-4 bg-card rounded-full shadow-sm absolute transition-transform ${
+                                effectivelyExcluded ? "translate-x-[20px]" : "translate-x-[3px]"
+                              }`}
+                            />
+                            {isVelocityOverride && (
+                              <div
+                                className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-500 ring-2 ring-card"
+                                aria-hidden="true"
+                              />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -976,7 +1067,10 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                     placeholder="Sub-category / Note (Optional)"
                     aria-label="Note"
                     value={note}
-                    onChange={e=>setNote(e.target.value)}
+                    onChange={(e) => {
+                      hasUserDraftRef.current = true;
+                      setNote(e.target.value);
+                    }}
                     className="w-full bg-muted text-sm px-4 py-2.5 rounded-xl border border-border/50 text-foreground outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium placeholder:text-muted-foreground/70"
                   />
                 </div>

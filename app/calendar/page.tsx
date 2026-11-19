@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, ArrowLeft, X } from "lucide-react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { useAppContext } from "@/lib/context";
+import { useAppData } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
 import type { Transaction } from "@/lib/types";
 
@@ -62,7 +62,7 @@ export function getHeatmapTileStyle(amount: number) {
 }
 
 export default function CalendarPage() {
-  const { transactions, accentColor, formatCurrency } = useAppContext();
+  const { transactions, accentColor, formatCurrency } = useAppData();
   const activeAccent = accentColor || "#3b82f6";
 
   const now = new Date();
@@ -464,7 +464,7 @@ export default function CalendarPage() {
                     Daily Expenses
                   </span>
                   <h3 className="text-base font-black text-foreground">
-                    {new Date(selectedDayKey).toLocaleDateString("en-US", {
+                    {new Date(`${selectedDayKey}T00:00:00`).toLocaleDateString("en-US", {
                       weekday: "short",
                       month: "short",
                       day: "numeric",
