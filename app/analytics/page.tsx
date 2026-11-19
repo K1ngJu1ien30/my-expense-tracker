@@ -16,6 +16,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { useAppData } from "@/lib/context";
+import { convertCurrencySafe } from "@/lib/balance";
 import {
   Receipt,
   Calendar as CalendarIcon,
@@ -150,7 +151,17 @@ const MONTH_NAMES = [
 const WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export default function AnalyticsPage() {
-  const { accentColor, transactions, currency, formatCurrency } = useAppData();
+  const { accentColor, transactions, accountObjects, exchangeRates, currency, formatCurrency } = useAppData();
+
+  const accountCurrencyMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of accountObjects) {
+      const code = a.currencyCode || currency;
+      if (a.id) map.set(a.id, code);
+      map.set(a.name.trim().toLowerCase(), code);
+    }
+    return map;
+  }, [accountObjects, currency]);
 
   // Navigation & Filter state
   const [activeTab, setActiveTab] = useState<"overview" | "compare">("overview");
@@ -316,19 +327,28 @@ export default function AnalyticsPage() {
       const d = new Date(tx.date);
       const time = d.getTime();
       if (isNaN(time)) continue;
+      const srcCur =
+        (tx.account_id ? accountCurrencyMap.get(tx.account_id) : undefined) ||
+        accountCurrencyMap.get((tx.account || "").trim().toLowerCase()) ||
+        currency;
+      const conv = convertCurrencySafe(Number(tx.amount) || 0, srcCur, currency, {
+        liveRates: exchangeRates,
+      });
+      if (!conv.isKnown) continue;
+      const baseAmount = Math.round(conv.amount * 100) / 100;
       const day = d.getDay();
       out.push({
-        tx,
+        tx: baseAmount === Number(tx.amount) ? tx : { ...tx, amount: baseAmount },
         time,
         year: d.getFullYear(),
         month: d.getMonth(),
         dayOfMonth: d.getDate(),
         weekdayIdx: day === 0 ? 6 : day - 1,
-        amount: Number(tx.amount) || 0,
+        amount: baseAmount,
       });
     }
     return out;
-  }, [transactions]);
+  }, [transactions, accountCurrencyMap, currency, exchangeRates]);
 
   // ─── Filtered Transactions (Current Period & Previous Period) ─────────────
   const { currentPeriodEntries, currentPeriodTxs, prevPeriodTxs } = useMemo(() => {
@@ -539,7 +559,7 @@ export default function AnalyticsPage() {
           : `${entry.month + 1}/${entry.dayOfMonth}`;
 
       if (!map[key]) {
-        map[key] = { name: key };
+        map[key] = { name: key, currency };
         data.push(map[key]);
       }
       uniqueCats.add(t.category);
@@ -551,7 +571,7 @@ export default function AnalyticsPage() {
     const categoriesArr = Array.from(uniqueCats);
     const colors = categoriesArr.map((cat) => getCategoryColor(cat));
     return { data, categories: categoriesArr, colors };
-  }, [currentPeriodEntries, timeFilter]);
+  }, [currentPeriodEntries, timeFilter, currency]);
 
   // ─── Velocity Projection (Month view) ────────────────────────────────────
   const velocityData = useMemo(() => {
@@ -576,18 +596,19 @@ export default function AnalyticsPage() {
     }
 
     let cumulative = 0;
-    const data: { day: number; actual?: number; projected?: number }[] = [];
+    const data: { day: number; currency: string; actual?: number; projected?: number }[] = [];
 
     for (let d = 1; d <= daysInMonth; d++) {
       if (d <= currentDay) {
         cumulative += dailySpend[d] || 0;
         data.push({
           day: d,
+          currency,
           actual: cumulative,
           projected: d === currentDay ? cumulative : undefined,
         });
       } else {
-        data.push({ day: d });
+        data.push({ day: d, currency });
       }
     }
 
@@ -613,7 +634,7 @@ export default function AnalyticsPage() {
       excludedTotal,
       excludedCount,
     };
-  }, [parsedTransactions]);
+  }, [parsedTransactions, currency]);
 
   // ─── Available Historic Months (computed lazily when modal is open) ──────
   const availableHistoricMonths = useMemo(() => {
@@ -1361,7 +1382,7 @@ export default function AnalyticsPage() {
                       {day.name}
                     </span>
                     <span className="text-[9px] font-bold text-foreground truncate w-full text-center">
-                      RM{Math.round(day.amount)}
+                      {currency}{Math.round(day.amount)}
                     </span>
                   </div>
                 ))}
@@ -1461,8 +1482,8 @@ export default function AnalyticsPage() {
             </div>
           )}
 
-          {/* ─── VELOCITY PROJECTION CHART (Month View) ────────────────────── */}
-          {timeFilter === "MONTH" && velocityData.totalSoFar > 0 && (
+          {/* ─── VELOCITY PROJECTION CHART (Current Month Only) ────────────── */}
+          {timeFilter === "MONTH" && periodOffset === 0 && velocityData.totalSoFar > 0 && (
             <div className="bg-card p-6 rounded-[2.5rem] shadow-soft border border-border/40 space-y-4">
               <div>
                 <h3 className="font-bold text-foreground">Spending Velocity</h3>

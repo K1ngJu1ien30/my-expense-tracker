@@ -8,38 +8,30 @@ import { NativeHaptics } from "../haptics";
 import type { Transaction, Subscription, TransactionSaveResult } from "../types";
 import type { DeletedItemCache } from "../types";
 import { learnAndSaveAsync } from "../categoryPredictor";
-import { enqueueOfflineTx, removeAcknowledgedOfflineTxs } from "../offlineQueue";
 import {
+  enqueueOfflineTx,
+  enqueueOfflineTxBatch,
+  removeAcknowledgedOfflineTxs,
+} from "../offlineQueue";
+import {
+  mergeTransactionsWithDeletes,
   removeCachedTransactionById,
   upsertCachedTransactions,
   upsertTransactionSorted,
+  type LocalTxTracker,
 } from "../txCache";
-import { roundCurrency } from "../utils";
+import { parseLocalDateToIso, roundCurrency } from "../utils";
 import { debugLog } from "../debugLog";
 
 /** Threshold above which an income/expense triggers the 🐋 whale alert. */
 const WHALE_THRESHOLD = 5000;
 
-/**
- * Cross-cutting dependencies that the CRUD functions need to wire into the
- * rest of the app. The provider supplies these so this hook can remain
- * focused purely on transactions / subscriptions / utilities.
- *
- * `isOfflineRef` is passed as a ref (not a value) to break the chicken-and-egg
- * problem where useSyncState owns `isOffline` and also needs setters from this
- * hook. By reading `isOfflineRef.current` lazily inside `addTransaction`, we
- * always see the latest network state without depending on render order.
- */
 export type MoneyStateDeps = {
   session: Session | null;
   isOfflineRef: MutableRefObject<boolean>;
+  localTxTracker?: LocalTxTracker;
   triggerToast: (msg: string) => void;
   triggerWhaleAlert: () => void;
-  /**
-   * Presentational easter-egg hook — called with every expense amount.
-   * The alert internally gates on time-of-day and amount range so this
-   * callsite doesn't need to replicate the thresholds.
-   */
   maybeTriggerPenguinAlert: (amount: number) => void;
   cacheDeletedItem: (type: DeletedItemCache["type"], item: unknown) => void;
 };
@@ -162,7 +154,32 @@ export function useMoneyState(deps: MoneyStateDeps) {
     });
   }, []);
 
-  const { session, isOfflineRef, triggerToast, triggerWhaleAlert, maybeTriggerPenguinAlert, cacheDeletedItem } = deps;
+  const {
+    session,
+    isOfflineRef,
+    localTxTracker,
+    triggerToast,
+    triggerWhaleAlert,
+    maybeTriggerPenguinAlert,
+    cacheDeletedItem,
+  } = deps;
+  const userId = session?.user?.id;
+
+  const trackMutationStart = useCallback(
+    (id: string, data: { tx?: Transaction; deletedAt?: string; inFlight: boolean }): number => {
+      if (!localTxTracker) return 0;
+      return localTxTracker.recordStart(id, data);
+    },
+    [localTxTracker]
+  );
+
+  const trackMutationSettled = useCallback(
+    (id: string, epoch: number, update?: { tx?: Transaction; deletedAt?: string; remove?: boolean }) => {
+      if (!localTxTracker) return;
+      localTxTracker.recordSettled(id, epoch, update);
+    },
+    [localTxTracker]
+  );
 
   // ─── Transactions (Durable Optimistic Local-First Pipeline) ────────────
 
@@ -176,23 +193,20 @@ export function useMoneyState(deps: MoneyStateDeps) {
         };
       }
 
-      const userId = session?.user?.id;
       const sanitizedAmount = roundCurrency(Number(tx.amount));
-      // Client-generated UUID makes the upsert idempotent — safe to retry.
       const clientId = crypto.randomUUID();
       const txWithId = {
         ...tx,
         amount: sanitizedAmount,
         id: clientId,
-        date: tx.date ? new Date(tx.date).toISOString() : new Date().toISOString(),
+        date: tx.date ? parseLocalDateToIso(tx.date) : new Date().toISOString(),
       };
       const optimisticTx = { ...txWithId, user_id: userId } as Transaction;
 
       // 1. Durable local persistence FIRST (~5-10ms in IndexedDB).
-      // Guarantees the transaction survives app kills, crashes, or sudden
-      // network loss even though the modal closes immediately.
+      let queueRev: number;
       try {
-        await enqueueOfflineTx(optimisticTx);
+        queueRev = await enqueueOfflineTx(optimisticTx);
       } catch (err) {
         console.error("[addTransaction] IndexedDB durability write failed:", err);
         return {
@@ -203,6 +217,10 @@ export function useMoneyState(deps: MoneyStateDeps) {
 
       // 2. Immediate optimistic UI commit (maintains date DESC, id DESC order)
       const myVersion = nextTxVersion(clientId);
+      const myEpoch = trackMutationStart(clientId, {
+        tx: optimisticTx,
+        inFlight: !isOfflineRef.current,
+      });
       setTransactions(prev => upsertTransactionSorted(prev, optimisticTx));
 
       // 3. Non-blocking local write-through cache + category predictor + alerts
@@ -223,6 +241,7 @@ export function useMoneyState(deps: MoneyStateDeps) {
 
       // 5. Online mode: push idempotently to Supabase in the background so
       // TransactionModal closes instantaneously without waiting for HTTP RTT.
+      const expectedRevs = new Map([[clientId, queueRev]]);
       enqueueTxCloudOp(clientId, async () => {
         try {
           const { data, error } = await supabase
@@ -233,7 +252,8 @@ export function useMoneyState(deps: MoneyStateDeps) {
 
           if (!error && data) {
             const canonical = data as Transaction;
-            await removeAcknowledgedOfflineTxs(new Set([clientId]));
+            await removeAcknowledgedOfflineTxs(new Set([clientId]), expectedRevs);
+            trackMutationSettled(clientId, myEpoch, { tx: canonical });
             if (txMutationVersionRef.current.get(clientId) === myVersion) {
               setTransactions(prev => upsertTransactionSorted(prev, canonical));
               if (userId) void upsertCachedTransactions(userId, [canonical]);
@@ -258,7 +278,8 @@ export function useMoneyState(deps: MoneyStateDeps) {
                 credit_card_tx_type: txWithId.credit_card_tx_type,
                 statement_id: txWithId.statement_id,
               } as Transaction;
-              await removeAcknowledgedOfflineTxs(new Set([clientId]));
+              await removeAcknowledgedOfflineTxs(new Set([clientId]), expectedRevs);
+              trackMutationSettled(clientId, myEpoch, { tx: preservedTx });
               if (txMutationVersionRef.current.get(clientId) === myVersion) {
                 setTransactions(prev => upsertTransactionSorted(prev, preservedTx));
                 if (userId) void upsertCachedTransactions(userId, [preservedTx]);
@@ -268,7 +289,7 @@ export function useMoneyState(deps: MoneyStateDeps) {
           }
 
           if (isNetworkFailureError(error)) {
-            // Already durably queued in offline_tx_queue — will auto-sync on reconnect
+            trackMutationSettled(clientId, myEpoch);
             debugLog("[addTransaction] Network drop during background sync; kept in offline queue");
             triggerToast("⏳ Connection dropped — saved locally for sync");
             return;
@@ -276,7 +297,8 @@ export function useMoneyState(deps: MoneyStateDeps) {
 
           // Hard server rejection (RLS / constraint error): roll back optimistic entry
           console.error("[addTransaction] Cloud rejected transaction, rolling back:", error);
-          await removeAcknowledgedOfflineTxs(new Set([clientId]));
+          await removeAcknowledgedOfflineTxs(new Set([clientId]), expectedRevs);
+          trackMutationSettled(clientId, myEpoch, { remove: true });
           if (txMutationVersionRef.current.get(clientId) === myVersion) {
             setTransactions(prev => prev.filter(t => t.id !== clientId));
             if (userId) void removeCachedTransactionById(userId, clientId);
@@ -284,7 +306,7 @@ export function useMoneyState(deps: MoneyStateDeps) {
           NativeHaptics.errorShake();
           triggerToast(`❌ Save rejected: ${error?.message || "Database error"}`);
         } catch (exception) {
-          // Network/fetch exception: kept safely in offline_tx_queue for retry
+          trackMutationSettled(clientId, myEpoch);
           debugLog("[addTransaction] Background sync exception; kept in offline queue:", exception);
           triggerToast("⏳ Connection dropped — saved locally for sync");
         }
@@ -292,11 +314,166 @@ export function useMoneyState(deps: MoneyStateDeps) {
 
       return { success: true, status: "synced" };
     },
-    [session, isOfflineRef, triggerToast, triggerWhaleAlert, maybeTriggerPenguinAlert, nextTxVersion, enqueueTxCloudOp]
+    [
+      userId,
+      isOfflineRef,
+      triggerToast,
+      triggerWhaleAlert,
+      maybeTriggerPenguinAlert,
+      nextTxVersion,
+      enqueueTxCloudOp,
+      trackMutationStart,
+      trackMutationSettled,
+    ]
+  );
+
+  /**
+   * Bulk insert multiple transactions in a single IndexedDB write, single
+   * React state update, single haptic pulse, and single batch Supabase upsert.
+   * Used by Statement Import to avoid N× re-renders and haptic bursts.
+   */
+  const addTransactionsBatch = useCallback(
+    async (
+      items: Partial<Transaction>[]
+    ): Promise<{ succeeded: number; failedIndices: number[]; errors: string[] }> => {
+      const validRows: Array<{ index: number; tx: Transaction }> = [];
+      const failedIndices: number[] = [];
+      const errors: string[] = [];
+
+      items.forEach((raw, idx) => {
+        const validation = validateTransactionInput(raw);
+        if (!validation.valid) {
+          failedIndices.push(idx);
+          errors.push(validation.error || "Invalid transaction");
+          return;
+        }
+        const clientId = crypto.randomUUID();
+        const tx: Transaction = {
+          ...raw,
+          amount: roundCurrency(Number(raw.amount)),
+          id: clientId,
+          user_id: userId,
+          date: raw.date ? parseLocalDateToIso(raw.date) : new Date().toISOString(),
+        } as Transaction;
+        validRows.push({ index: idx, tx });
+      });
+
+      if (validRows.length === 0) {
+        return { succeeded: 0, failedIndices, errors };
+      }
+
+      const txList = validRows.map(v => v.tx);
+      const revMap = await enqueueOfflineTxBatch(txList);
+
+      const epochById = new Map<string, number>();
+      const versionById = new Map<string, number>();
+      for (const tx of txList) {
+        versionById.set(tx.id, nextTxVersion(tx.id));
+        epochById.set(
+          tx.id,
+          trackMutationStart(tx.id, { tx, inFlight: !isOfflineRef.current })
+        );
+      }
+
+      setTransactions(prev => mergeTransactionsWithDeletes(prev, txList));
+      if (userId) void upsertCachedTransactions(userId, txList);
+      NativeHaptics.successMedium();
+
+      if (isOfflineRef.current) {
+        return { succeeded: validRows.length, failedIndices, errors };
+      }
+
+      // Push in batches of 50 so Postgres stays snappy and partial failures
+      // never discard valid rows.
+      const BATCH_SIZE = 50;
+      for (let i = 0; i < validRows.length; i += BATCH_SIZE) {
+        const slice = validRows.slice(i, i + BATCH_SIZE);
+        const payloads = slice.map(s => s.tx);
+        try {
+          const { data, error } = await supabase
+            .from("transactions")
+            .upsert(payloads, { onConflict: "id" })
+            .select();
+
+          if (!error && Array.isArray(data)) {
+            const ackIds = new Set(payloads.map(p => p.id));
+            await removeAcknowledgedOfflineTxs(ackIds, revMap);
+            const canonicals = data as Transaction[];
+            for (const c of canonicals) {
+              trackMutationSettled(c.id, epochById.get(c.id) ?? 0, { tx: c });
+            }
+            setTransactions(prev => mergeTransactionsWithDeletes(prev, canonicals));
+            if (userId) void upsertCachedTransactions(userId, canonicals);
+            continue;
+          }
+
+          if (error?.code === "42703") {
+            const fallback = payloads.map(p => {
+              const copy: Record<string, unknown> = { ...p };
+              delete copy.credit_card_tx_type;
+              delete copy.statement_id;
+              return copy;
+            });
+            const retry = await supabase
+              .from("transactions")
+              .upsert(fallback, { onConflict: "id" })
+              .select();
+            if (!retry.error && Array.isArray(retry.data)) {
+              const ackIds = new Set(payloads.map(p => p.id));
+              await removeAcknowledgedOfflineTxs(ackIds, revMap);
+              const metaById = new Map(
+                payloads.map(p => [p.id, { credit_card_tx_type: p.credit_card_tx_type, statement_id: p.statement_id }])
+              );
+              const preserved = (retry.data as Transaction[]).map(r => ({
+                ...r,
+                ...(metaById.get(r.id) || {}),
+              }));
+              for (const c of preserved) {
+                trackMutationSettled(c.id, epochById.get(c.id) ?? 0, { tx: c });
+              }
+              setTransactions(prev => mergeTransactionsWithDeletes(prev, preserved));
+              if (userId) void upsertCachedTransactions(userId, preserved);
+              continue;
+            }
+          }
+
+          if (isNetworkFailureError(error)) {
+            for (const p of payloads) {
+              trackMutationSettled(p.id, epochById.get(p.id) ?? 0);
+            }
+            continue; // Safely kept in offline_tx_queue
+          }
+
+          // Hard server rejection on batch: roll back this slice and report failed indices
+          const rejectIds = new Set(payloads.map(p => p.id));
+          await removeAcknowledgedOfflineTxs(rejectIds, revMap);
+          for (const item of slice) {
+            failedIndices.push(item.index);
+            errors.push(error?.message || "Database rejected row");
+            trackMutationSettled(item.tx.id, epochById.get(item.tx.id) ?? 0, { remove: true });
+            if (userId) void removeCachedTransactionById(userId, item.tx.id);
+          }
+          setTransactions(prev => prev.filter(t => !rejectIds.has(t.id)));
+        } catch {
+          for (const p of payloads) {
+            trackMutationSettled(p.id, epochById.get(p.id) ?? 0);
+          }
+        }
+      }
+
+      const succeeded = items.length - failedIndices.length;
+      return { succeeded, failedIndices, errors };
+    },
+    [userId, isOfflineRef, nextTxVersion, trackMutationStart, trackMutationSettled]
   );
 
   const updateTransaction = useCallback(
     async (id: string, patch: Partial<Transaction>): Promise<{ success: boolean; error?: string }> => {
+      const previousTx = transactionsRef.current.find(t => t.id === id);
+      if (!previousTx) {
+        return { success: false, error: "Record not found" };
+      }
+
       const cleanPatch = { ...patch };
       if (cleanPatch.amount !== undefined) {
         const num = Number(cleanPatch.amount);
@@ -309,10 +486,11 @@ export function useMoneyState(deps: MoneyStateDeps) {
         cleanPatch.amount = roundCurrency(num);
       }
       if (cleanPatch.date !== undefined) {
-        if (isNaN(new Date(cleanPatch.date).getTime())) {
+        const isoDate = parseLocalDateToIso(cleanPatch.date, previousTx.date);
+        if (isNaN(new Date(isoDate).getTime())) {
           return { success: false, error: "Invalid transaction date." };
         }
-        cleanPatch.date = new Date(cleanPatch.date).toISOString();
+        cleanPatch.date = isoDate;
       }
       if (cleanPatch.type === "Transfer" && cleanPatch.account && cleanPatch.to_account) {
         if (cleanPatch.account.trim().toLowerCase() === cleanPatch.to_account.trim().toLowerCase()) {
@@ -320,14 +498,16 @@ export function useMoneyState(deps: MoneyStateDeps) {
         }
       }
 
-      const userId = session?.user?.id;
-      const previousTx = transactionsRef.current.find(t => t.id === id);
-      if (!previousTx) {
-        return { success: false, error: "Record not found" };
-      }
-
-      const optimisticUpdated: Transaction = { ...previousTx, ...cleanPatch };
+      const optimisticUpdated: Transaction = {
+        ...previousTx,
+        ...cleanPatch,
+        user_id: previousTx.user_id || userId,
+      };
       const myVersion = nextTxVersion(id);
+      const myEpoch = trackMutationStart(id, {
+        tx: optimisticUpdated,
+        inFlight: !isOfflineRef.current,
+      });
 
       // 1. Immediate optimistic UI & local cache update
       setTransactions(prev =>
@@ -338,7 +518,22 @@ export function useMoneyState(deps: MoneyStateDeps) {
       if (userId) void upsertCachedTransactions(userId, [optimisticUpdated]);
       NativeHaptics.lightTick();
 
-      // 2. Background Supabase update with automatic rollback on failure
+      // 2. Offline mode: queue full edited row for idempotent upsert on reconnect
+      if (isOfflineRef.current) {
+        try {
+          await enqueueOfflineTx(optimisticUpdated);
+        } catch (err) {
+          console.error("[updateTransaction] Failed to queue offline edit:", err);
+          trackMutationSettled(id, myEpoch, { tx: previousTx });
+          setTransactions(prev => upsertTransactionSorted(prev, previousTx));
+          if (userId) void upsertCachedTransactions(userId, [previousTx]);
+          return { success: false, error: "Failed to save edit locally." };
+        }
+        return { success: true };
+      }
+
+      // 3. Background Supabase update with offline fallback on network drop
+      //    and automatic rollback on hard DB/RLS rejections
       enqueueTxCloudOp(id, async () => {
         try {
           const { data, error } = await supabase
@@ -349,8 +544,9 @@ export function useMoneyState(deps: MoneyStateDeps) {
             .single();
 
           if (!error && data) {
+            const canonical = { ...optimisticUpdated, ...(data as Transaction) };
+            trackMutationSettled(id, myEpoch, { tx: canonical });
             if (txMutationVersionRef.current.get(id) === myVersion) {
-              const canonical = { ...optimisticUpdated, ...(data as Transaction) };
               setTransactions(prev => prev.map(t => (t.id === id ? canonical : t)));
               if (userId) void upsertCachedTransactions(userId, [canonical]);
             }
@@ -368,12 +564,13 @@ export function useMoneyState(deps: MoneyStateDeps) {
               .select()
               .single();
             if (!retryRes.error && retryRes.data) {
+              const updated = {
+                ...retryRes.data,
+                credit_card_tx_type: cleanPatch.credit_card_tx_type,
+                statement_id: cleanPatch.statement_id,
+              } as Transaction;
+              trackMutationSettled(id, myEpoch, { tx: updated });
               if (txMutationVersionRef.current.get(id) === myVersion) {
-                const updated = {
-                  ...retryRes.data,
-                  credit_card_tx_type: cleanPatch.credit_card_tx_type,
-                  statement_id: cleanPatch.statement_id,
-                } as Transaction;
                 setTransactions(prev => prev.map(t => (t.id === id ? updated : t)));
                 if (userId) void upsertCachedTransactions(userId, [updated]);
               }
@@ -381,7 +578,15 @@ export function useMoneyState(deps: MoneyStateDeps) {
             }
           }
 
+          if (isNetworkFailureError(error)) {
+            await enqueueOfflineTx(optimisticUpdated).catch(() => {});
+            trackMutationSettled(id, myEpoch);
+            triggerToast("⏳ Offline — edit saved locally for sync");
+            return;
+          }
+
           console.error("[updateTransaction] Supabase error, reverting:", error);
+          trackMutationSettled(id, myEpoch, { tx: previousTx });
           if (txMutationVersionRef.current.get(id) === myVersion) {
             setTransactions(prev => upsertTransactionSorted(prev, previousTx));
             if (userId) void upsertCachedTransactions(userId, [previousTx]);
@@ -389,27 +594,27 @@ export function useMoneyState(deps: MoneyStateDeps) {
           NativeHaptics.errorShake();
           triggerToast(`❌ Update failed: ${error?.message || "Changes reverted"}`);
         } catch (err) {
-          console.error("[updateTransaction] Exception, reverting:", err);
-          if (txMutationVersionRef.current.get(id) === myVersion) {
-            setTransactions(prev => upsertTransactionSorted(prev, previousTx));
-            if (userId) void upsertCachedTransactions(userId, [previousTx]);
-          }
-          NativeHaptics.errorShake();
-          triggerToast("❌ Update failed — changes reverted.");
+          debugLog("[updateTransaction] Network exception; queuing offline edit:", err);
+          await enqueueOfflineTx(optimisticUpdated).catch(() => {});
+          trackMutationSettled(id, myEpoch);
+          triggerToast("⏳ Offline — edit saved locally for sync");
         }
       });
 
       return { success: true };
     },
-    [session?.user?.id, triggerToast, nextTxVersion, enqueueTxCloudOp]
+    [userId, isOfflineRef, triggerToast, nextTxVersion, enqueueTxCloudOp, trackMutationStart, trackMutationSettled]
   );
 
   const deleteTransaction = useCallback(
     async (id: string) => {
-      const userId = session?.user?.id;
       const item = transactionsRef.current.find(t => t.id === id);
       const now = new Date().toISOString();
       const myVersion = nextTxVersion(id);
+      const myEpoch = trackMutationStart(id, {
+        deletedAt: now,
+        inFlight: !isOfflineRef.current,
+      });
 
       // 1. Immediate optimistic soft-delete in state + IndexedDB cache
       setTransactions(prev => prev.map(t => (t.id === id ? { ...t, deleted_at: now } : t)));
@@ -417,13 +622,17 @@ export function useMoneyState(deps: MoneyStateDeps) {
       NativeHaptics.heavyDoubleThud();
       if (item) cacheDeletedItem("transaction", item);
 
-      // Remove from pending offline queue too so deleting an unsynced offline
+      // Remove from pending offline queue first so deleting an unsynced offline
       // entry prevents it from resurrecting on next reconnect.
       const removedFromOfflineQueue = await removeAcknowledgedOfflineTxs(new Set([id]));
 
-      // 2. Background cloud soft-delete (rollback only if cloud update fails
-      // for a row that actually existed on the server)
-      if (isOfflineRef.current && removedFromOfflineQueue > 0) {
+      // 2. Offline mode:
+      //    - If it was only in offline_tx_queue (never synced), removing it above is complete.
+      //    - If it already existed on the server, queue the soft-delete tombstone for reconnect!
+      if (isOfflineRef.current) {
+        if (removedFromOfflineQueue === 0 && item) {
+          await enqueueOfflineTx({ ...item, user_id: item.user_id || userId, deleted_at: now }).catch(() => {});
+        }
         return;
       }
 
@@ -433,27 +642,133 @@ export function useMoneyState(deps: MoneyStateDeps) {
             .from("transactions")
             .update({ deleted_at: now })
             .eq("id", id);
-          if (error) {
-            console.error("[deleteTransaction] Cloud soft-delete failed, reverting:", error);
-            if (item && txMutationVersionRef.current.get(id) === myVersion) {
-              setTransactions(prev => upsertTransactionSorted(prev, item));
-              if (userId) void upsertCachedTransactions(userId, [item]);
-            }
-            NativeHaptics.errorShake();
-            triggerToast(`❌ Delete failed: ${error.message}`);
+
+          if (!error) {
+            trackMutationSettled(id, myEpoch, { deletedAt: now });
+            return;
           }
-        } catch (err) {
-          console.error("[deleteTransaction] Cloud soft-delete exception, reverting:", err);
+
+          if (isNetworkFailureError(error)) {
+            // If the item had never reached Supabase (was still queued locally),
+            // do NOT resurrect it as a ghost row; otherwise queue the tombstone.
+            if (removedFromOfflineQueue === 0 && item) {
+              await enqueueOfflineTx({ ...item, user_id: item.user_id || userId, deleted_at: now }).catch(() => {});
+            }
+            trackMutationSettled(id, myEpoch, { deletedAt: now });
+            triggerToast("⏳ Offline — delete queued for sync");
+            return;
+          }
+
+          console.error("[deleteTransaction] Cloud soft-delete failed, reverting:", error);
           if (item && txMutationVersionRef.current.get(id) === myVersion) {
+            trackMutationSettled(id, myEpoch, { tx: item });
             setTransactions(prev => upsertTransactionSorted(prev, item));
             if (userId) void upsertCachedTransactions(userId, [item]);
           }
           NativeHaptics.errorShake();
-          triggerToast("❌ Delete failed — transaction restored.");
+          triggerToast(`❌ Delete failed: ${error.message}`);
+        } catch (err) {
+          debugLog("[deleteTransaction] Network exception; queuing soft-delete:", err);
+          if (removedFromOfflineQueue === 0 && item) {
+            await enqueueOfflineTx({ ...item, user_id: item.user_id || userId, deleted_at: now }).catch(() => {});
+          }
+          trackMutationSettled(id, myEpoch, { deletedAt: now });
+          triggerToast("⏳ Offline — delete queued for sync");
         }
       });
     },
-    [session?.user?.id, isOfflineRef, cacheDeletedItem, triggerToast, nextTxVersion, enqueueTxCloudOp]
+    [userId, isOfflineRef, cacheDeletedItem, triggerToast, nextTxVersion, enqueueTxCloudOp, trackMutationStart, trackMutationSettled]
+  );
+
+  /**
+   * Restore a soft-deleted transaction (used by Shake-to-Undo).
+   * Executes `UPDATE transactions SET deleted_at = NULL` serialized after any
+   * in-flight delete so Migration 015's BEFORE UPDATE trigger stamps a fresh
+   * `updated_at = NOW()` and propagates cleanly across delta-syncing devices.
+   */
+  const restoreDeletedTransaction = useCallback(
+    async (item: Transaction): Promise<{ success: boolean; error?: string }> => {
+      if (!item?.id) return { success: false, error: "Invalid transaction" };
+      const restored: Transaction = { ...item, deleted_at: null, user_id: item.user_id || userId };
+      const myVersion = nextTxVersion(item.id);
+      const myEpoch = trackMutationStart(item.id, { tx: restored, inFlight: !isOfflineRef.current });
+
+      setTransactions(prev => upsertTransactionSorted(prev, restored));
+      if (userId) void upsertCachedTransactions(userId, [restored]);
+
+      if (isOfflineRef.current) {
+        await enqueueOfflineTx(restored).catch(() => {});
+        return { success: true };
+      }
+
+      return new Promise(resolve => {
+        enqueueTxCloudOp(item.id, async () => {
+          try {
+            const { data, error } = await supabase
+              .from("transactions")
+              .update({ deleted_at: null })
+              .eq("id", item.id)
+              .select()
+              .maybeSingle();
+
+            if (!error && data) {
+              const canonical = data as Transaction;
+              trackMutationSettled(item.id, myEpoch, { tx: canonical });
+              if (txMutationVersionRef.current.get(item.id) === myVersion) {
+                setTransactions(prev => upsertTransactionSorted(prev, canonical));
+                if (userId) void upsertCachedTransactions(userId, [canonical]);
+              }
+              resolve({ success: true });
+              return;
+            }
+
+            // If the original row never existed on the server (e.g. deleted while offline),
+            // upsert it fresh without stale updated_at so delta sync sees it.
+            if (!error && !data) {
+              const { updated_at: _staleUpdatedAt, ...insertPayload } = restored;
+              void _staleUpdatedAt;
+              const upsertRes = await supabase
+                .from("transactions")
+                .upsert(insertPayload, { onConflict: "id" })
+                .select()
+                .single();
+              if (!upsertRes.error && upsertRes.data) {
+                const canonical = upsertRes.data as Transaction;
+                trackMutationSettled(item.id, myEpoch, { tx: canonical });
+                if (txMutationVersionRef.current.get(item.id) === myVersion) {
+                  setTransactions(prev => upsertTransactionSorted(prev, canonical));
+                  if (userId) void upsertCachedTransactions(userId, [canonical]);
+                }
+                resolve({ success: true });
+                return;
+              }
+              resolve({ success: false, error: upsertRes.error?.message || "Restore failed" });
+              return;
+            }
+
+            if (isNetworkFailureError(error)) {
+              await enqueueOfflineTx(restored).catch(() => {});
+              trackMutationSettled(item.id, myEpoch);
+              resolve({ success: true });
+              return;
+            }
+
+            trackMutationSettled(item.id, myEpoch, { remove: true });
+            if (txMutationVersionRef.current.get(item.id) === myVersion) {
+              setTransactions(prev => prev.filter(t => t.id !== item.id));
+              if (userId) void removeCachedTransactionById(userId, item.id);
+            }
+            resolve({ success: false, error: error?.message || "Restore failed" });
+          } catch (err) {
+            await enqueueOfflineTx(restored).catch(() => {});
+            trackMutationSettled(item.id, myEpoch);
+            debugLog("[restoreDeletedTransaction] Network exception; queued offline:", err);
+            resolve({ success: true });
+          }
+        });
+      });
+    },
+    [userId, isOfflineRef, nextTxVersion, enqueueTxCloudOp, trackMutationStart, trackMutationSettled]
   );
 
   // ─── Subscriptions / Utilities (shared `subscriptions` table) ──────────
@@ -487,10 +802,10 @@ export function useMoneyState(deps: MoneyStateDeps) {
         auto_deduct: autoDeduct,
         last_paid_month: lastPaidMonth,
         type: kind,
-        user_id: session?.user?.id,
+        user_id: userId,
       };
     },
-    [session]
+    [userId]
   );
 
   const buildSubsPatch = useCallback(
@@ -510,9 +825,8 @@ export function useMoneyState(deps: MoneyStateDeps) {
 
   const addSubscription = useCallback(
     async (sub: Partial<Subscription>) => {
-      // Strip caller's id (if any) without mutating the input object — the
-      // caller may keep referencing `sub` after this call returns.
       const { id: _id, ...rest } = sub;
+      void _id;
       const payload = buildSubsPayload(rest, "subscription");
       const { data, error } = await supabase
         .from("subscriptions")
@@ -520,11 +834,25 @@ export function useMoneyState(deps: MoneyStateDeps) {
         .select()
         .single();
       if (!error && data) {
-        setSubscriptions(prev => [{ ...rest, id: data.id } as Subscription, ...prev]);
+        setSubscriptions(prev => [
+          {
+            icon: "MonitorPlay",
+            bg: "bg-red-500/10",
+            color: "text-red-500",
+            ...rest,
+            id: data.id,
+            user_id: userId,
+            type: "subscription",
+          } as Subscription,
+          ...prev,
+        ]);
         NativeHaptics.successMedium();
+      } else if (error) {
+        console.error("[addSubscription] failed:", error);
+        triggerToast(`❌ Failed to add subscription: ${error.message}`);
       }
     },
-    [buildSubsPayload]
+    [buildSubsPayload, userId, triggerToast]
   );
 
   const updateSubscription = useCallback(
@@ -539,24 +867,34 @@ export function useMoneyState(deps: MoneyStateDeps) {
       if (!error && data) {
         setSubscriptions(prev => prev.map(s => (s.id === id ? { ...s, ...patch } : s)));
         NativeHaptics.lightTick();
+      } else if (error) {
+        console.error("[updateSubscription] failed:", error);
+        triggerToast(`❌ Failed to update subscription: ${error.message}`);
       }
     },
-    [buildSubsPatch]
+    [buildSubsPatch, triggerToast]
   );
 
-  const deleteSubscription = useCallback(async (id: string) => {
-    const { error } = await supabase.from("subscriptions").delete().eq("id", id);
-    if (!error) {
-      setSubscriptions(prev => prev.filter(s => s.id !== id));
-      setFixedBills(prev => prev.filter(s => s.id !== id));
-      setUtilities(prev => prev.filter(s => s.id !== id));
-      NativeHaptics.heavyDoubleThud();
-    }
-  }, []);
+  const deleteSubscription = useCallback(
+    async (id: string) => {
+      const { error } = await supabase.from("subscriptions").delete().eq("id", id);
+      if (!error) {
+        setSubscriptions(prev => prev.filter(s => s.id !== id));
+        setFixedBills(prev => prev.filter(s => s.id !== id));
+        setUtilities(prev => prev.filter(s => s.id !== id));
+        NativeHaptics.heavyDoubleThud();
+      } else {
+        console.error("[deleteSubscription] failed:", error);
+        triggerToast(`❌ Failed to delete subscription: ${error.message}`);
+      }
+    },
+    [triggerToast]
+  );
 
   const addFixedBill = useCallback(
     async (sub: Partial<Subscription>) => {
       const { id: _id, ...rest } = sub;
+      void _id;
       const payload = buildSubsPayload(rest, "fixed_bill");
       const { data, error } = await supabase
         .from("subscriptions")
@@ -564,11 +902,25 @@ export function useMoneyState(deps: MoneyStateDeps) {
         .select()
         .single();
       if (!error && data) {
-        setFixedBills(prev => [{ ...rest, id: data.id, type: "fixed_bill" } as Subscription, ...prev]);
+        setFixedBills(prev => [
+          {
+            icon: "FileText",
+            bg: "bg-purple-500/10",
+            color: "text-purple-500",
+            ...rest,
+            id: data.id,
+            user_id: userId,
+            type: "fixed_bill",
+          } as Subscription,
+          ...prev,
+        ]);
         NativeHaptics.successMedium();
+      } else if (error) {
+        console.error("[addFixedBill] failed:", error);
+        triggerToast(`❌ Failed to add fixed bill: ${error.message}`);
       }
     },
-    [buildSubsPayload]
+    [buildSubsPayload, userId, triggerToast]
   );
 
   const updateFixedBill = useCallback(
@@ -583,25 +935,34 @@ export function useMoneyState(deps: MoneyStateDeps) {
       if (!error && data) {
         setFixedBills(prev => prev.map(s => (s.id === id ? { ...s, ...patch } : s)));
         NativeHaptics.lightTick();
+      } else if (error) {
+        console.error("[updateFixedBill] failed:", error);
+        triggerToast(`❌ Failed to update fixed bill: ${error.message}`);
       }
     },
-    [buildSubsPatch]
+    [buildSubsPatch, triggerToast]
   );
 
-  const deleteFixedBill = useCallback(async (id: string) => {
-    const { error } = await supabase.from("subscriptions").delete().eq("id", id);
-    if (!error) {
-      setSubscriptions(prev => prev.filter(s => s.id !== id));
-      setFixedBills(prev => prev.filter(s => s.id !== id));
-      setUtilities(prev => prev.filter(s => s.id !== id));
-      NativeHaptics.heavyDoubleThud();
-    }
-  }, []);
+  const deleteFixedBill = useCallback(
+    async (id: string) => {
+      const { error } = await supabase.from("subscriptions").delete().eq("id", id);
+      if (!error) {
+        setSubscriptions(prev => prev.filter(s => s.id !== id));
+        setFixedBills(prev => prev.filter(s => s.id !== id));
+        setUtilities(prev => prev.filter(s => s.id !== id));
+        NativeHaptics.heavyDoubleThud();
+      } else {
+        console.error("[deleteFixedBill] failed:", error);
+        triggerToast(`❌ Failed to delete fixed bill: ${error.message}`);
+      }
+    },
+    [triggerToast]
+  );
 
   const addUtility = useCallback(
     async (sub: Partial<Subscription>) => {
-      // Same non-mutating strip pattern as addSubscription above.
       const { id: _id, ...rest } = sub;
+      void _id;
       const payload = buildSubsPayload(rest, "utility");
       const { data, error } = await supabase
         .from("subscriptions")
@@ -609,11 +970,25 @@ export function useMoneyState(deps: MoneyStateDeps) {
         .select()
         .single();
       if (!error && data) {
-        setUtilities(prev => [{ ...rest, id: data.id } as Subscription, ...prev]);
+        setUtilities(prev => [
+          {
+            icon: "Zap",
+            bg: "bg-yellow-500/10",
+            color: "text-yellow-500",
+            ...rest,
+            id: data.id,
+            user_id: userId,
+            type: "utility",
+          } as Subscription,
+          ...prev,
+        ]);
         NativeHaptics.successMedium();
+      } else if (error) {
+        console.error("[addUtility] failed:", error);
+        triggerToast(`❌ Failed to add utility: ${error.message}`);
       }
     },
-    [buildSubsPayload]
+    [buildSubsPayload, userId, triggerToast]
   );
 
   const updateUtility = useCallback(
@@ -628,20 +1003,29 @@ export function useMoneyState(deps: MoneyStateDeps) {
       if (!error && data) {
         setUtilities(prev => prev.map(s => (s.id === id ? { ...s, ...patch } : s)));
         NativeHaptics.lightTick();
+      } else if (error) {
+        console.error("[updateUtility] failed:", error);
+        triggerToast(`❌ Failed to update utility: ${error.message}`);
       }
     },
-    [buildSubsPatch]
+    [buildSubsPatch, triggerToast]
   );
 
-  const deleteUtility = useCallback(async (id: string) => {
-    const { error } = await supabase.from("subscriptions").delete().eq("id", id);
-    if (!error) {
-      setSubscriptions(prev => prev.filter(s => s.id !== id));
-      setFixedBills(prev => prev.filter(s => s.id !== id));
-      setUtilities(prev => prev.filter(s => s.id !== id));
-      NativeHaptics.heavyDoubleThud();
-    }
-  }, []);
+  const deleteUtility = useCallback(
+    async (id: string) => {
+      const { error } = await supabase.from("subscriptions").delete().eq("id", id);
+      if (!error) {
+        setSubscriptions(prev => prev.filter(s => s.id !== id));
+        setFixedBills(prev => prev.filter(s => s.id !== id));
+        setUtilities(prev => prev.filter(s => s.id !== id));
+        NativeHaptics.heavyDoubleThud();
+      } else {
+        console.error("[deleteUtility] failed:", error);
+        triggerToast(`❌ Failed to delete utility: ${error.message}`);
+      }
+    },
+    [triggerToast]
+  );
 
   return {
     // State
@@ -655,8 +1039,10 @@ export function useMoneyState(deps: MoneyStateDeps) {
     setUtilities,
     // Transaction CRUD
     addTransaction,
+    addTransactionsBatch,
     updateTransaction,
     deleteTransaction,
+    restoreDeletedTransaction,
     // Subscription CRUD
     addSubscription,
     updateSubscription,

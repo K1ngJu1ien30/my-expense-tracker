@@ -221,6 +221,7 @@ All functions specify `SET search_path = public, auth` to prevent search-path in
   13. `013_repayment_release_safeguards.sql` — Cross-currency repayment and zero-debt / overpayment guards
   14. `014_transactions_keyset_pagination_index.sql` — Partial composite index `(user_id, date DESC, id DESC) WHERE deleted_at IS NULL` for keyset pagination
   15. `015_transactions_delta_sync_updated_at.sql` — `updated_at` column, auto-stamp trigger, and `(user_id, updated_at DESC)` index for incremental delta sync
+  16. `016_indexes_and_rpc_alignment.sql` — Missing composite indexes across goals/subscriptions/credit-card tables plus aligned `record_credit_card_repayment` and `post_credit_card_cashback` RPCs
 
 ---
 

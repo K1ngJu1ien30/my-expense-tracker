@@ -27,6 +27,8 @@ async function getStoredPin(userId?: string): Promise<string | null> {
         if (legacy?.value) {
           value = legacy.value;
           await Preferences.set({ key: pinKey, value });
+          // Remove legacy unscoped PIN after migration so it never leaks to another user
+          await Preferences.remove({ key: LEGACY_PIN_KEY }).catch(() => {});
         }
       }
       return value;
@@ -39,6 +41,7 @@ async function getStoredPin(userId?: string): Promise<string | null> {
       if (legacy) {
         val = legacy;
         localStorage.setItem(pinKey, legacy);
+        try { localStorage.removeItem(LEGACY_PIN_KEY); } catch {}
       }
     }
     return val;
@@ -82,7 +85,13 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [pinInput, setPinInput] = useState("");
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(true);
+  const [nativePlatform, setNativePlatform] = useState(false);
   const unlockedUserIdRef = useRef<string | null>(null);
+  const isVerifyingRef = useRef(false);
+
+  useEffect(() => {
+    void isNative().then(setNativePlatform);
+  }, []);
 
   const unlock = useCallback(() => {
     unlockedUserIdRef.current = userId;
@@ -91,6 +100,51 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     setError("");
   }, [userId]);
 
+  // Re-lock after backgrounding for longer than 60s when PIN lock is enabled
+  useEffect(() => {
+    if (!isPinEnabled || !userId) return;
+    const RELOCK_GRACE_MS = 60_000;
+    let backgroundedAt: number | null = null;
+    let cancelled = false;
+    let appHandle: { remove: () => Promise<void> } | null = null;
+
+    const handleBackground = () => {
+      backgroundedAt = Date.now();
+    };
+    const handleForeground = () => {
+      if (backgroundedAt !== null && Date.now() - backgroundedAt >= RELOCK_GRACE_MS) {
+        unlockedUserIdRef.current = null;
+        setIsLocked(true);
+        setPinInput("");
+        setError("");
+      }
+      backgroundedAt = null;
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") handleBackground();
+      else handleForeground();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    import("@capacitor/app")
+      .then(async ({ App }) => {
+        const listener = await App.addListener("appStateChange", ({ isActive }) => {
+          if (!isActive) handleBackground();
+          else handleForeground();
+        });
+        if (cancelled) listener.remove().catch(() => {});
+        else appHandle = listener;
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      appHandle?.remove().catch(() => {});
+    };
+  }, [isPinEnabled, userId]);
+
   useEffect(() => {
     if (!userId || authLoading) {
       if (!userId) unlockedUserIdRef.current = null;
@@ -98,8 +152,6 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     }
 
     if (!isPinEnabled) {
-      // PIN-gate disabled → unlock synchronously.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsLocked(false);
       setChecking(false);
       return;
@@ -133,25 +185,31 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   }, [isPinEnabled, isBiometricEnabled, userId, authLoading, unlock]);
 
   const verifyPin = useCallback(async (pin: string) => {
-    const stored = await getStoredPin(session?.user?.id);
-    if (stored && pin === stored) {
-      unlock();
-      NativeHaptics.successMedium();
-    } else {
-      setError("Incorrect PIN");
-      setPinInput("");
-      NativeHaptics.errorShake();
+    if (isVerifyingRef.current) return;
+    isVerifyingRef.current = true;
+    try {
+      const stored = await getStoredPin(userId ?? undefined);
+      if (stored && pin === stored) {
+        unlock();
+        NativeHaptics.successMedium();
+      } else {
+        setError("Incorrect PIN");
+        setPinInput("");
+        NativeHaptics.errorShake();
+      }
+    } finally {
+      isVerifyingRef.current = false;
     }
-  }, [session?.user?.id, unlock]);
+  }, [userId, unlock]);
 
   const handlePinDigit = useCallback((digit: string) => {
-    if (pinInput.length >= 6) return;
+    if (isVerifyingRef.current || pinInput.length >= 6) return;
     const next = pinInput + digit;
     setPinInput(next);
     setError("");
 
     if (next.length === 6) {
-      verifyPin(next);
+      void verifyPin(next);
     }
   }, [pinInput, verifyPin]);
 
@@ -189,7 +247,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="app-lock-title" className="fixed inset-0 z-[9999] bg-background flex flex-col items-center justify-center p-6">
+    <div data-auth-locked="true" role="dialog" aria-modal="true" aria-labelledby="app-lock-title" className="fixed inset-0 z-[9999] bg-background flex flex-col items-center justify-center p-6">
       <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
@@ -246,14 +304,18 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
               {digit}
             </button>
           ))}
-          <button
-            type="button"
-            aria-label="Use biometric authentication"
-            onClick={retryBiometric}
-            className="h-16 rounded-2xl bg-card border border-border/50 flex items-center justify-center text-primary hover:bg-muted active:scale-95 transition-all shadow-sm"
-          >
-            <Fingerprint className="w-6 h-6" aria-hidden="true" />
-          </button>
+          {isBiometricEnabled && nativePlatform ? (
+            <button
+              type="button"
+              aria-label="Use biometric authentication"
+              onClick={retryBiometric}
+              className="h-16 rounded-2xl bg-card border border-border/50 flex items-center justify-center text-primary hover:bg-muted active:scale-95 transition-all shadow-sm"
+            >
+              <Fingerprint className="w-6 h-6" aria-hidden="true" />
+            </button>
+          ) : (
+            <div aria-hidden="true" className="h-16" />
+          )}
           <button
             type="button"
             aria-label="PIN digit 0"

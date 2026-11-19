@@ -6,7 +6,13 @@ import localforage from "localforage";
 import { supabase } from "../supabase";
 import { migrateAccounts } from "./useAccountsState";
 import { loadModel, rebuildFromHistory } from "../categoryPredictor";
-import { getOfflineQueueForUser, removeAcknowledgedOfflineTxs } from "../offlineQueue";
+import {
+  getOfflineQueueForUser,
+  quarantineOfflineTx,
+  removeAcknowledgedOfflineTxs,
+  stripOfflineQueueMeta,
+  type OfflineQueuedTx,
+} from "../offlineQueue";
 import {
   getUserDataCacheKey,
   getUserMetaCacheKey,
@@ -19,11 +25,14 @@ import {
   fetchPaginatedTransactions,
 } from "../transactionPagination";
 import {
+  applyLocalTxOverrides,
+  compareTransactionsDesc,
   mergeTransactionsWithDeletes,
   readFullCachedTransactions,
   readRecentCachedTransactions,
   upsertCachedTransactions,
   writeCachedTransactions,
+  type LocalTxTracker,
 } from "../txCache";
 import { debugLog } from "../debugLog";
 import type {
@@ -41,12 +50,6 @@ import type {
   RawUserCategoryRow,
 } from "../types";
 
-/**
- * Collection of setters the provider passes in — allows useSyncState to
- * orchestrate cross-domain state updates without owning the state itself.
- * This keeps each domain hook free to own its own state while still letting
- * a single network fetch populate everything atomically.
- */
 export type SyncSetters = {
   setTransactions: (val: Transaction[] | ((prev: Transaction[]) => Transaction[])) => void;
   setGoals: (val: Goal[]) => void;
@@ -61,19 +64,12 @@ export type SyncSetters = {
   triggerToast: (msg: string) => void;
   /** Ref used to write the current category list into the cache payload. */
   categoriesRef: React.MutableRefObject<string[]>;
+  /** Shared optimistic mutation tracker so refreshData never clobbers local edits. */
+  localTxTracker?: LocalTxTracker;
+  /** Optional hook invoked when connectivity returns (e.g. flush offline statements). */
+  onOnlineReconnect?: () => void;
 };
 
-/**
- * useSyncState — owns network/online state, the offline transaction queue,
- * and the master `refreshData` orchestrator that populates all the domain
- * collections after a successful Supabase fetch.
- *
- * Why a "setters parameter" instead of owning the state here?
- *   Each domain (transactions, goals, subs, etc.) already owns its state
- *   in its dedicated hook / provider slot. If this hook duplicated that
- *   ownership, we'd have to sync two sources of truth. Instead, the provider
- *   passes its setters in and we just call them.
- */
 type CachedAppPayload = {
   transactions?: Transaction[];
   goals?: Goal[];
@@ -108,45 +104,63 @@ function stripMigration007Columns(tx: Record<string, unknown>): Record<string, u
   return copy;
 }
 
-function mergeTransactionsById(existing: Transaction[], incoming: Transaction[]): Transaction[] {
-  if (incoming.length === 0) return existing;
-  const incomingMap = new Map<string, Transaction>();
-  for (const row of incoming) {
-    if (row.id) incomingMap.set(row.id, row);
+/**
+ * Merge local queued offline items (adds, edits, and soft-delete tombstones)
+ * on top of a cloud/cached transaction array in deterministic descending order.
+ */
+function overlayOfflineQueue(
+  base: Transaction[],
+  offlineQueue: OfflineQueuedTx[] | null | undefined,
+  userId: string
+): { merged: Transaction[]; hasPendingOverlay: boolean } {
+  if (!offlineQueue || offlineQueue.length === 0) {
+    return { merged: base, hasPendingOverlay: false };
   }
-  const seen = new Set<string>();
-  const merged: Transaction[] = [];
-  for (const tx of existing) {
-    if (tx.id && incomingMap.has(tx.id)) {
-      merged.push(incomingMap.get(tx.id)!);
-      seen.add(tx.id);
+  const byId = new Map<string, Transaction>();
+  for (const tx of base) {
+    if (tx.id && !tx.deleted_at) byId.set(tx.id, tx);
+  }
+  let hasPendingOverlay = false;
+  offlineQueue.forEach((raw, idx) => {
+    const clean = stripOfflineQueueMeta(raw);
+    const id = clean.id || `offline-${Date.now()}-${idx}`;
+    if (clean.deleted_at) {
+      if (byId.delete(id)) hasPendingOverlay = true;
     } else {
-      merged.push(tx);
-      if (tx.id) seen.add(tx.id);
+      byId.set(id, { ...clean, id, user_id: userId } as Transaction);
+      hasPendingOverlay = true;
     }
-  }
-  for (const row of incoming) {
-    if (row.id && !seen.has(row.id)) {
-      merged.unshift(row);
-      seen.add(row.id);
-    }
-  }
-  merged.sort((a, b) => {
-    if (a.date !== b.date) return b.date.localeCompare(a.date);
-    return b.id.localeCompare(a.id);
   });
-  return merged;
+  if (!hasPendingOverlay) {
+    return { merged: base, hasPendingOverlay: false };
+  }
+  const merged = Array.from(byId.values());
+  merged.sort(compareTransactionsDesc);
+  return { merged, hasPendingOverlay: true };
 }
 
 export function useSyncState(session: Session | null, setters: SyncSetters) {
-  const [isOffline, setIsOffline] = useState(false);
+  const [isOffline, setIsOffline] = useState(() =>
+    typeof navigator !== "undefined" ? !navigator.onLine : false
+  );
   const [isSyncing, setIsSyncing] = useState(false);
 
-  /**
-   * Re-entrancy guard: both the browser `online` event AND the Capacitor
-   * Network listener can fire simultaneously. Without this we'd double-upload.
-   */
+  /** Ref-counted sync activity so overlapping queue/refresh ops never prematurely clear isSyncing. */
+  const activeSyncOpsRef = useRef(0);
+  const beginSyncOp = useCallback(() => {
+    activeSyncOpsRef.current += 1;
+    setIsSyncing(true);
+  }, []);
+  const endSyncOp = useCallback(() => {
+    activeSyncOpsRef.current = Math.max(0, activeSyncOpsRef.current - 1);
+    if (activeSyncOpsRef.current === 0) setIsSyncing(false);
+  }, []);
+
+  /** Re-entrancy guard for offline queue sync. */
   const isSyncingRef = useRef(false);
+  /** Single-flight lock + trailing queue for refreshData. */
+  const refreshInFlightRef = useRef(false);
+  const pendingRefreshUserRef = useRef<{ id: string; user_metadata?: Record<string, unknown> } | null>(null);
 
   /** Tracks the currently active user ID to prevent stale cross-user commits. */
   const activeUserIdRef = useRef<string | null>(session?.user?.id ?? null);
@@ -160,7 +174,9 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
   const cachedCloudTransactionsRef = useRef<{ userId: string; rows: Transaction[] } | null>(null);
 
   /** Tracks previous offline state reliably across web & Capacitor listeners. */
-  const wasOfflineRef = useRef(false);
+  const wasOfflineRef = useRef(
+    typeof navigator !== "undefined" ? !navigator.onLine : false
+  );
 
   // Keep setters in a ref so effects don't need them in the dep array and
   // don't tear down+rebuild on every provider re-render.
@@ -196,18 +212,8 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
           return false;
         }
 
-        const mergeOffline = (base: Transaction[]): Transaction[] => {
-          if (!offlineQueue || offlineQueue.length === 0) return base;
-          const baseIds = new Set(base.map(t => t.id));
-          const offlineTxs = offlineQueue
-            .filter(tx => !tx.id || !baseIds.has(tx.id))
-            .map((tx, i) => ({
-              ...tx,
-              id: tx.id || `offline-${Date.now()}-${i}`,
-              user_id: currentUser.id,
-            })) as Transaction[];
-          return offlineTxs.length > 0 ? [...offlineTxs, ...base] : base;
-        };
+        const mergeOffline = (base: Transaction[]): Transaction[] =>
+          overlayOfflineQueue(base, offlineQueue, currentUser.id).merged;
 
         if (data) {
           s.setGoals(data.goals ?? []);
@@ -264,11 +270,20 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
     []
   );
 
+  // Ref for invoking syncOfflineQueue from inside refreshData without circular deps
+  const syncOfflineQueueRef = useRef<(explicitUserId?: string) => Promise<void>>(async () => {});
+
   // ─── refreshData (delta-first background network sync) ─────────────────
   const refreshData = useCallback(
     async (currentUser: { id: string; user_metadata?: Record<string, unknown> }) => {
+      if (refreshInFlightRef.current) {
+        pendingRefreshUserRef.current = currentUser;
+        debugLog("[refreshData] Already in flight — queued trailing refresh");
+        return;
+      }
+      refreshInFlightRef.current = true;
       const s = settersRef.current;
-      setIsSyncing(true);
+      beginSyncOp();
 
       // Fallback from user_metadata (old APK compatibility). If the new
       // user_accounts table fetch succeeds below, we'll override this.
@@ -279,11 +294,25 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
       try {
         debugLog("[refreshData] Fetching live data...");
 
+        // Flush any offline transactions queued in a previous session before
+        // pulling cloud state (fixes offline-created items staying stuck on
+        // launch when the app opens already online).
+        if (!wasOfflineRef.current) {
+          await syncOfflineQueueRef.current(currentUser.id);
+        }
+
+        // Snapshot mutation epoch BEFORE issuing cloud queries so any optimistic
+        // add/edit/delete/restore made while this fetch is in flight is preserved.
+        const refreshStartEpoch = s.localTxTracker?.getEpoch() ?? 0;
+
         const watermarkKey = getUserSyncWatermarkKey(currentUser.id);
-        const cachedForUser =
+        const rawCachedForUser =
           cachedCloudTransactionsRef.current?.userId === currentUser.id
             ? cachedCloudTransactionsRef.current.rows
             : null;
+        const cachedForUser = rawCachedForUser
+          ? applyLocalTxOverrides(rawCachedForUser, s.localTxTracker, 0, false).rows
+          : null;
         const storedWatermark = cachedForUser
           ? await localforage.getItem<string>(watermarkKey).catch(() => null)
           : null;
@@ -328,7 +357,13 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
               ? undefined
               : (firstBatch) => {
                   if (activeUserIdRef.current && activeUserIdRef.current !== currentUser.id) return;
-                  s.setTransactions(firstBatch);
+                  const withLocal = applyLocalTxOverrides(
+                    firstBatch,
+                    s.localTxTracker,
+                    refreshStartEpoch,
+                    false
+                  ).rows;
+                  s.setTransactions(withLocal);
                 },
           });
 
@@ -519,25 +554,36 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
         });
 
         // ─── Commit to state ──────────────────────────────────────────────
+        // Overlay any optimistic local mutations (adds/edits/deletes/restores)
+        // that are in-flight or happened after this refresh started so an older
+        // network snapshot can NEVER clobber newer user actions.
+        const { rows: reconciledTransactions, appliedCount: localOverridesApplied } =
+          applyLocalTxOverrides(parsedTransactions, s.localTxTracker, refreshStartEpoch, true);
+
         cachedCloudTransactionsRef.current = {
           userId: currentUser.id,
-          rows: parsedTransactions,
+          rows: reconciledTransactions,
         };
 
-        // Merge any uncommitted offline queue items belonging to this user
+        // Merge any uncommitted offline queue items (adds, edits, tombstones)
         const pendingOffline = await getOfflineQueueForUser(currentUser.id);
         if (activeUserIdRef.current && activeUserIdRef.current !== currentUser.id) {
           return;
         }
-        const cloudIds = new Set(parsedTransactions.map(t => t.id));
-        const uncommittedOffline = pendingOffline
-          .filter(t => t.id && !cloudIds.has(t.id))
-          .map((t, idx) => ({ ...t, id: t.id || `offline-${Date.now()}-${idx}`, user_id: currentUser.id })) as Transaction[];
-        const finalTransactions = uncommittedOffline.length > 0 ? [...uncommittedOffline, ...parsedTransactions] : parsedTransactions;
+        const { merged: finalTransactions, hasPendingOverlay } = overlayOfflineQueue(
+          reconciledTransactions,
+          pendingOffline,
+          currentUser.id
+        );
 
-        // On zero-change delta sync, skip re-setting `transactions` if the
-        // array already matches so heavy pages skip unnecessary recalculations.
-        if (txSyncResult.mode === "full" || txSyncResult.changedCount > 0 || uncommittedOffline.length > 0) {
+        // On zero-change delta sync with no local/offline deltas, skip re-setting
+        // `transactions` so heavy pages skip unnecessary recalculations.
+        if (
+          txSyncResult.mode === "full" ||
+          txSyncResult.changedCount > 0 ||
+          localOverridesApplied > 0 ||
+          hasPendingOverlay
+        ) {
           s.setTransactions(finalTransactions);
         }
         s.setGoals(parsedGoals);
@@ -550,9 +596,6 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
         hydratedUserIdRef.current = currentUser.id;
 
         // ─── Background post-commit work (non-blocking) ───────────────────
-        // Store transactions in their dedicated IndexedDB keys (`recent` + `full`)
-        // separately from smaller non-transaction domain collections so account/
-        // category writes never rewrite the entire transaction history.
         const nonTxCachePayload: CachedAppPayload = {
           goals: parsedGoals,
           subscriptions: parsedSubscriptions,
@@ -566,7 +609,6 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
         const userCacheKey = getUserDataCacheKey(currentUser.id);
         const metaCacheKey = getUserMetaCacheKey(currentUser.id);
 
-        // Lightweight metadata mirror in localStorage (tiny — no transactions)
         if (typeof window !== "undefined") {
           try {
             localStorage.setItem(
@@ -578,20 +620,19 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
           }
         }
 
-        // Persist non-tx collections + dedicated transaction caches + delta watermark
         void localforage
           .setItem(userCacheKey, nonTxCachePayload)
           .catch(storageErr => console.warn("[refreshData] localforage.setItem failed:", storageErr));
 
-        if (txSyncResult.mode === "full" || txSyncResult.changedCount > 0) {
-          void writeCachedTransactions(currentUser.id, parsedTransactions);
+        if (txSyncResult.mode === "full" || txSyncResult.changedCount > 0 || localOverridesApplied > 0) {
+          void writeCachedTransactions(currentUser.id, reconciledTransactions);
         }
         if (txSyncResult.nextWatermark) {
           void localforage.setItem(watermarkKey, txSyncResult.nextWatermark).catch(() => {});
         }
 
         // Category predictor bootstrap (detached, never blocks UI)
-        if (parsedTransactions.length > 0) {
+        if (reconciledTransactions.length > 0) {
           const scheduleIdle =
             typeof window !== "undefined" && "requestIdleCallback" in window
               ? (cb: () => void) =>
@@ -601,7 +642,7 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
             void loadModel(currentUser.id)
               .then(existing => {
                 if (Object.keys(existing).length === 0) {
-                  return rebuildFromHistory(parsedTransactions, currentUser.id);
+                  return rebuildFromHistory(reconciledTransactions, currentUser.id);
                 }
               })
               .catch(() => {
@@ -611,48 +652,58 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
         }
       } catch (err) {
         debugLog("[refreshData] Network error caught:", err);
-        // Only hydrate from cache on network failure if we haven't already
-        // hydrated local state for this user (avoids clobbering optimistic
-        // local edits made after startup).
         if (hydratedUserIdRef.current !== currentUser.id) {
           await hydrateFromCache(currentUser);
         }
       } finally {
-        setIsSyncing(false);
+        refreshInFlightRef.current = false;
+        endSyncOp();
+        const queued = pendingRefreshUserRef.current;
+        if (queued) {
+          pendingRefreshUserRef.current = null;
+          void refreshData(queued);
+        }
       }
     },
-    [hydrateFromCache]
+    [hydrateFromCache, beginSyncOp, endSyncOp]
   );
 
   // ─── syncOfflineQueue (batched idempotent upserts + incremental merge) ─
-  const syncOfflineQueue = useCallback(async () => {
+  const syncOfflineQueue = useCallback(async (explicitUserId?: string) => {
     if (isSyncingRef.current) {
       debugLog("[syncOfflineQueue] Already syncing — skipping duplicate run");
       return;
     }
-    const userId = session?.user?.id;
+    const userId = explicitUserId || activeUserIdRef.current || session?.user?.id;
     if (!userId) {
       debugLog("[syncOfflineQueue] No active session — skipping sync until authenticated");
       return;
     }
     isSyncingRef.current = true;
-    setIsSyncing(true);
+    beginSyncOp();
     try {
       const queue = await getOfflineQueueForUser(userId);
       if (!queue || queue.length === 0) return;
 
-      const validItems = queue.filter((tx): tx is Partial<Transaction> & { id: string } => Boolean(tx && tx.id));
+      const validItems = queue.filter((tx): tx is OfflineQueuedTx & { id: string } => Boolean(tx && tx.id));
       if (validItems.length === 0) return;
 
       const acknowledgedIds = new Set<string>();
+      const expectedRevs = new Map<string, number>();
+      let quarantinedCount = 0;
       const syncedRows: Transaction[] = [];
       let hitNetworkError = false;
 
+      const markAck = (tx: OfflineQueuedTx & { id: string }) => {
+        acknowledgedIds.add(tx.id);
+        if (tx._queueRev !== undefined) expectedRevs.set(tx.id, tx._queueRev);
+      };
+
       // Helper: per-item fallback when a batch fails due to a single malformed row
-      const syncItemsIndividually = async (items: Array<Partial<Transaction> & { id: string }>) => {
+      const syncItemsIndividually = async (items: Array<OfflineQueuedTx & { id: string }>) => {
         for (const tx of items) {
           try {
-            const payload = { ...tx, user_id: userId };
+            const payload = { ...stripOfflineQueueMeta(tx), user_id: userId };
             const { data, error } = await supabase
               .from("transactions")
               .upsert(payload, { onConflict: "id" })
@@ -665,7 +716,7 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
                   .upsert(stripMigration007Columns(payload), { onConflict: "id" })
                   .select();
                 if (!retry.error) {
-                  acknowledgedIds.add(tx.id);
+                  markAck(tx);
                   if (Array.isArray(retry.data) && retry.data[0]) {
                     syncedRows.push({
                       ...(retry.data[0] as Transaction),
@@ -681,9 +732,12 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
                 hitNetworkError = true;
                 break;
               }
-              // Non-network / malformed record: skip and continue with remaining items
+              // Non-network permanent rejection (malformed/RLS/constraint):
+              // quarantine out of the active queue so it doesn't loop forever.
+              await quarantineOfflineTx(tx, error.message || error.code || "Rejected by database");
+              quarantinedCount++;
             } else {
-              acknowledgedIds.add(tx.id);
+              markAck(tx);
               if (Array.isArray(data) && data[0]) {
                 syncedRows.push(data[0] as Transaction);
               }
@@ -700,7 +754,7 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
       for (let i = 0; i < validItems.length; i += OFFLINE_SYNC_BATCH_SIZE) {
         if (hitNetworkError) break;
         const batch = validItems.slice(i, i + OFFLINE_SYNC_BATCH_SIZE);
-        const payloads = batch.map(tx => ({ ...tx, user_id: userId }));
+        const payloads = batch.map(tx => ({ ...stripOfflineQueueMeta(tx), user_id: userId }));
 
         try {
           const { data, error } = await supabase
@@ -709,7 +763,7 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
             .select();
 
           if (!error) {
-            batch.forEach(tx => acknowledgedIds.add(tx.id));
+            batch.forEach(markAck);
             if (Array.isArray(data)) {
               syncedRows.push(...(data as Transaction[]));
             }
@@ -723,7 +777,7 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
               .upsert(fallbackPayloads, { onConflict: "id" })
               .select();
             if (!retry.error) {
-              batch.forEach(tx => acknowledgedIds.add(tx.id));
+              batch.forEach(markAck);
               if (Array.isArray(retry.data)) {
                 const ccMetaById = new Map(
                   batch.map(tx => [tx.id, { credit_card_tx_type: tx.credit_card_tx_type, statement_id: tx.statement_id }])
@@ -743,8 +797,6 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
             break;
           }
 
-          // Non-network batch failure (e.g. one malformed item in the batch):
-          // fall back to item-by-item for this batch so valid items still sync.
           debugLog("[syncOfflineQueue] Batch error (non-network) — isolating per item:", error);
           await syncItemsIndividually(batch);
         } catch (netErr) {
@@ -754,14 +806,17 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
         }
       }
 
-      // Safely remove only the successfully acknowledged transactions
       if (acknowledgedIds.size > 0) {
-        const removed = await removeAcknowledgedOfflineTxs(acknowledgedIds);
-        const remaining = validItems.length - acknowledgedIds.size;
+        const removed = await removeAcknowledgedOfflineTxs(acknowledgedIds, expectedRevs);
+        const remaining = validItems.length - acknowledgedIds.size - quarantinedCount;
 
-        if (remaining === 0) {
+        if (quarantinedCount > 0) {
           settersRef.current.triggerToast(
-            `${removed} offline expense${removed > 1 ? "s" : ""} synced to cloud!`
+            `${removed} synced; ${quarantinedCount} rejected item${quarantinedCount > 1 ? "s" : ""} skipped`
+          );
+        } else if (remaining <= 0) {
+          settersRef.current.triggerToast(
+            `${removed} offline transaction${removed > 1 ? "s" : ""} synced to cloud!`
           );
         } else {
           settersRef.current.triggerToast(
@@ -769,11 +824,8 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
           );
         }
 
-        // Update local state and dedicated IndexedDB transaction cache
-        // incrementally from canonical server upsert rows — avoids re-downloading
-        // full history after every offline sync.
         if (syncedRows.length > 0 && activeUserIdRef.current === userId) {
-          settersRef.current.setTransactions(prev => mergeTransactionsById(prev, syncedRows));
+          settersRef.current.setTransactions(prev => mergeTransactionsWithDeletes(prev, syncedRows));
           if (cachedCloudTransactionsRef.current?.userId === userId) {
             cachedCloudTransactionsRef.current = {
               userId,
@@ -782,59 +834,92 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
           }
           void upsertCachedTransactions(userId, syncedRows);
         }
+      } else if (quarantinedCount > 0) {
+        settersRef.current.triggerToast(
+          `⚠️ ${quarantinedCount} offline item${quarantinedCount > 1 ? "s" : ""} rejected by server and skipped`
+        );
       }
     } catch (err) {
       console.error("[syncOfflineQueue] Process failed:", err);
     } finally {
       isSyncingRef.current = false;
-      setIsSyncing(false);
+      endSyncOp();
     }
-  }, [session?.user?.id]);
+  }, [session?.user?.id, beginSyncOp, endSyncOp]);
 
-  // ─── Network listeners ─────────────────────────────────────────────────
+  useEffect(() => {
+    syncOfflineQueueRef.current = syncOfflineQueue;
+  }, [syncOfflineQueue]);
+
+  // ─── Network & App-Resume listeners ────────────────────────────────────
   useEffect(() => {
     const initialOffline = typeof navigator !== "undefined" ? !navigator.onLine : false;
     wasOfflineRef.current = initialOffline;
     setIsOffline(initialOffline);
 
-    const handleOnline = () => {
+    const handleReconnect = () => {
       wasOfflineRef.current = false;
       setIsOffline(false);
       void syncOfflineQueue();
+      settersRef.current.onOnlineReconnect?.();
     };
     const handleOffline = () => {
       wasOfflineRef.current = true;
       setIsOffline(true);
     };
-    window.addEventListener("online", handleOnline);
+    window.addEventListener("online", handleReconnect);
     window.addEventListener("offline", handleOffline);
 
-    // Capacitor native listener (opt-in — only if plugin is available)
+    // Capacitor native Network + App foreground resume listeners
     let cancelled = false;
-    let nativeHandle: { remove: () => Promise<void> } | null = null;
+    let listenerFired = false;
+    let nativeNetHandle: { remove: () => Promise<void> } | null = null;
+    let nativeAppHandle: { remove: () => Promise<void> } | null = null;
+
     try {
       type NetStatus = { connected: boolean; connectionType?: string };
       import("@capacitor/network")
         .then(async ({ Network }) => {
+          const listener = await Network.addListener("networkStatusChange", (status: NetStatus) => {
+            listenerFired = true;
+            const wasOffline = wasOfflineRef.current;
+            const offlineNow = !status.connected;
+            wasOfflineRef.current = offlineNow;
+            setIsOffline(offlineNow);
+            if (status.connected && wasOffline) {
+              void syncOfflineQueue();
+              settersRef.current.onOnlineReconnect?.();
+            }
+          });
+          if (cancelled) {
+            listener.remove().catch(() => {});
+          } else {
+            nativeNetHandle = listener;
+          }
+
           Network.getStatus()
             .then((status: NetStatus) => {
-              if (cancelled) return;
+              if (cancelled || listenerFired) return;
               const offlineNow = !status.connected;
               wasOfflineRef.current = offlineNow;
               setIsOffline(offlineNow);
             })
             .catch(() => {});
-          const listener = await Network.addListener("networkStatusChange", (status: NetStatus) => {
-            const wasOffline = wasOfflineRef.current;
-            const offlineNow = !status.connected;
-            wasOfflineRef.current = offlineNow;
-            setIsOffline(offlineNow);
-            if (status.connected && wasOffline) void syncOfflineQueue();
+        })
+        .catch(() => {});
+
+      import("@capacitor/app")
+        .then(async ({ App }) => {
+          const appListener = await App.addListener("appStateChange", ({ isActive }) => {
+            if (isActive && !wasOfflineRef.current) {
+              void syncOfflineQueue();
+              settersRef.current.onOnlineReconnect?.();
+            }
           });
           if (cancelled) {
-            listener.remove().catch(() => {});
+            appListener.remove().catch(() => {});
           } else {
-            nativeHandle = listener;
+            nativeAppHandle = appListener;
           }
         })
         .catch(() => {});
@@ -844,9 +929,10 @@ export function useSyncState(session: Session | null, setters: SyncSetters) {
 
     return () => {
       cancelled = true;
-      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("online", handleReconnect);
       window.removeEventListener("offline", handleOffline);
-      nativeHandle?.remove().catch(() => {});
+      nativeNetHandle?.remove().catch(() => {});
+      nativeAppHandle?.remove().catch(() => {});
     };
   }, [session?.user?.id, syncOfflineQueue]);
 

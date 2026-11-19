@@ -22,7 +22,12 @@ import {
   getUserCreditCardPaymentsKey,
   getUserCreditCardStatementsKey,
 } from "../cacheKeys";
-import { roundCurrency } from "../utils";
+import { formatLocalDate, isValidUuid, parseLocalDateToIso, roundCurrency } from "../utils";
+import {
+  upsertCachedTransactions,
+  upsertTransactionSorted,
+  type LocalTxTracker,
+} from "../txCache";
 import {
   enqueueOfflineStatement,
   getOfflineStatementQueueForUser,
@@ -30,9 +35,9 @@ import {
 } from "../offlineQueue";
 
 export type CreditCardPaymentsDeps = {
-
   session: Session | null;
   isOfflineRef: MutableRefObject<boolean>;
+  localTxTracker?: LocalTxTracker;
   accountObjects: Account[];
   transactions: Transaction[];
   addTransaction: (tx: Partial<Transaction>) => Promise<TransactionSaveResult>;
@@ -133,6 +138,7 @@ export function useCreditCardPayments(deps: CreditCardPaymentsDeps) {
   const {
     session,
     isOfflineRef,
+    localTxTracker,
     accountObjects,
     setTransactions,
     triggerToast,
@@ -180,6 +186,9 @@ export function useCreditCardPayments(deps: CreditCardPaymentsDeps) {
       return;
     }
 
+    setStatements([]);
+    setPayments([]);
+    setAllocations([]);
     setIsLoading(true);
 
     // 1a. Load from local cache
@@ -316,9 +325,7 @@ export function useCreditCardPayments(deps: CreditCardPaymentsDeps) {
   }, [userId, isOfflineRef, statementsKey, paymentsKey, allocationsKey]);
 
   useEffect(() => {
-    // Initial hydration of cached statements & payments from storage and Supabase
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadData();
+    void Promise.resolve().then(() => loadData());
   }, [loadData]);
 
   // ─── 2. Add an issued statement ─────────────────────────────────────────
@@ -515,12 +522,19 @@ export function useCreditCardPayments(deps: CreditCardPaymentsDeps) {
         };
       }
 
+      if (!isValidUuid(cardAcc.id) || !isValidUuid(sourceAcc.id)) {
+        return {
+          success: false,
+          error: "Unable to verify account database IDs. Please refresh accounts and try again.",
+        };
+      }
+
       const numAmount = Number(params.amount);
       if (isNaN(numAmount) || !isFinite(numAmount) || numAmount <= 0) {
         return { success: false, error: "Payment amount must be greater than zero." };
       }
       const sanitizedAmount = roundCurrency(numAmount);
-      const paymentDate = params.paymentDate || new Date().toISOString().split("T")[0];
+      const paymentDate = params.paymentDate || formatLocalDate();
       const operationId = params.operationId || crypto.randomUUID();
 
       // 3. Invoke Atomic RPC: record_credit_card_repayment
@@ -561,25 +575,29 @@ export function useCreditCardPayments(deps: CreditCardPaymentsDeps) {
         const txId = rpcResult.transaction_id || crypto.randomUUID();
         const paymentId = rpcResult.payment_id || operationId;
 
-        // 4. Update Client Ledger State (Transactions)
-        if (setTransactions) {
-          const newLedgerTx: Transaction = {
-            id: txId,
-            type: "Transfer",
-            amount: sanitizedAmount,
-            category: "Transfer",
-            account: sourceAcc.name,
-            account_id: sourceAcc.id,
-            to_account: cardAcc.name,
-            to_account_id: cardAcc.id,
-            date: paymentDate ? new Date(paymentDate).toISOString() : new Date().toISOString(),
-            credit_card_tx_type: "repayment",
-            statement_id: params.statementId || null,
-            note: params.note ? params.note.trim() : `Repayment for ${cardAcc.name}`,
-            user_id: session.user.id,
-          };
-          setTransactions((prev) => [newLedgerTx, ...prev.filter((t) => t.id !== newLedgerTx.id)]);
+        // 4. Update Client Ledger State (Transactions) + txCache + localTxTracker
+        const newLedgerTx: Transaction = {
+          id: txId,
+          type: "Transfer",
+          amount: sanitizedAmount,
+          category: "Transfer",
+          account: sourceAcc.name,
+          account_id: sourceAcc.id,
+          to_account: cardAcc.name,
+          to_account_id: cardAcc.id,
+          date: parseLocalDateToIso(paymentDate),
+          credit_card_tx_type: "repayment",
+          statement_id: params.statementId || null,
+          note: params.note ? params.note.trim() : `Repayment for ${cardAcc.name}`,
+          user_id: session.user.id,
+        };
+        if (localTxTracker) {
+          localTxTracker.recordStart(newLedgerTx.id, { tx: newLedgerTx, inFlight: false });
         }
+        if (setTransactions) {
+          setTransactions((prev) => upsertTransactionSorted(prev, newLedgerTx));
+        }
+        void upsertCachedTransactions(session.user.id, [newLedgerTx]);
 
         // 5. Update Local Payments State
         const newPayment: CreditCardPayment = {
@@ -698,6 +716,7 @@ export function useCreditCardPayments(deps: CreditCardPaymentsDeps) {
     },
     [
       isOfflineRef,
+      localTxTracker,
       session,
       accountObjects,
       setTransactions,

@@ -3,10 +3,11 @@
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Plus, X, Calendar, Wrench, Edit2, Trash2, ChevronDown } from "lucide-react";
-import { useAppContext } from "@/lib/context";
+import { useAppData } from "@/lib/context";
 import { supabase } from "@/lib/supabase";
 import type { AssetLog } from "@/lib/context";
 import CustomDatePicker from "@/components/CustomDatePicker";
+import { formatLocalDate } from "@/lib/utils";
 
 const EMOJI_OPTIONS = ["📱", "💻", "📸", "👟", "⌚", "🎧", "🎮", "🚗", "🏠", "🛋️", "🧳", "👜", "📦", "🔧", "🎸"];
 
@@ -16,7 +17,7 @@ type Props = {
 };
 
 export default function AssetDetailOverlay({ assetId, onClose }: Props) {
-  const { assets, accentColor, triggerToast, session, updateAsset, deleteAsset, confirmAction, currency } = useAppContext();
+  const { assets, accentColor, triggerToast, session, updateAsset, deleteAsset, confirmAction, currency } = useAppData();
 
   const asset = useMemo(() => assets.find(a => a.id === assetId), [assets, assetId]);
 
@@ -24,10 +25,11 @@ export default function AssetDetailOverlay({ assetId, onClose }: Props) {
   const [loading, setLoading] = useState(true);
 
   const [showAddLog, setShowAddLog] = useState(false);
+  const [isSavingLog, setIsSavingLog] = useState(false);
   const [editingLog, setEditingLog] = useState<AssetLog | null>(null);
   const [logDesc, setLogDesc] = useState("");
   const [logCost, setLogCost] = useState("");
-  const [logDate, setLogDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [logDate, setLogDate] = useState(() => formatLocalDate());
 
   const [showEdit, setShowEdit] = useState(false);
   const [showEditCatDropdown, setShowEditCatDropdown] = useState(false);
@@ -83,7 +85,7 @@ export default function AssetDetailOverlay({ assetId, onClose }: Props) {
     setEditingLog(null);
     setLogDesc("");
     setLogCost("");
-    setLogDate(new Date().toISOString().split("T")[0]);
+    setLogDate(formatLocalDate());
   };
 
   const openAddLog = () => {
@@ -100,30 +102,40 @@ export default function AssetDetailOverlay({ assetId, onClose }: Props) {
   };
 
   const handleSaveLog = async () => {
-    if (!logDesc) return;
-
-    if (editingLog) {
-      const { data, error } = await supabase
-        .from("asset_logs")
-        .update({ description: logDesc, cost: Number(logCost) || 0, log_date: logDate })
-        .eq("id", editingLog.id)
-        .select()
-        .single();
-      if (!error && data) {
+    if (!logDesc.trim() || isSavingLog) return;
+    setIsSavingLog(true);
+    try {
+      if (editingLog) {
+        const { data, error } = await supabase
+          .from("asset_logs")
+          .update({ description: logDesc.trim(), cost: Number(logCost) || 0, log_date: logDate })
+          .eq("id", editingLog.id)
+          .select()
+          .single();
+        if (error || !data) {
+          triggerToast(`❌ Failed to update log: ${error?.message || "Please try again."}`);
+          return;
+        }
         setLogs(prev => prev.map(l => l.id === editingLog.id ? (data as AssetLog) : l));
         triggerToast("Log updated!");
-      }
-    } else {
-      const payload = { asset_id: assetId, description: logDesc, cost: Number(logCost) || 0, log_date: logDate };
-      const { data, error } = await supabase.from("asset_logs").insert(payload).select().single();
-      if (!error && data) {
+      } else {
+        const payload = { asset_id: assetId, description: logDesc.trim(), cost: Number(logCost) || 0, log_date: logDate };
+        const { data, error } = await supabase.from("asset_logs").insert(payload).select().single();
+        if (error || !data) {
+          triggerToast(`❌ Failed to save log: ${error?.message || "Please try again."}`);
+          return;
+        }
         setLogs(prev => [data as AssetLog, ...prev]);
         triggerToast("Maintenance log added!");
       }
-    }
 
-    setShowAddLog(false);
-    resetLogForm();
+      setShowAddLog(false);
+      resetLogForm();
+    } catch {
+      triggerToast("❌ Failed to save maintenance log.");
+    } finally {
+      setIsSavingLog(false);
+    }
   };
 
   const handleDeleteLog = (logId: string) => {

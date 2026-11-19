@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Download, X } from "lucide-react";
-import { useAppContext } from "@/lib/context";
+import { useAppData } from "@/lib/context";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -14,7 +14,7 @@ export default function InstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
-  const { accentColor = "#3b82f6" } = useAppContext();
+  const { accentColor = "#3b82f6" } = useAppData();
 
   useEffect(() => {
     // Skip the entire PWA-install flow inside the Capacitor native shell —

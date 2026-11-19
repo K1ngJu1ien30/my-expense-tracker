@@ -46,6 +46,7 @@ export function checkAccountDependencies(
     statements?: CreditCardStatement[];
     creditCardPayments?: CreditCardPayment[];
     subscriptions?: Subscription[];
+    fixedBills?: Subscription[];
     utilities?: Subscription[];
     cashbackRecords?: CashbackRecord[];
   }
@@ -55,6 +56,7 @@ export function checkAccountDependencies(
     statements = [],
     creditCardPayments = [],
     subscriptions = [],
+    fixedBills = [],
     utilities = [],
     cashbackRecords = [],
   } = contextData;
@@ -84,8 +86,8 @@ export function checkAccountDependencies(
     return cardIdLower === accNameLower || srcIdLower === accNameLower;
   }).length;
 
-  // 4. Subscriptions & Utilities check
-  const allSubs = [...subscriptions, ...utilities];
+  // 4. Subscriptions, Fixed Bills & Utilities check
+  const allSubs = [...subscriptions, ...fixedBills, ...utilities];
   const subscriptionCount = allSubs.filter((sub) => {
     if (accId && sub.source_account_id === accId) return true;
     const src = sub.sourceAccount ? sub.sourceAccount.trim().toLowerCase() : "";

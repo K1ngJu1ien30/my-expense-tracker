@@ -19,19 +19,54 @@ import {
   getUserCashbackConfigsKey,
   getUserCashbackRecordsKey,
 } from "../cacheKeys";
-import { roundCurrency } from "../utils";
+import {
+  upsertCachedTransactions,
+  upsertTransactionSorted,
+  type LocalTxTracker,
+} from "../txCache";
+import { isValidUuid, parseLocalDateToIso, roundCurrency } from "../utils";
 
 export type CashbackRewardsDeps = {
   session: Session | null;
   isOfflineRef: MutableRefObject<boolean>;
+  localTxTracker?: LocalTxTracker;
   accountObjects: Account[];
   addTransaction: (tx: Partial<Transaction>) => Promise<TransactionSaveResult>;
   setTransactions?: (val: Transaction[] | ((prev: Transaction[]) => Transaction[])) => void;
   triggerToast: (msg: string) => void;
 };
 
+function normalizeRpcCashbackTx(
+  raw: Record<string, unknown> | undefined | null,
+  fallbackUserId: string
+): Transaction | null {
+  if (!raw || typeof raw !== "object" || !raw.id) return null;
+  return {
+    id: String(raw.id),
+    user_id: String(raw.user_id ?? raw.userId ?? fallbackUserId),
+    type: (raw.type as Transaction["type"]) || "Income",
+    amount: Number(raw.amount ?? 0),
+    category: String(raw.category ?? "Cashback"),
+    account: String(raw.account ?? ""),
+    account_id: (raw.account_id ?? raw.accountId) ? String(raw.account_id ?? raw.accountId) : undefined,
+    date: parseLocalDateToIso(String(raw.date ?? new Date().toISOString())),
+    note: raw.note ? String(raw.note) : undefined,
+    status: (raw.status as Transaction["status"]) || "cleared",
+    credit_card_tx_type: (raw.credit_card_tx_type ?? raw.creditCardTxType ?? "cashback") as Transaction["credit_card_tx_type"],
+  };
+}
+
 export function useCashbackRewards(deps: CashbackRewardsDeps) {
-  const { session, isOfflineRef, accountObjects, addTransaction: _addTransaction, setTransactions, triggerToast } = deps;
+  const {
+    session,
+    isOfflineRef,
+    localTxTracker,
+    accountObjects,
+    addTransaction: _addTransaction,
+    setTransactions,
+    triggerToast,
+  } = deps;
+  void _addTransaction;
 
   const userId = session?.user?.id;
   const [rewardsConfigs, setRewardsConfigs] = useState<Record<string, CardRewardsConfig>>({});
@@ -99,6 +134,8 @@ export function useCashbackRewards(deps: CashbackRewardsDeps) {
       return;
     }
 
+    setRewardsConfigs({});
+    setRawCashbackRecords([]);
     setIsLoading(true);
 
     // 1a. Load from local cache in parallel first
@@ -138,8 +175,17 @@ export function useCashbackRewards(deps: CashbackRewardsDeps) {
         if (!cfgRes.error && cfgRes.data) {
           const mappedConfigs: Record<string, CardRewardsConfig> = {};
           (cfgRes.data as RawRewardConfigRow[]).forEach((row) => {
-            const parsedRules =
-              typeof row.rules === "string" ? JSON.parse(row.rules) : row.rules || [];
+            let parsedRules: CardRewardsConfig["rules"] = [];
+            try {
+              parsedRules =
+                typeof row.rules === "string"
+                  ? JSON.parse(row.rules)
+                  : Array.isArray(row.rules)
+                    ? row.rules
+                    : [];
+            } catch {
+              parsedRules = [];
+            }
             mappedConfigs[row.account_id] = {
               accountId: row.account_id,
               isEnabled: row.is_enabled,
@@ -197,9 +243,7 @@ export function useCashbackRewards(deps: CashbackRewardsDeps) {
   }, [userId, configsKey, recordsKey, isOfflineRef]);
 
   useEffect(() => {
-    // Initial hydration of cached cashback configs and records from storage and Supabase
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadData();
+    void Promise.resolve().then(() => loadData());
   }, [loadData]);
 
   // ─── 2. Save Card Rewards Config ────────────────────────────────────────
@@ -215,12 +259,12 @@ export function useCashbackRewards(deps: CashbackRewardsDeps) {
       await localforage.setItem(configsKey, nextConfigs);
 
       // Cloud persistence if online
-      if (!isOfflineRef.current && session?.user?.id) {
+      if (!isOfflineRef.current && userId) {
         try {
           await supabase.from("credit_card_reward_configs").upsert(
             {
               account_id: config.accountId,
-              user_id: session.user.id,
+              user_id: userId,
               is_enabled: config.isEnabled,
               rules: config.rules,
               monthly_cap: config.monthlyCap ?? null,
@@ -235,7 +279,7 @@ export function useCashbackRewards(deps: CashbackRewardsDeps) {
         }
       }
     },
-    [configsKey, isOfflineRef, session]
+    [configsKey, isOfflineRef, userId]
   );
 
   // ─── 3. Record Confirmed Cashback Redemption ────────────────────────────
@@ -251,7 +295,7 @@ export function useCashbackRewards(deps: CashbackRewardsDeps) {
     }): Promise<{ success: boolean; record?: CashbackRecord; error?: string }> => {
       const { card, destinationAccount, creditDestination, amount, date, note } = params;
 
-      if (!amount || amount <= 0) {
+      if (!amount || !Number.isFinite(amount) || amount <= 0) {
         return { success: false, error: "Please enter a valid positive cashback amount." };
       }
 
@@ -263,20 +307,21 @@ export function useCashbackRewards(deps: CashbackRewardsDeps) {
         };
       }
 
-      if (!session?.user?.id) {
+      if (!userId) {
         return { success: false, error: "Please sign in to record cashback." };
       }
 
       const cleanAmount = roundCurrency(amount);
       const isStatementCredit = creditDestination === "card_statement_credit";
+      const curAccounts = accountObjectsRef.current;
 
       // Resolve valid account identifiers from loaded account objects
       const cardAcc =
-        accountObjects.find(
+        curAccounts.find(
           (a) => (card.id && a.id === card.id) || a.name.toLowerCase() === card.name.toLowerCase()
         ) || card;
       const destAcc =
-        accountObjects.find(
+        curAccounts.find(
           (a) =>
             (destinationAccount.id && a.id === destinationAccount.id) ||
             a.name.toLowerCase() === destinationAccount.name.toLowerCase()
@@ -285,10 +330,30 @@ export function useCashbackRewards(deps: CashbackRewardsDeps) {
       const cardId = cardAcc.id;
       const destAccountId = destAcc.id;
 
-      if (!cardId || !destAccountId) {
+      if (!isValidUuid(cardId) || !isValidUuid(destAccountId)) {
         return {
           success: false,
           error: "Unable to verify account identifiers. Please ensure accounts have valid database IDs.",
+        };
+      }
+
+      if (!isStatementCredit && destAcc.kind === "credit_card") {
+        return {
+          success: false,
+          error: "Bank deposit cashback must go into a non-credit-card account.",
+        };
+      }
+
+      // Guard cross-currency bank deposit cashback
+      if (
+        !isStatementCredit &&
+        cardAcc.currencyCode &&
+        destAcc.currencyCode &&
+        cardAcc.currencyCode.toUpperCase() !== destAcc.currencyCode.toUpperCase()
+      ) {
+        return {
+          success: false,
+          error: `Cross-currency cashback deposit is unsupported (${cardAcc.currencyCode} card → ${destAcc.currencyCode} account).`,
         };
       }
 
@@ -307,31 +372,54 @@ export function useCashbackRewards(deps: CashbackRewardsDeps) {
         });
 
         if (!rpcErr && rpcRes && rpcRes.success) {
-          const rpcRecord = rpcRes.record as CashbackRecord;
-          const rpcTx = rpcRes.transaction as Transaction;
+          const rawRec = (rpcRes.record || {}) as Partial<CashbackRecord>;
+          const normalizedRecord: CashbackRecord = {
+            id: rawRec.id || operationId,
+            userId: rawRec.userId || userId,
+            cardId: rawRec.cardId || cardId,
+            cardName: rawRec.cardName || cardAcc.name,
+            amount: Number(rawRec.amount ?? cleanAmount),
+            creditDestination: rawRec.creditDestination || creditDestination,
+            destinationAccountId: rawRec.destinationAccountId || destAccountId,
+            destinationAccountName: rawRec.destinationAccountName || destAcc.name,
+            date: rawRec.date || date,
+            transactionId: rawRec.transactionId,
+            note: rawRec.note,
+            createdAt: rawRec.createdAt || new Date().toISOString(),
+          };
+          const normalizedTx = normalizeRpcCashbackTx(
+            rpcRes.transaction as Record<string, unknown> | undefined,
+            userId
+          );
 
           // Update local state atomically
           const nextRecords = [
-            rpcRecord,
-            ...recordsRef.current.filter((r) => r.id !== rpcRecord.id),
+            normalizedRecord,
+            ...recordsRef.current.filter((r) => r.id !== normalizedRecord.id),
           ];
           setRawCashbackRecords(nextRecords);
           await localforage.setItem(recordsKey, nextRecords);
 
-          if (setTransactions && rpcTx) {
-            setTransactions((prev) => [rpcTx, ...prev.filter((t) => t.id !== rpcTx.id)]);
+          if (normalizedTx) {
+            if (localTxTracker) {
+              localTxTracker.recordStart(normalizedTx.id, { tx: normalizedTx, inFlight: false });
+            }
+            if (setTransactions) {
+              setTransactions((prev) => upsertTransactionSorted(prev, normalizedTx));
+            }
+            void upsertCachedTransactions(userId, [normalizedTx]);
           }
 
+          const cardCur = cardAcc.currencyCode || "RM";
           triggerToast(
             isStatementCredit
-              ? `Credited ${cleanAmount.toFixed(2)} statement credit to ${cardAcc.name}!`
-              : `Deposited ${cleanAmount.toFixed(2)} cashback into ${destAcc.name}!`
+              ? `Credited ${cardCur} ${cleanAmount.toFixed(2)} statement credit to ${cardAcc.name}!`
+              : `Deposited ${cardCur} ${cleanAmount.toFixed(2)} cashback into ${destAcc.name}!`
           );
 
-          return { success: true, record: rpcRecord };
+          return { success: true, record: normalizedRecord };
         }
 
-        // Missing RPC requires database migration — strictly reject non-atomic fallback
         if (rpcErr && rpcErr.code === "42883") {
           return {
             success: false,
@@ -340,7 +428,6 @@ export function useCashbackRewards(deps: CashbackRewardsDeps) {
           };
         }
 
-        // Server RPC rejection or constraint error
         console.error("[useCashbackRewards] RPC post_credit_card_cashback error:", rpcErr);
         return {
           success: false,
@@ -354,7 +441,7 @@ export function useCashbackRewards(deps: CashbackRewardsDeps) {
         };
       }
     },
-    [accountObjects, isOfflineRef, recordsKey, session, setTransactions, triggerToast]
+    [isOfflineRef, localTxTracker, recordsKey, setTransactions, triggerToast, userId]
   );
 
   return {

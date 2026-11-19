@@ -8,7 +8,7 @@ import type {
   CashbackRecord,
   Transaction,
 } from "./types";
-import { roundCurrency } from "./utils";
+import { formatLocalDate, getLocalDateKeyFromIso, roundCurrency } from "./utils";
 
 export type EstimatedCashbackBreakdown = {
   category: string;
@@ -65,7 +65,7 @@ export function calculateEstimatedCashback(params: {
     transactions,
     config,
     latestStatementDate,
-    referenceDateStr = new Date().toISOString().split("T")[0],
+    referenceDateStr = formatLocalDate(),
   } = params;
 
   const cardId = activeCard.id || activeCard.name;
@@ -87,7 +87,11 @@ export function calculateEstimatedCashback(params: {
     };
   }
 
-  // Filter transactions to unbilled purchases or current calendar month if no statement date
+  const latestStmtKey = latestStatementDate ? getLocalDateKeyFromIso(latestStatementDate) : null;
+  const currentMonthPrefix = referenceDateStr.slice(0, 7);
+
+  // Filter transactions to unbilled purchases (strictly AFTER statement calendar date)
+  // or current local calendar month if no statement date
   const cardPurchases = transactions.filter((tx) => {
     if (tx.deleted_at || tx.type !== "Expense") return false;
     const matchesCard =
@@ -95,41 +99,49 @@ export function calculateEstimatedCashback(params: {
       tx.account.trim().toLowerCase() === activeCard.name.trim().toLowerCase();
     if (!matchesCard) return false;
 
-    if (latestStatementDate) {
-      return new Date(tx.date) > new Date(latestStatementDate);
+    const txDateKey = getLocalDateKeyFromIso(tx.date);
+    if (latestStmtKey) {
+      return txDateKey > latestStmtKey;
     }
-
-    // Default to current calendar month (YYYY-MM)
-    const txPrefix = tx.date.slice(0, 7);
-    const currentPrefix = referenceDateStr.slice(0, 7);
-    return txPrefix === currentPrefix;
+    return txDateKey.slice(0, 7) === currentMonthPrefix;
   });
 
-  // Calculate qualifying spend
-  const totalSpend = cardPurchases.reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
-  const qualifiesForMinSpend =
-    minSpendThreshold === null || minSpendThreshold === undefined || totalSpend >= minSpendThreshold;
+  // Calculate qualifying spend in integer cents to eliminate threshold float drift
+  const totalSpendCents = cardPurchases.reduce(
+    (sum, tx) => sum + Math.round(Number(tx.amount || 0) * 100),
+    0
+  );
+  const totalSpend = totalSpendCents / 100;
+  const minSpendCents =
+    minSpendThreshold !== null && minSpendThreshold !== undefined
+      ? Math.round(minSpendThreshold * 100)
+      : null;
+  const qualifiesForMinSpend = minSpendCents === null || totalSpendCents >= minSpendCents;
 
   // Breakdown tracker by rule category
   const breakdownMap = new Map<
     string,
-    { spend: number; ratePct: number; cashback: number; txCount: number }
+    { spendCents: number; ratePct: number; cashback: number; txCount: number }
   >();
 
-  // Find general fallback rule if defined
-  const generalRule = rules.find((r) =>
-    ["general", "all", "others", "other"].includes(r.category.trim().toLowerCase())
-  );
+  // Pre-index rules by lowercase category name (O(1) lookup per tx)
+  const rulesByCategory = new Map<string, (typeof rules)[number]>();
+  let generalRule: (typeof rules)[number] | undefined;
+  for (const r of rules) {
+    const key = r.category.trim().toLowerCase();
+    rulesByCategory.set(key, r);
+    if (!generalRule && ["general", "all", "others", "other"].includes(key)) {
+      generalRule = r;
+    }
+  }
 
   for (const tx of cardPurchases) {
-    const amount = Number(tx.amount || 0);
-    if (amount <= 0) continue;
+    const amountCents = Math.round(Number(tx.amount || 0) * 100);
+    if (amountCents <= 0) continue;
+    const amount = amountCents / 100;
 
     const txCat = (tx.category || "General").trim().toLowerCase();
-
-    // Match rule by category name
-    const matchedRule =
-      rules.find((r) => r.category.trim().toLowerCase() === txCat) || generalRule;
+    const matchedRule = rulesByCategory.get(txCat) || generalRule;
 
     if (matchedRule && matchedRule.ratePct > 0) {
       const catKey = matchedRule.category;
@@ -137,13 +149,13 @@ export function calculateEstimatedCashback(params: {
       const cb = (amount * rate) / 100;
 
       const existing = breakdownMap.get(catKey) || {
-        spend: 0,
+        spendCents: 0,
         ratePct: rate,
         cashback: 0,
         txCount: 0,
       };
 
-      existing.spend += amount;
+      existing.spendCents += amountCents;
       existing.cashback += cb;
       existing.txCount += 1;
       breakdownMap.set(catKey, existing);
@@ -153,7 +165,7 @@ export function calculateEstimatedCashback(params: {
   const breakdown: EstimatedCashbackBreakdown[] = Array.from(breakdownMap.entries()).map(
     ([category, data]) => ({
       category,
-      spend: roundCurrency(data.spend),
+      spend: data.spendCents / 100,
       ratePct: data.ratePct,
       cashback: roundCurrency(data.cashback),
       txCount: data.txCount,
@@ -200,16 +212,17 @@ export function calculateConfirmedCashback(params: {
   const {
     cardIdOrName,
     cashbackRecords,
-    referenceDateStr = new Date().toISOString().split("T")[0],
+    referenceDateStr = formatLocalDate(),
   } = params;
 
   const currentMonthPrefix = referenceDateStr.slice(0, 7); // "YYYY-MM"
   const currentYearPrefix = referenceDateStr.slice(0, 4); // "YYYY"
 
+  const targetLower = cardIdOrName.trim().toLowerCase();
   const cardRecords = cashbackRecords.filter(
     (r) =>
       r.cardId === cardIdOrName ||
-      r.cardName.trim().toLowerCase() === cardIdOrName.trim().toLowerCase()
+      (r.cardName || "").trim().toLowerCase() === targetLower
   );
 
   let confirmedThisMonth = 0;

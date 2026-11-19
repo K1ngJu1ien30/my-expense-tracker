@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
-import { motion, AnimatePresence, PanInfo } from "framer-motion";
+import { motion, AnimatePresence, PanInfo, useDragControls } from "framer-motion";
 import {
   X,
   CreditCard,
@@ -14,9 +14,9 @@ import {
   Info,
   Check,
 } from "lucide-react";
-import { useAppContext } from "@/lib/context";
+import { useAppData } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
-import { cn } from "@/lib/utils";
+import { cn, dateKeyToUtcMs, formatLocalDate } from "@/lib/utils";
 import CustomDatePicker from "@/components/CustomDatePicker";
 import {
   calculateStatementRemaining,
@@ -29,24 +29,26 @@ export default function CreditCardPaymentModal({
   isOpen,
   onClose,
   initialCardId,
+  isOffline = false,
 }: {
   isOpen: boolean;
   onClose: () => void;
   initialCardId?: string | null;
+  isOffline?: boolean;
 }) {
   const {
     accountObjects,
     transactions,
     currency,
     accentColor,
-    isOffline,
     triggerToast,
     statements,
     creditCardPayments,
     creditCardAllocations,
     addCreditCardStatement,
     recordCreditCardPayment,
-  } = useAppContext();
+  } = useAppData();
+  const dragControls = useDragControls();
 
   // ─── Filter credit cards & liquid payment sources ────────────────────────
   const creditCards = useMemo(
@@ -75,18 +77,16 @@ export default function CreditCardPaymentModal({
   const [selectedStatementId, setSelectedStatementId] = useState<string | null>(null);
   const [preset, setPreset] = useState<CreditCardPaymentType>("custom");
   const [amount, setAmount] = useState<string>("");
-  const [paymentDate, setPaymentDate] = useState<string>(() =>
-    new Date().toISOString().split("T")[0]
-  );
+  const [paymentDate, setPaymentDate] = useState<string>(() => formatLocalDate());
   const [note, setNote] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Inline "Record Statement" drawer state
   const [showAddStatement, setShowAddStatement] = useState(false);
-  const [stDate, setStDate] = useState<string>(() => new Date().toISOString().split("T")[0]);
+  const [stDate, setStDate] = useState<string>(() => formatLocalDate());
   const [dueDate, setDueDate] = useState<string>(() =>
-    new Date(Date.now() + 20 * 86400000).toISOString().split("T")[0]
+    formatLocalDate(new Date(Date.now() + 20 * 86400000))
   );
   const [closingBalance, setClosingBalance] = useState<string>("");
   const [minimumPayment, setMinimumPayment] = useState<string>("");
@@ -99,8 +99,7 @@ export default function CreditCardPaymentModal({
   useEffect(() => {
     if (!isOpen) {
       wasOpenRef.current = false;
-      // Form reset on modal dismissal: syncs external visibility prop with internal step state.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setActiveTab("form");
       setStep("edit");
       setErrorMessage(null);
       setShowAddStatement(false);
@@ -222,8 +221,8 @@ export default function CreditCardPaymentModal({
   // Is statement overdue?
   const isStatementOverdue = useMemo(() => {
     if (!activeStatement || activeStatement.isSettled || statementRemaining <= 0) return false;
-    const dueTime = new Date(activeStatement.dueDate).getTime();
-    const todayTime = new Date(new Date().toISOString().split("T")[0]).getTime();
+    const dueTime = dateKeyToUtcMs(activeStatement.dueDate);
+    const todayTime = dateKeyToUtcMs(formatLocalDate());
     return dueTime < todayTime;
   }, [activeStatement, statementRemaining]);
 
@@ -331,37 +330,42 @@ export default function CreditCardPaymentModal({
     }
 
     const numAmount = Number(amount);
-    const res = await recordCreditCardPayment({
-      accountId: currentCard.id || currentCard.name,
-      sourceAccountId: currentSource.id || currentSource.name,
-      statementId: activeStatement?.id || null,
-      paymentDate,
-      amount: numAmount,
-      paymentType: preset,
-      note: note ? note.trim() : undefined,
-      operationId: paymentOperationIdRef.current,
-    });
+    try {
+      const res = await recordCreditCardPayment({
+        accountId: currentCard.id || currentCard.name,
+        sourceAccountId: currentSource.id || currentSource.name,
+        statementId: activeStatement?.id || null,
+        paymentDate,
+        amount: numAmount,
+        paymentType: preset,
+        note: note ? note.trim() : undefined,
+        operationId: paymentOperationIdRef.current,
+      });
 
-    setIsSubmitting(false);
-
-    if (res.success) {
-      paymentOperationIdRef.current = null;
-      NativeHaptics.successMedium();
-      setStep("success");
-      triggerToast(
-        res.status === "pending_sync"
-          ? "Payment saved locally (offline sync pending)"
-          : "Credit card payment recorded successfully"
-      );
-    } else {
+      if (res.success) {
+        paymentOperationIdRef.current = null;
+        NativeHaptics.successMedium();
+        setStep("success");
+        triggerToast(
+          res.status === "pending_sync"
+            ? "Payment saved locally (offline sync pending)"
+            : "Credit card payment recorded successfully"
+        );
+      } else {
+        NativeHaptics.errorShake();
+        setErrorMessage(res.error || "Failed to record payment. Please try again.");
+      }
+    } catch (err) {
       NativeHaptics.errorShake();
-      setErrorMessage(res.error || "Failed to record payment. Please try again.");
+      setErrorMessage(err instanceof Error ? err.message : "Failed to record payment. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   // Add statement handler
   const handleSaveStatement = async () => {
-    if (!currentCard) return;
+    if (!currentCard || isSavingStatement) return;
     const closing = Number(closingBalance);
     const minDue = Number(minimumPayment || 0);
 
@@ -370,36 +374,39 @@ export default function CreditCardPaymentModal({
       triggerToast("Please enter a valid statement closing balance.");
       return;
     }
-    if (new Date(dueDate) < new Date(stDate)) {
+    if (dateKeyToUtcMs(dueDate) < dateKeyToUtcMs(stDate)) {
       NativeHaptics.errorShake();
       triggerToast("Due date cannot be earlier than statement date.");
       return;
     }
 
     setIsSavingStatement(true);
-    const res = await addCreditCardStatement({
-      accountId: currentCard.id || currentCard.name,
-      statementDate: stDate,
-      dueDate,
-      closingBalance: closing,
-      minimumPayment: isNaN(minDue) ? 0 : minDue,
-      note: stNote ? stNote.trim() : undefined,
-    });
+    try {
+      const res = await addCreditCardStatement({
+        accountId: currentCard.id || currentCard.name,
+        statementDate: stDate,
+        dueDate,
+        closingBalance: closing,
+        minimumPayment: isNaN(minDue) ? 0 : minDue,
+        note: stNote ? stNote.trim() : undefined,
+      });
 
-    setIsSavingStatement(false);
-
-    if (res.success && res.statement) {
-      NativeHaptics.successMedium();
-      setShowAddStatement(false);
-      setSelectedStatementId(res.statement.id);
-      setClosingBalance("");
-      setMinimumPayment("");
-      setStNote("");
-      // Suggest full statement preset
-      setPreset("full_statement");
-      setAmount(closing.toFixed(2));
-    } else {
-      triggerToast(res.error || "Failed to record statement.");
+      if (res.success && res.statement) {
+        NativeHaptics.successMedium();
+        setShowAddStatement(false);
+        setSelectedStatementId(res.statement.id);
+        setClosingBalance("");
+        setMinimumPayment("");
+        setStNote("");
+        setPreset("full_statement");
+        setAmount(closing.toFixed(2));
+      } else {
+        triggerToast(res.error || "Failed to record statement.");
+      }
+    } catch {
+      triggerToast("Failed to record statement.");
+    } finally {
+      setIsSavingStatement(false);
     }
   };
 
@@ -431,10 +438,9 @@ export default function CreditCardPaymentModal({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
-
   return (
     <AnimatePresence>
+      {isOpen && (
       <div
         className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm"
         role="dialog"
@@ -448,6 +454,8 @@ export default function CreditCardPaymentModal({
       >
         <motion.div
           drag="y"
+          dragControls={dragControls}
+          dragListener={false}
           dragConstraints={{ top: 0, bottom: 0 }}
           dragElastic={{ top: 0, bottom: 0.5 }}
           onDragEnd={handleDragEnd}
@@ -455,11 +463,17 @@ export default function CreditCardPaymentModal({
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: "100%", opacity: 0 }}
           transition={{ type: "spring", damping: 28, stiffness: 300 }}
-          className="bg-card w-full max-w-lg rounded-t-[2.5rem] sm:rounded-[2.5rem] shadow-heavy border border-border/50 max-h-[92vh] flex flex-col overflow-hidden text-foreground"
+          className="bg-card w-full max-w-lg rounded-t-[2.5rem] sm:rounded-[2.5rem] shadow-heavy border border-border/50 max-h-[92dvh] flex flex-col overflow-hidden text-foreground"
         >
           {/* Header */}
           <div className="pt-3 px-6 pb-4 border-b border-border/30 bg-muted/20 relative">
-            <div className="w-12 h-1.5 bg-muted-foreground/30 rounded-full mx-auto mb-3 cursor-grab active:cursor-grabbing sm:hidden" />
+            <div
+              onPointerDown={(e) => dragControls.start(e)}
+              className="w-full py-1 -mt-1 mb-2 flex justify-center cursor-grab active:cursor-grabbing touch-none sm:hidden"
+              aria-hidden="true"
+            >
+              <div className="w-12 h-1.5 bg-muted-foreground/30 rounded-full" />
+            </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div
@@ -1304,6 +1318,7 @@ export default function CreditCardPaymentModal({
           </div>
         </motion.div>
       </div>
+      )}
     </AnimatePresence>
   );
 }

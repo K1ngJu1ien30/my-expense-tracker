@@ -22,7 +22,7 @@ const ICONS: Record<string, React.ReactNode> = {
 
 export default function GoalsPage() {
   const { 
-    goals, addGoal, updateGoal, deleteGoal, confirmAction, 
+    goals, addGoal, updateGoal, deleteGoal, confirmAction, triggerToast,
     enableFoodBudget, enableSalaryPlanner, currency
   } = useAppData();
   
@@ -36,20 +36,27 @@ export default function GoalsPage() {
   const handleAddFunds = (id: string, currentAmount: number) => {
     if (!fundAmount) return;
     const added = Number(fundAmount);
-    if (isNaN(added)) return;
-    const nextCurrent = Math.round((currentAmount + added) * 100) / 100;
+    if (!Number.isFinite(added) || added <= 0) {
+      triggerToast("Please enter a valid positive amount.");
+      return;
+    }
+    const nextCurrent = Math.max(0, Math.round((currentAmount + added) * 100) / 100);
     updateGoal(id, { current: nextCurrent });
     setFundAmount("");
     setActiveAddFunds(null);
   };
 
   const handleCreate = () => {
-    if (!newTitle || !newTarget) return;
+    const parsedTarget = Number(newTarget);
+    if (!newTitle.trim() || !Number.isFinite(parsedTarget) || parsedTarget <= 0) {
+      triggerToast("Enter a goal title and a positive target amount.");
+      return;
+    }
     addGoal({
-      title: newTitle,
+      title: newTitle.trim(),
       subtitle: "Custom Goal",
       current: 0,
-      target: Number(newTarget),
+      target: Math.round(parsedTarget * 100) / 100,
       isPinned: false,
       color: "bg-purple-500",
       bg: "bg-purple-500/10",
@@ -103,7 +110,7 @@ export default function GoalsPage() {
           </div>
         ) : (
           goals.map(g => {
-            const progress = Math.min((g.current / g.target) * 100, 100);
+            const progress = g.target > 0 ? Math.min(Math.max((g.current / g.target) * 100, 0), 100) : 0;
             return (
               <div key={g.id} className="bg-card p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl shadow-soft border border-border/40 space-y-2.5 sm:space-y-3 relative">
                 <div className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 flex items-center gap-2.5 sm:gap-3">

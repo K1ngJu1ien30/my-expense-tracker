@@ -35,6 +35,7 @@ import { usePlanningState } from "./hooks/usePlanningState";
 import { useModulesData } from "./hooks/useModulesData";
 import { useCreditCardPayments } from "./hooks/useCreditCardPayments";
 import { useCashbackRewards } from "./hooks/useCashbackRewards";
+import { createLocalTxTracker } from "./txCache";
 
 // Re-export for backward compatibility — existing pages import from "@/lib/context".
 // Keeping this until we move everything to direct type imports from "@/lib/types".
@@ -68,7 +69,7 @@ type AppContextType = {
   setUserName: (val: string) => void;
   currency: string;
   setCurrency: (val: string) => void;
-  formatCurrency: (amount: number) => string;
+  formatCurrency: (amount: number, overrideCurrency?: string) => string;
   exchangeRates: Record<string, number>;
   categories: string[];
   setCategories: (cats: string[]) => void;
@@ -78,6 +79,7 @@ type AppContextType = {
   triggerToast: (msg: string) => void;
   transactions: Transaction[];
   addTransaction: (tx: Partial<Transaction>) => Promise<TransactionSaveResult>;
+  addTransactionsBatch: (txs: Partial<Transaction>[]) => Promise<{ succeeded: number; failedIndices: number[]; errors: string[] }>;
   updateTransaction: (id: string, patch: Partial<Transaction>) => Promise<{ success: boolean; error?: string }>;
   deleteTransaction: (id: string) => Promise<void>;
   editTransactionId: string | null;
@@ -337,36 +339,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       const { type, item } = cached;
       if (type === "transaction") {
-        const { id: _id, ...rest } = item as Transaction;
-        const { data } = await supabase.from("transactions").insert(rest).select().single();
-        if (data) setTransactions(prev => [data as Transaction, ...prev]);
+        const res = await restoreDeletedTransactionRef.current(item as Transaction);
+        if (!res.success) {
+          triggerToast(`❌ Undo failed: ${res.error || "Please try again."}`);
+          return;
+        }
       } else if (type === "goal") {
         const g = item as Goal;
         const payload = { title: g.title, current_amount: g.current || 0, target_amount: g.target, is_pinned: g.isPinned || false, user_id: g.user_id };
-        const { data } = await supabase.from("goals").insert(payload).select().single();
-        if (data) setGoals(prev => [{ ...g, id: data.id } as Goal, ...prev]);
+        const { data, error } = await supabase.from("goals").insert(payload).select().single();
+        if (error || !data) {
+          triggerToast(`❌ Undo failed: ${error?.message || "Could not restore goal."}`);
+          return;
+        }
+        setGoals(prev => [{ ...g, id: data.id } as Goal, ...prev]);
       } else if (type === "asset") {
         const { id: _id, ...rest } = item as Asset;
-        const { data } = await supabase.from("asset_vault").insert(rest).select().single();
-        if (data) setAssets(prev => [data as Asset, ...prev]);
+        void _id;
+        const { data, error } = await supabase.from("asset_vault").insert(rest).select().single();
+        if (error || !data) {
+          triggerToast(`❌ Undo failed: ${error?.message || "Could not restore asset."}`);
+          return;
+        }
+        setAssets(prev => [data as Asset, ...prev]);
       }
       triggerToast("🦈 Undo successful!");
-      // 🔥 Phoenix rises — decorative flourish when a transaction/goal/asset
-      // is resurrected from the 5-second undo cache. Runs in parallel with
-      // the shark swim-by without blocking.
       triggerPhoenixAlert();
     } catch {
-      triggerToast("Undo failed.");
+      triggerToast("❌ Undo failed.");
     }
-    // Intentionally excluded from the dep array:
-    //   - setTransactions / setGoals / setAssets: React state
-    //     setters are guaranteed-stable for the component's lifetime.
-    //   - triggerToast: a stable useCallback from useUIState (declared further
-    //     down in this provider — including it would be a temporal-dead-zone
-    //     reference at module-eval time and Next's build-time TS check is
-    //     stricter than the rules-of-hooks linter about TDZ).
-    // The ref-mirror pattern below means even if any of these somehow changed
-    // identity, the accelerometer listener still picks up the latest version.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     deletedItemCacheRef,
@@ -433,9 +434,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setShowTransactionModal,
   } = useUIState();
 
-  // Forward-declared ref for `isOffline` so useMoneyState can read it lazily.
-  // useSyncState (declared below) keeps this ref synced via a useEffect.
-  const isOfflineRef = React.useRef(false);
+  // Forward-declared ref for `isOffline` initialized synchronously from
+  // navigator.onLine so offline launches don't fire failing cloud queries.
+  const isOfflineRef = React.useRef(
+    typeof navigator !== "undefined" ? !navigator.onLine : false
+  );
+
+  // Shared optimistic mutation tracker so in-flight refreshData() never
+  // clobbers local adds, edits, deletes, restores, repayments, or cashback.
+  const localTxTracker = useMemo(() => createLocalTxTracker(), []);
+
+  // Forward-declared ref to flush offline statements on reconnect
+  const refreshPaymentsDataRef = React.useRef<(() => Promise<void>) | null>(null);
 
   // ─── Planning state (goals + plannerItems + their CRUD) ─────────────────
   const {
@@ -448,7 +458,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     deleteGoal,
     addPlannerItem,
     deletePlannerItem,
-  } = usePlanningState({ session, cacheDeletedItem, triggerDragonAlert });
+  } = usePlanningState({ session, cacheDeletedItem, triggerDragonAlert, triggerToast });
 
   // ─── Modules data (assets + asset CRUD) ─────────────────────────────────
   const {
@@ -457,7 +467,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     addAsset,
     updateAsset,
     deleteAsset,
-  } = useModulesData({ session, cacheDeletedItem });
+  } = useModulesData({ session, cacheDeletedItem, triggerToast });
 
   // ─── Money state (transactions, subscriptions, utilities + their CRUD) ──
   const {
@@ -470,8 +480,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     utilities,
     setUtilities,
     addTransaction,
+    addTransactionsBatch,
     updateTransaction,
     deleteTransaction,
+    restoreDeletedTransaction,
     addSubscription,
     updateSubscription,
     deleteSubscription,
@@ -484,11 +496,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   } = useMoneyState({
     session,
     isOfflineRef,
+    localTxTracker,
     triggerToast,
     triggerWhaleAlert,
     maybeTriggerPenguinAlert,
     cacheDeletedItem,
   });
+
+  const restoreDeletedTransactionRef = React.useRef(restoreDeletedTransaction);
+  useEffect(() => {
+    restoreDeletedTransactionRef.current = restoreDeletedTransaction;
+  }, [restoreDeletedTransaction]);
 
   // ─── Sync layer (hydrateFromCache, refreshData, offline queue, network) ─
   const {
@@ -510,10 +528,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setCategories,
     triggerToast,
     categoriesRef,
+    localTxTracker,
+    onOnlineReconnect: () => {
+      void refreshPaymentsDataRef.current?.();
+    },
   });
-  // Suppress unused-var warning — the hook owns this internally; we expose
-  // it here only for completeness in case future code paths need to trigger
-  // a manual sync.
   void _syncOfflineQueue;
 
   // Keep isOfflineRef synced with the live isOffline state for lazy reads
@@ -529,15 +548,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     allocations: creditCardAllocations,
     addCreditCardStatement,
     recordCreditCardPayment,
+    refreshPaymentsData,
   } = useCreditCardPayments({
     session,
     isOfflineRef,
+    localTxTracker,
     accountObjects,
     transactions,
     addTransaction,
     setTransactions,
     triggerToast,
   });
+
+  useEffect(() => {
+    refreshPaymentsDataRef.current = refreshPaymentsData;
+  }, [refreshPaymentsData]);
 
   const [showCreditCardPaymentModal, setShowCreditCardPaymentModal] = useState(false);
   const [activePaymentCardId, setActivePaymentCardId] = useState<string | null>(null);
@@ -561,25 +586,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   } = useCashbackRewards({
     session,
     isOfflineRef,
+    localTxTracker,
     accountObjects,
     addTransaction,
     setTransactions,
     triggerToast,
   });
 
-  // Theming: accentColor is owned by useUserPreferences (see top of provider)
-
   // Currency formatter — integer math to avoid floating-point errors.
-  // Wrapped in useCallback so downstream components that receive
-  // `formatCurrency` as a prop / dep can keep their memoised derivations
-  // stable across provider re-renders (e.g. analytics' useMemo chains).
   const formatCurrency = useCallback(
-    (amount: number) => {
-      const cents = Math.round(amount * 100);
+    (amount: number, overrideCurrency?: string) => {
+      const code = overrideCurrency || currency;
+      const cents = Math.round((Number.isFinite(amount) ? amount : 0) * 100);
       const whole = Math.floor(Math.abs(cents) / 100);
       const remainder = Math.abs(cents) % 100;
       const sign = cents < 0 ? "-" : "";
-      return `${currency} ${sign}${whole.toLocaleString()}.${String(remainder).padStart(2, "0")}`;
+      return `${code} ${sign}${whole.toLocaleString()}.${String(remainder).padStart(2, "0")}`;
     },
     [currency]
   );
@@ -701,12 +723,38 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const initSession = async () => {
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) throw error;
-        setSession(session);
+        if (error) {
+          const msg = (error.message || "").toLowerCase();
+          const isAuthRevoked =
+            msg.includes("invalid refresh token") ||
+            msg.includes("refresh token not found") ||
+            msg.includes("jwt expired") ||
+            error.status === 400 ||
+            error.status === 401;
+          const isNetwork =
+            isOfflineRef.current ||
+            error.name === "AuthRetryableFetchError" ||
+            msg.includes("failed to fetch") ||
+            msg.includes("network");
+          if (isAuthRevoked && !isNetwork) {
+            await supabase.auth.signOut().catch(() => {});
+            setSession(null);
+          } else {
+            console.warn("[initSession] Non-fatal session check error (preserving local session):", error);
+            if (session) setSession(session);
+          }
+        } else {
+          setSession(session);
+        }
       } catch (err) {
-        console.error("Session recovery failed:", err);
-        await supabase.auth.signOut();
-        setSession(null);
+        console.warn("[initSession] Network/storage exception during session recovery:", err);
+        if (!isOfflineRef.current) {
+          const msg = err instanceof Error ? err.message.toLowerCase() : "";
+          if (msg.includes("invalid refresh token") || msg.includes("refresh token not found")) {
+            await supabase.auth.signOut().catch(() => {});
+            setSession(null);
+          }
+        }
       } finally {
         setAuthLoading(false);
       }
@@ -767,19 +815,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     if (session?.user) {
       const userId = session.user.id;
-      // Always sync user_metadata preferences (cheap synchronous state update)
-      prefs.hydrateFromMetadata(session.user.user_metadata, session.user.email);
 
-      // Same user (e.g. TOKEN_REFRESHED or USER_UPDATED): no need to re-hydrate
-      // or re-download the entire transaction history.
+      // Same user (e.g. TOKEN_REFRESHED or USER_UPDATED): skip re-hydrating
+      // preferences/history so in-flight preference toggles and active UI state
+      // are never overwritten by stale auth event snapshots.
       if (lastHydratedUserIdRef.current === userId) {
         setIsHydrating(false);
         return;
       }
 
+      // First hydration for this user: sync metadata preferences
+      prefs.hydrateFromMetadata(session.user.user_metadata, session.user.email, userId);
+
       // Switching from another user on the same device: wipe previous user's
       // in-memory state immediately before hydrating the new user.
       if (lastHydratedUserIdRef.current && lastHydratedUserIdRef.current !== userId) {
+        localTxTracker.clear();
         resetAccountsState();
         setTransactions([]);
         setGoals([]);
@@ -792,10 +843,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       lastHydratedUserIdRef.current = userId;
 
-      // Local-first startup:
-      // 1. Restore user-scoped IndexedDB cache + pending offline queue quickly.
-      // 2. Unblock the UI as soon as local hydration completes (~10-40ms).
-      // 3. Refresh live Supabase data in the background without blocking input.
       const userSnapshot = session.user;
       hydrateFromCache(userSnapshot)
         .finally(() => {
@@ -808,6 +855,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         });
     } else {
       lastHydratedUserIdRef.current = null;
+      localTxTracker.clear();
       prefs.resetPreferences();
       resetAccountsState();
       setTransactions([]);
@@ -849,7 +897,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       utilities: visibleUtilities,
       addUtility, updateUtility, deleteUtility,
       transactions: visibleTransactions,
-      addTransaction, updateTransaction, deleteTransaction,
+      addTransaction, addTransactionsBatch, updateTransaction, deleteTransaction,
       setEditTransactionId,
       goals: visibleGoals,
       addGoal, updateGoal, deleteGoal,
@@ -888,7 +936,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       visibleSubscriptions, addSubscription, updateSubscription, deleteSubscription,
       visibleFixedBills, addFixedBill, updateFixedBill, deleteFixedBill,
       visibleUtilities, addUtility, updateUtility, deleteUtility,
-      visibleTransactions, addTransaction, updateTransaction, deleteTransaction,
+      visibleTransactions, addTransaction, addTransactionsBatch, updateTransaction, deleteTransaction,
       setEditTransactionId,
       visibleGoals, addGoal, updateGoal, deleteGoal,
       accounts, accountObjects, setAccounts, reorderAccounts, addAccount, addCreditCardAccount, updateAccount, updateCreditCardDetails, renameAccount, deleteAccount, toggleArchiveAccount,

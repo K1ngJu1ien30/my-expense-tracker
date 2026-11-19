@@ -41,6 +41,7 @@ export default function SalaryPlanner() {
     billingDay?: number;
     sourceAccount?: string;
     autoDeduct?: boolean;
+    lastPaidMonth?: string;
     kind: "subscriptions" | "fixedBills" | "utilities";
   } | null>(null);
 
@@ -99,8 +100,11 @@ export default function SalaryPlanner() {
     }
   };
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   // Submit Add Handler
   const handleAddItem = async (targetCategory: "subscriptions" | "fixedBills" | "utilities") => {
+    if (isSubmitting) return;
     if (!newName.trim() || !newCost || Number(newCost) <= 0) {
       NativeHaptics.errorShake();
       triggerToast("⚠️ Please enter a name and positive cost.");
@@ -121,19 +125,23 @@ export default function SalaryPlanner() {
       billingDay: 15,
     };
 
-    if (targetCategory === "subscriptions") {
-      await addSubscription(payload);
-    } else if (targetCategory === "fixedBills") {
-      await addFixedBill(payload);
-    } else if (targetCategory === "utilities") {
-      await addUtility(payload);
-    }
+    setIsSubmitting(true);
+    try {
+      if (targetCategory === "subscriptions") {
+        await addSubscription(payload);
+      } else if (targetCategory === "fixedBills") {
+        await addFixedBill(payload);
+      } else if (targetCategory === "utilities") {
+        await addUtility(payload);
+      }
 
-    NativeHaptics.successMedium();
-    setNewName("");
-    setNewCost("");
-    setNewSourceAccount("");
-    setActiveAddCategory(null);
+      setNewName("");
+      setNewCost("");
+      setNewSourceAccount("");
+      setActiveAddCategory(null);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Open Edit Modal
@@ -158,6 +166,7 @@ export default function SalaryPlanner() {
 
   // Handle Edit Save
   const handleUpdateItem = async () => {
+    if (isSubmitting) return;
     if (!editingItem || !editName.trim() || !editCost || Number(editCost) <= 0) {
       NativeHaptics.errorShake();
       triggerToast("⚠️ Please enter a name and positive cost.");
@@ -167,33 +176,41 @@ export default function SalaryPlanner() {
     const matchedAcc = accountObjects.find(
       (a) => a.name.trim().toLowerCase() === editSourceAccount.trim().toLowerCase()
     );
+    const parsedDay = parseInt(editBillingDay, 10);
+    const safeBillingDay = isNaN(parsedDay) ? 15 : Math.min(31, Math.max(1, parsedDay));
 
     const patch: Partial<Subscription> = {
       name: editName.trim(),
       cost: Number(editCost),
       sourceAccount: matchedAcc?.name || editSourceAccount,
       source_account_id: matchedAcc?.id,
-      billingDay: Number(editBillingDay),
+      billingDay: safeBillingDay,
       autoDeduct: editAutoDeduct,
+      lastPaidMonth: editingItem.lastPaidMonth,
     };
 
-    if (editKind === editingItem.kind) {
-      if (editKind === "subscriptions") await updateSubscription(editingItem.id, patch);
-      else if (editKind === "fixedBills") await updateFixedBill(editingItem.id, patch);
-      else if (editKind === "utilities") await updateUtility(editingItem.id, patch);
-    } else {
-      if (editingItem.kind === "subscriptions") await deleteSubscription(editingItem.id);
-      else if (editingItem.kind === "fixedBills") await deleteFixedBill(editingItem.id);
-      else if (editingItem.kind === "utilities") await deleteUtility(editingItem.id);
+    setIsSubmitting(true);
+    try {
+      if (editKind === editingItem.kind) {
+        if (editKind === "subscriptions") await updateSubscription(editingItem.id, patch);
+        else if (editKind === "fixedBills") await updateFixedBill(editingItem.id, patch);
+        else if (editKind === "utilities") await updateUtility(editingItem.id, patch);
+      } else {
+        // Insert new kind FIRST before deleting old record so network failure never loses the item
+        if (editKind === "subscriptions") await addSubscription(patch);
+        else if (editKind === "fixedBills") await addFixedBill(patch);
+        else if (editKind === "utilities") await addUtility(patch);
 
-      if (editKind === "subscriptions") await addSubscription(patch);
-      else if (editKind === "fixedBills") await addFixedBill(patch);
-      else if (editKind === "utilities") await addUtility(patch);
+        if (editingItem.kind === "subscriptions") await deleteSubscription(editingItem.id);
+        else if (editingItem.kind === "fixedBills") await deleteFixedBill(editingItem.id);
+        else if (editingItem.kind === "utilities") await deleteUtility(editingItem.id);
+      }
+
+      triggerToast("Updated successfully!");
+      setEditingItem(null);
+    } finally {
+      setIsSubmitting(false);
     }
-
-    NativeHaptics.successMedium();
-    triggerToast("Updated successfully!");
-    setEditingItem(null);
   };
 
   const renderSection = (

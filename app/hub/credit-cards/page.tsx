@@ -19,8 +19,8 @@ import {
 import Link from "next/link";
 import { useAppData } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
-import { cn } from "@/lib/utils";
-import { calculateAccountBalances } from "@/lib/balance";
+import { cn, dateKeyToUtcMs, formatLocalDate, getLocalDateKeyFromIso, isValidUuid, roundCurrency } from "@/lib/utils";
+import { calculateAccountBalances, convertCurrencySafe } from "@/lib/balance";
 import {
   calculateStatementRemaining,
   calculateMinimumRemaining,
@@ -37,13 +37,13 @@ import {
   APR_TIER_PRESETS,
 } from "@/lib/interestEngine";
 import CreditCardFinanceChargeModal from "@/components/CreditCardFinanceChargeModal";
-import { roundCurrency } from "@/lib/utils";
 
 export default function CreditCardsDashboardPage() {
   const {
     accountObjects,
     transactions,
     currency,
+    exchangeRates,
     accentColor,
     statements,
     creditCardPayments,
@@ -67,10 +67,17 @@ export default function CreditCardsDashboardPage() {
     [accountObjects]
   );
 
-  // Active card tab: "all" or specific card ID
+  // Active card tab: "all" or specific card ID — derive safe fallback so
+  // archiving/deleting the selected card or async hydration never renders blank.
   const [selectedCardId, setSelectedCardId] = useState<string>(() =>
     creditCards.length > 0 ? creditCards[0].id || creditCards[0].name : "all"
   );
+  const effectiveSelectedCardId = useMemo(() => {
+    if (selectedCardId === "all") return "all";
+    const stillExists = creditCards.some((c) => (c.id || c.name) === selectedCardId);
+    if (stillExists) return selectedCardId;
+    return creditCards.length > 0 ? creditCards[0].id || creditCards[0].name : "all";
+  }, [creditCards, selectedCardId]);
 
   // Synchronize balances from centralized engine
   const balancesData = useMemo(
@@ -97,8 +104,8 @@ export default function CreditCardsDashboardPage() {
 
   // Find active card object
   const activeCard = useMemo(
-    () => creditCards.find((c) => (c.id || c.name) === selectedCardId) || null,
-    [creditCards, selectedCardId]
+    () => creditCards.find((c) => (c.id || c.name) === effectiveSelectedCardId) || null,
+    [creditCards, effectiveSelectedCardId]
   );
 
   const activeCardReminder = useMemo(() => {
@@ -136,38 +143,45 @@ export default function CreditCardsDashboardPage() {
     });
   }, [activeCard, cashbackRecords]);
 
-  // ─── Consolidated Totals across all credit cards ──────────────────────────
+  // ─── Consolidated Totals across all credit cards (multi-currency safe) ───
   const consolidated = useMemo(() => {
-    let totalDebt = 0;
-    let totalLimit = 0;
+    let totalDebtCents = 0;
+    let totalLimitCents = 0;
     let cardsWithLimitCount = 0;
 
     creditCards.forEach((card) => {
+      const cardCur = card.currencyCode || currency;
       const bal =
         balancesData.balancesByName[card.name] ??
         (Number(card.openingBalance) || 0);
       const cardDebt = bal < 0 ? Math.abs(bal) : 0;
-      totalDebt += cardDebt;
+      if (cardDebt > 0) {
+        const convDebt = convertCurrencySafe(cardDebt, cardCur, currency, { liveRates: exchangeRates });
+        if (convDebt.isKnown) totalDebtCents += Math.round(convDebt.amount * 100);
+      }
 
       const limit = Number(card.creditLimit || 0);
       if (limit > 0) {
-        totalLimit += limit;
+        const convLim = convertCurrencySafe(limit, cardCur, currency, { liveRates: exchangeRates });
+        if (convLim.isKnown) totalLimitCents += Math.round(convLim.amount * 100);
         cardsWithLimitCount++;
       }
     });
 
-    const totalAvailable = Math.max(0, totalLimit - totalDebt);
+    const totalDebt = totalDebtCents / 100;
+    const totalLimit = totalLimitCents / 100;
+    const totalAvailable = Math.max(0, roundCurrency(totalLimit - totalDebt));
     const overallUtilization =
       totalLimit > 0 ? (totalDebt / totalLimit) * 100 : 0;
 
     return {
-      totalDebt: Math.round(totalDebt * 100) / 100,
-      totalLimit: Math.round(totalLimit * 100) / 100,
-      totalAvailable: Math.round(totalAvailable * 100) / 100,
+      totalDebt,
+      totalLimit,
+      totalAvailable,
       overallUtilization: Math.round(overallUtilization * 10) / 10,
       hasLimit: cardsWithLimitCount > 0,
     };
-  }, [creditCards, balancesData]);
+  }, [creditCards, balancesData, currency, exchangeRates]);
 
   // Consolidated Cashback across all cards (Phase 3B)
   const consolidatedCashback = useMemo(() => {
@@ -258,9 +272,9 @@ export default function CreditCardsDashboardPage() {
       if (latestStatement.isSettled || statementRemaining <= 0) {
         dueStatus = { label: "Statement Settled", tone: "settled" };
       } else {
-        const dueTime = new Date(latestStatement.dueDate).getTime();
-        const todayTime = new Date(new Date().toISOString().split("T")[0]).getTime();
-        const diffDays = Math.ceil((dueTime - todayTime) / 86400000);
+        const dueTime = dateKeyToUtcMs(latestStatement.dueDate);
+        const todayTime = dateKeyToUtcMs(formatLocalDate());
+        const diffDays = Math.round((dueTime - todayTime) / 86400000);
 
         if (diffDays < 0) {
           dueStatus = {
@@ -278,7 +292,8 @@ export default function CreditCardsDashboardPage() {
       }
     }
 
-    // New purchases since statement closing date
+    // New purchases strictly AFTER statement calendar closing date (local YYYY-MM-DD)
+    const latestStmtKey = latestStatement ? getLocalDateKeyFromIso(latestStatement.statementDate) : null;
     const newPurchases: Transaction[] = transactions.filter((tx) => {
       if (tx.deleted_at || tx.type !== "Expense") return false;
       const matchesCard =
@@ -286,8 +301,8 @@ export default function CreditCardsDashboardPage() {
         tx.account.trim().toLowerCase() === activeCard.name.trim().toLowerCase();
       if (!matchesCard) return false;
 
-      if (!latestStatement) return true;
-      return new Date(tx.date) > new Date(latestStatement.statementDate);
+      if (!latestStmtKey) return true;
+      return getLocalDateKeyFromIso(tx.date) > latestStmtKey;
     });
 
     const newPurchasesTotal = newPurchases.reduce(
@@ -343,7 +358,7 @@ export default function CreditCardsDashboardPage() {
         type: "Expense",
         amount: cleanAmount,
         account: card.name,
-        account_id: card.id || card.name,
+        account_id: isValidUuid(card.id) ? card.id : undefined,
         date,
         category: "Fees & Charges",
         credit_card_tx_type: chargeType === "interest" ? "interest" : "fee",
@@ -358,7 +373,8 @@ export default function CreditCardsDashboardPage() {
 
       const result = await addTransaction(txPayload);
       if (result.success) {
-        triggerToast(`Recorded ${currency} ${cleanAmount.toFixed(2)} bank charge on ${card.name}`);
+        const cardCur = card.currencyCode || currency;
+        triggerToast(`Recorded ${cardCur} ${cleanAmount.toFixed(2)} bank charge on ${card.name}`);
         return { success: true };
       }
       return { success: false, error: result.error || "Failed to record finance charge." };
@@ -440,7 +456,7 @@ export default function CreditCardsDashboardPage() {
                 onClick={() => handleSelectTab("all")}
                 className={cn(
                   "px-4 py-2 rounded-2xl text-xs font-bold transition-all shrink-0 cursor-pointer",
-                  selectedCardId === "all"
+                  effectiveSelectedCardId === "all"
                     ? "bg-primary text-primary-foreground shadow-soft"
                     : "bg-muted text-muted-foreground hover:bg-border"
                 )}
@@ -449,7 +465,7 @@ export default function CreditCardsDashboardPage() {
               </button>
             )}
             {creditCards.map((card) => {
-              const isSelected = (card.id || card.name) === selectedCardId;
+              const isSelected = (card.id || card.name) === effectiveSelectedCardId;
               const debt =
                 balancesData.balancesByName[card.name] < 0
                   ? Math.abs(balancesData.balancesByName[card.name])
@@ -491,7 +507,7 @@ export default function CreditCardsDashboardPage() {
           </div>
 
           {/* ─── Consolidated All Cards View ───────────────────────────────── */}
-          {selectedCardId === "all" ? (
+          {effectiveSelectedCardId === "all" ? (
             <div className="space-y-6">
               {/* Payment Alerts / Reminders Banner (Phase 3A) */}
               {allReminders.length > 0 && (

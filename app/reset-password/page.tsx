@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { Key, Sparkles, CheckCircle2 } from "lucide-react";
@@ -13,17 +13,19 @@ export default function ResetPasswordPage() {
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
     const [errorMsg, setErrorMsg] = useState("");
+    const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Read "#access_token=" payload hash injected by Supabase inherently
     useEffect(() => {
-        // Subscribe just to catch the PASSWORD_RECOVERY event — the session
-        // payload itself is captured into Supabase's internal state, we
-        // don't need the `session` argument here.
-        supabase.auth.onAuthStateChange(async (event) => {
-            if (event == "PASSWORD_RECOVERY") {
-                // The URL is fully loaded and hash token is actively captured into session dynamically.
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
+            if (event === "PASSWORD_RECOVERY") {
+                // Hash token captured into Supabase session automatically.
             }
         });
+        return () => {
+            subscription.unsubscribe();
+            if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
+        };
     }, []);
 
     const handleReset = async (e: React.FormEvent) => {
@@ -46,7 +48,7 @@ export default function ResetPasswordPage() {
             if (error) throw error;
             
             setSuccess(true);
-            setTimeout(() => {
+            redirectTimerRef.current = setTimeout(() => {
                 router.replace("/");
             }, 2000);
         } catch (error: unknown) {

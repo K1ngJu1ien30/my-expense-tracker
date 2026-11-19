@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, Reorder, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -21,7 +21,7 @@ import {
 import type { Account, AccountKind, CreditCardDetails } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { NativeHaptics } from "@/lib/haptics";
-import { useAppContext } from "@/lib/context";
+import { useAppData } from "@/lib/context";
 import {
   checkAccountDependencies,
   AccountDependencyResult,
@@ -112,9 +112,43 @@ export function ManageAccountsModal({
     statements,
     creditCardPayments,
     subscriptions,
+    fixedBills,
     utilities,
     cashbackRecords,
-  } = useAppContext();
+  } = useAppData();
+
+  // Single O(T) pass to track which account IDs/names have linked records
+  // (replaces O(Accounts × Transactions) scan inside accounts.map on every keystroke)
+  const dependentAccountKeys = useMemo(() => {
+    const keys = new Set<string>();
+    const addKey = (val?: string | null) => {
+      if (!val) return;
+      keys.add(val);
+      keys.add(val.trim().toLowerCase());
+    };
+    for (const t of transactions) {
+      addKey(t.account_id);
+      addKey(t.account);
+      addKey(t.to_account_id);
+      addKey(t.to_account);
+    }
+    for (const s of statements) addKey(s.accountId);
+    for (const p of creditCardPayments) {
+      addKey(p.accountId);
+      addKey(p.sourceAccountId);
+    }
+    for (const sub of [...subscriptions, ...fixedBills, ...utilities]) {
+      addKey(sub.source_account_id);
+      addKey(sub.sourceAccount);
+    }
+    for (const cb of cashbackRecords) {
+      addKey(cb.cardId);
+      addKey(cb.cardName);
+      addKey(cb.destinationAccountId);
+      addKey(cb.destinationAccountName);
+    }
+    return keys;
+  }, [transactions, statements, creditCardPayments, subscriptions, fixedBills, utilities, cashbackRecords]);
 
   // Deletion protection state
   const [blockedDep, setBlockedDep] = useState<{
@@ -123,17 +157,30 @@ export function ManageAccountsModal({
   } | null>(null);
   const [emptyDeleteTarget, setEmptyDeleteTarget] = useState<Account | null>(null);
   const [isDeletingEmpty, setIsDeletingEmpty] = useState(false);
+  const [isSubmittingNew, setIsSubmittingNew] = useState(false);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (blockedDep) setBlockedDep(null);
+        else if (emptyDeleteTarget) setEmptyDeleteTarget(null);
+        else onClose();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [blockedDep, emptyDeleteTarget, onClose]);
 
   const archived = accountObjects.filter((a) => a.isArchived);
 
   // Safe deletion gatekeeper
   const handleDeleteClick = (targetAcc: Account) => {
-    NativeHaptics.lightTick();
     const dep = checkAccountDependencies(targetAcc, {
       transactions,
       statements,
       creditCardPayments,
       subscriptions,
+      fixedBills,
       utilities,
       cashbackRecords,
     });
@@ -142,6 +189,7 @@ export function ManageAccountsModal({
       NativeHaptics.errorShake();
       setBlockedDep({ account: targetAcc, dep });
     } else {
+      NativeHaptics.lightTick();
       setEmptyDeleteTarget(targetAcc);
     }
   };
@@ -165,6 +213,7 @@ export function ManageAccountsModal({
   };
 
   const submitNew = async () => {
+    if (isSubmittingNew) return;
     setNameError(null);
     const name = newAccount.trim();
     if (!name) {
@@ -186,55 +235,60 @@ export function ManageAccountsModal({
     const parsedBal = newAccountOpeningBalance.trim() ? parseFloat(newAccountOpeningBalance) : 0;
     const openingBalance = isNaN(parsedBal) ? 0 : parsedBal;
 
-    if (newAccountKind === "credit_card" && addCreditCardAccount) {
-      const sDay = parseInt(statementDay, 10);
-      const validStatementDay = isNaN(sDay) || sDay < 1 ? 15 : Math.min(sDay, 31);
-      const parsedGrace = parseInt(gracePeriodDays, 10);
-      const validGrace = isNaN(parsedGrace) || parsedGrace < 0 ? 20 : parsedGrace;
-      const parsedLimit = creditLimit.trim() ? parseFloat(creditLimit) : null;
-      const validLimit = parsedLimit !== null && !isNaN(parsedLimit) && parsedLimit >= 0 ? parsedLimit : null;
-      const parsedApr = apr.trim() ? parseFloat(apr) : null;
-      const validApr = parsedApr !== null && !isNaN(parsedApr) && parsedApr >= 0 ? parsedApr : null;
-      const parsedRemind = parseInt(reminderDaysBefore, 10);
-      const validRemind = isNaN(parsedRemind) || parsedRemind < 0 ? 3 : parsedRemind;
-      const cleanLastFour = cardLastFour.trim().slice(-4);
+    setIsSubmittingNew(true);
+    try {
+      if (newAccountKind === "credit_card" && addCreditCardAccount) {
+        const sDay = parseInt(statementDay, 10);
+        const validStatementDay = isNaN(sDay) || sDay < 1 ? 15 : Math.min(sDay, 31);
+        const parsedGrace = parseInt(gracePeriodDays, 10);
+        const validGrace = isNaN(parsedGrace) || parsedGrace < 0 ? 20 : parsedGrace;
+        const parsedLimit = creditLimit.trim() ? parseFloat(creditLimit) : null;
+        const validLimit = parsedLimit !== null && !isNaN(parsedLimit) && parsedLimit >= 0 ? parsedLimit : null;
+        const parsedApr = apr.trim() ? parseFloat(apr) : null;
+        const validApr = parsedApr !== null && !isNaN(parsedApr) && parsedApr >= 0 ? parsedApr : null;
+        const parsedRemind = parseInt(reminderDaysBefore, 10);
+        const validRemind = isNaN(parsedRemind) || parsedRemind < 0 ? 3 : parsedRemind;
+        const cleanLastFour = cardLastFour.trim().slice(-4);
 
-      await addCreditCardAccount({
-        name,
-        currencyCode: newAccountCurrency,
-        openingBalance,
-        creditLimit: validLimit,
-        statementDay: validStatementDay,
-        gracePeriodDays: validGrace,
-        apr: validApr,
-        issuer: issuer.trim() || undefined,
-        cardLastFour: cleanLastFour || undefined,
-        reminderDaysBefore: validRemind,
-      });
+        await addCreditCardAccount({
+          name,
+          currencyCode: newAccountCurrency,
+          openingBalance,
+          creditLimit: validLimit,
+          statementDay: validStatementDay,
+          gracePeriodDays: validGrace,
+          apr: validApr,
+          issuer: issuer.trim() || undefined,
+          cardLastFour: cleanLastFour || undefined,
+          reminderDaysBefore: validRemind,
+        });
 
+        NativeHaptics.successMedium();
+        triggerToast(`Credit card "${name}" added!`);
+        setNewAccount("");
+        setNewAccountCurrency("RM");
+        setNewAccountKind("bank");
+        setNewAccountOpeningBalance("");
+        setIssuer("");
+        setCardLastFour("");
+        setCreditLimit("");
+        setStatementDay("15");
+        setGracePeriodDays("20");
+        setApr("");
+        setReminderDaysBefore("3");
+        return;
+      }
+
+      addAccount(name, newAccountCurrency, newAccountKind, openingBalance);
       NativeHaptics.successMedium();
-      triggerToast(`Credit card "${name}" added!`);
+      triggerToast(`"${name}" added!`);
       setNewAccount("");
       setNewAccountCurrency("RM");
       setNewAccountKind("bank");
       setNewAccountOpeningBalance("");
-      setIssuer("");
-      setCardLastFour("");
-      setCreditLimit("");
-      setStatementDay("15");
-      setGracePeriodDays("20");
-      setApr("");
-      setReminderDaysBefore("3");
-      return;
+    } finally {
+      setIsSubmittingNew(false);
     }
-
-    addAccount(name, newAccountCurrency, newAccountKind, openingBalance);
-    NativeHaptics.successMedium();
-    triggerToast(`"${name}" added!`);
-    setNewAccount("");
-    setNewAccountCurrency("RM");
-    setNewAccountKind("bank");
-    setNewAccountOpeningBalance("");
   };
 
   const commitRename = (oldName: string) => {
@@ -279,7 +333,7 @@ export function ManageAccountsModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="accounts-title"
-        className="bg-card w-full max-w-sm sm:max-w-md rounded-[2rem] shadow-heavy z-10 overflow-hidden flex flex-col max-h-[88vh]"
+        className="bg-card w-full max-w-sm sm:max-w-md rounded-[2rem] shadow-heavy z-10 overflow-hidden flex flex-col max-h-[88dvh]"
       >
         <div className="p-5 border-b border-border/40 flex justify-between items-center bg-muted/20">
           <h3 id="accounts-title" className="font-bold text-foreground">Manage Accounts</h3>
@@ -415,7 +469,7 @@ export function ManageAccountsModal({
                         type="button"
                         aria-label={`Archive ${accName}`}
                         title={
-                          accObj && checkAccountDependencies(accObj, { transactions, statements, creditCardPayments, subscriptions, utilities, cashbackRecords }).hasDependencies
+                          accObj && ((accObj.id && dependentAccountKeys.has(accObj.id)) || dependentAccountKeys.has(accObj.name.trim().toLowerCase()))
                             ? `Archive ${accName} (Preserves financial history)`
                             : `Archive ${accName}`
                         }

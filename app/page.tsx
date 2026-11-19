@@ -9,7 +9,7 @@ import { useAppData } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
 import { getTimeTheme } from "@/lib/timeTheme";
 import MonthlyReceiptModal from "@/components/MonthlyReceiptModal";
-import { calculateFinancialPosition, isSavingsAccount } from "@/lib/balance";
+import { calculateFinancialPosition, convertCurrencySafe, isSavingsAccount } from "@/lib/balance";
 import type { AccountKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { deriveCreditCardReminders } from "@/lib/creditCardReminders";
@@ -247,13 +247,19 @@ export default function Dashboard() {
     }
 
     // Single pass over all transactions for pending income and trends
+    // (multi-currency safe: converts foreign-currency accounts via verified rates)
     transactions.forEach(t => {
-      const amtCents = Math.round(Number(t.amount) * 100);
       const txTime = Date.parse(t.date);
       const txAcc =
         (t.account_id ? accountLookup.byId.get(t.account_id) : undefined) ||
         accountLookup.byNameLower.get((t.account || "").trim().toLowerCase());
       const isSavingsAcc = txAcc ? isSavingsAccount(txAcc) : isSavingsAccount({ name: t.account });
+      const srcCur = txAcc?.currencyCode || currency;
+      const conv = convertCurrencySafe(Number(t.amount), srcCur, currency, {
+        liveRates: exchangeRates,
+      });
+      const baseAmount = conv.isKnown ? conv.amount : 0;
+      const amtCents = Math.round(baseAmount * 100);
 
       // Pending income
       if (t.type === "Income" && t.status === "pending") {
@@ -276,8 +282,8 @@ export default function Dashboard() {
         const d = new Date(txTime);
         const dateKey = `${d.getMonth() + 1}/${d.getDate()}`;
         if (trendMap[dateKey]) {
-          if (t.type === "Income") trendMap[dateKey].income += Number(t.amount);
-          if (t.type === "Expense") trendMap[dateKey].value += Number(t.amount);
+          if (t.type === "Income") trendMap[dateKey].income += baseAmount;
+          if (t.type === "Expense") trendMap[dateKey].value += baseAmount;
           trendMap[dateKey].transactions += 1;
         }
       }
@@ -292,57 +298,70 @@ export default function Dashboard() {
       weeklyTotal: weeklyTotalCents / 100,
       dynamicTrendData: transactions.length > 0 ? trendData : [],
     };
-  }, [transactions, includeSavings, currency, financialPosition, accountLookup]);
+  }, [transactions, includeSavings, currency, exchangeRates, financialPosition, accountLookup]);
 
   const { totalBalance, accountBalances, pendingIncome, todayTotal, todayTransactions, weeklyTotal, dynamicTrendData } = dashData;
 
-  // Outstanding claims — drives the split-bill widget. Computed separately
-  // from dashData so it only re-runs when claims-related fields change.
+  // Outstanding claims — drives the split-bill widget (multi-currency safe)
   const claimsSummary = useMemo(() => {
     if (!isClaimsEnabled) return null;
     const pending = transactions.filter(
       (t) => t.is_claimable === true && t.claim_status === "pending"
     );
     if (pending.length === 0) return null;
-    const total = pending.reduce((sum, t) => sum + Number(t.amount), 0);
-    // Count distinct payees (the `note` field is where users jot down who owes).
-    // Fall back to transaction count if notes are empty.
+    let totalCents = 0;
     const payees = new Set<string>();
     for (const t of pending) {
+      const txAcc =
+        (t.account_id ? accountLookup.byId.get(t.account_id) : undefined) ||
+        accountLookup.byNameLower.get((t.account || "").trim().toLowerCase());
+      const conv = convertCurrencySafe(Number(t.amount), txAcc?.currencyCode || currency, currency, {
+        liveRates: exchangeRates,
+      });
+      if (conv.isKnown) totalCents += Math.round(conv.amount * 100);
       const payee = (t.note || "").trim().toLowerCase();
       if (payee) payees.add(payee);
     }
     return {
-      total,
+      total: totalCents / 100,
       count: pending.length,
       distinctPayees: payees.size,
     };
-  }, [transactions, isClaimsEnabled]);
+  }, [transactions, isClaimsEnabled, accountLookup, currency, exchangeRates]);
 
-  // Credit card summary — drives the credit card companion card on Home
+  // Credit card summary — drives the credit card companion card on Home (multi-currency safe)
   const creditCardSummary = useMemo(() => {
     const cCards = accountObjects.filter((a) => a.kind === "credit_card" && !a.isArchived);
     if (cCards.length === 0) return null;
 
-    let totalDebt = 0;
-    let totalLimit = 0;
+    let totalDebtCents = 0;
+    let totalLimitCents = 0;
 
     cCards.forEach((c) => {
+      const cardCur = c.currencyCode || currency;
       const bal = accountBalances[c.name] ?? (Number(c.openingBalance) || 0);
-      if (bal < 0) totalDebt += Math.abs(bal);
+      if (bal < 0) {
+        const convDebt = convertCurrencySafe(Math.abs(bal), cardCur, currency, { liveRates: exchangeRates });
+        if (convDebt.isKnown) totalDebtCents += Math.round(convDebt.amount * 100);
+      }
       const lim = Number(c.creditLimit || 0);
-      if (lim > 0) totalLimit += lim;
+      if (lim > 0) {
+        const convLim = convertCurrencySafe(lim, cardCur, currency, { liveRates: exchangeRates });
+        if (convLim.isKnown) totalLimitCents += Math.round(convLim.amount * 100);
+      }
     });
 
+    const totalDebt = totalDebtCents / 100;
+    const totalLimit = totalLimitCents / 100;
     const utilization = totalLimit > 0 ? (totalDebt / totalLimit) * 100 : 0;
 
     return {
       cardCount: cCards.length,
-      totalDebt: Math.round(totalDebt * 100) / 100,
-      totalLimit: Math.round(totalLimit * 100) / 100,
+      totalDebt,
+      totalLimit,
       utilization: Math.round(utilization * 10) / 10,
     };
-  }, [accountObjects, accountBalances]);
+  }, [accountObjects, accountBalances, currency, exchangeRates]);
 
   // In-app credit card reminders (Phase 3A)
   const creditCardReminders = useMemo(() => {
@@ -569,9 +588,19 @@ export default function Dashboard() {
                     </span>
                   </div>
                   <p className="text-[11px] sm:text-xs font-semibold text-foreground mt-0.5 truncate">
-                    {formatCurrency(urgentReminder.remainingBalance)} Statement Due
-                    {urgentReminder.minimumPayment > 0 &&
-                      ` · Min ${formatCurrency(urgentReminder.minimumPayment)}`}
+                    {(() => {
+                      const remCard =
+                        accountLookup.byId.get(urgentReminder.cardId) ||
+                        accountLookup.byNameLower.get(urgentReminder.cardName.trim().toLowerCase());
+                      const remCur = remCard?.currencyCode || currency;
+                      return (
+                        <>
+                          {formatCurrency(urgentReminder.remainingBalance, remCur)} Statement Due
+                          {urgentReminder.minimumPayment > 0 &&
+                            ` · Min ${formatCurrency(urgentReminder.minimumPayment, remCur)}`}
+                        </>
+                      );
+                    })()}
                   </p>
                 </div>
               </div>
@@ -973,7 +1002,7 @@ export default function Dashboard() {
                   <div className="h-2 sm:h-2.5 bg-muted rounded-full overflow-hidden">
                     <motion.div 
                       initial={{ width: 0 }}
-                      animate={{ width: `${Math.min((g.current / g.target) * 100, 100)}%` }}
+                      animate={{ width: `${g.target > 0 ? Math.min(Math.max((g.current / g.target) * 100, 0), 100) : 0}%` }}
                       transition={{ duration: 1, ease: "easeOut", delay: 0.1 }}
                       className={`h-full ${g.color} rounded-full`}
                     />

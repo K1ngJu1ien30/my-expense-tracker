@@ -8,8 +8,15 @@ import { useAppContext } from "@/lib/context";
 import { supabase } from "@/lib/supabase";
 import type { AssetLog } from "@/lib/context";
 import CustomDatePicker from "@/components/CustomDatePicker";
+import { formatLocalDate } from "@/lib/utils";
 
 const EMOJI_OPTIONS = ["📱", "💻", "📸", "👟", "⌚", "🎧", "🎮", "🚗", "🏠", "🛋️", "🧳", "👜", "📦", "🔧", "🎸"];
+
+function getDaysActive(dateStr: string): number {
+  if (!dateStr) return 0;
+  const diff = new Date().getTime() - new Date(dateStr).getTime();
+  return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
+}
 
 export default function AssetDetailPage() {
   const { assets, accentColor, triggerToast, session, updateAsset, deleteAsset, confirmAction, authLoading, activeAssetId, setActiveAssetId, currency } = useAppContext();
@@ -20,9 +27,10 @@ export default function AssetDetailPage() {
   const [logs, setLogs] = useState<AssetLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddLog, setShowAddLog] = useState(false);
+  const [isSavingLog, setIsSavingLog] = useState(false);
   const [logDesc, setLogDesc] = useState("");
   const [logCost, setLogCost] = useState("");
-  const [logDate, setLogDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [logDate, setLogDate] = useState(() => formatLocalDate());
 
   const [showEdit, setShowEdit] = useState(false);
   const [editName, setEditName] = useState("");
@@ -63,16 +71,25 @@ export default function AssetDetailPage() {
   }, [activeAssetId, session, authLoading]);
 
   const handleAddLog = async () => {
-    if (!logDesc || !activeAssetId) return;
-    const payload = { asset_id: activeAssetId, description: logDesc, cost: Number(logCost) || 0, log_date: logDate };
-    const { data, error } = await supabase.from("asset_logs").insert(payload).select().single();
-    if (!error && data) {
+    if (!logDesc.trim() || !activeAssetId || isSavingLog) return;
+    setIsSavingLog(true);
+    try {
+      const payload = { asset_id: activeAssetId, description: logDesc.trim(), cost: Number(logCost) || 0, log_date: logDate };
+      const { data, error } = await supabase.from("asset_logs").insert(payload).select().single();
+      if (error || !data) {
+        triggerToast(`❌ Failed to save log: ${error?.message || "Please try again."}`);
+        return;
+      }
       setLogs(prev => [data as AssetLog, ...prev]);
       triggerToast("Maintenance log added!");
+      setShowAddLog(false);
+      setLogDesc("");
+      setLogCost("");
+    } catch {
+      triggerToast("❌ Failed to save maintenance log.");
+    } finally {
+      setIsSavingLog(false);
     }
-    setShowAddLog(false);
-    setLogDesc("");
-    setLogCost("");
   };
 
   const openEdit = () => {
@@ -126,12 +143,6 @@ export default function AssetDetailPage() {
     const days = Math.max(1, getDaysActive(asset.purchase_date));
     return trueTotalInvestment / days;
   }, [asset, trueTotalInvestment]);
-
-  const getDaysActive = (dateStr: string) => {
-    if (!dateStr) return 0;
-    const diff = new Date().getTime() - new Date(dateStr).getTime();
-    return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
-  };
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
@@ -258,11 +269,11 @@ export default function AssetDetailPage() {
               <input value={logDesc} onChange={e => setLogDesc(e.target.value)} placeholder="Description (e.g. Replaced battery)" className="w-full bg-muted/60 rounded-xl px-4 py-3 text-sm font-semibold outline-none border border-border text-foreground" autoFocus />
               <CustomDatePicker value={logDate} onChange={setLogDate} accentColor={accentColor} />
               <div className="flex items-center gap-2 bg-muted/60 rounded-xl px-4 py-3 border border-border">
-                <span className="font-bold text-muted-foreground text-sm">RM</span>
-                <input value={logCost} onChange={e => setLogCost(e.target.value)} type="number" placeholder="0.00 (optional)" className="flex-1 bg-transparent text-sm font-bold outline-none text-foreground" />
+                <span className="font-bold text-muted-foreground text-sm">{currency}</span>
+                <input value={logCost} onChange={e => setLogCost(e.target.value)} type="number" inputMode="decimal" placeholder="0.00 (optional)" className="flex-1 bg-transparent text-sm font-bold outline-none text-foreground" />
               </div>
-              <button onClick={handleAddLog} style={{ backgroundColor: accentColor, boxShadow: `0 0 15px ${accentColor}4D` }} className="w-full text-white py-4 rounded-xl font-bold shadow-soft hover:scale-[1.02] active:scale-[0.98] transition-all">
-                Save Log Entry
+              <button type="button" disabled={isSavingLog} onClick={handleAddLog} style={{ backgroundColor: accentColor, boxShadow: `0 0 15px ${accentColor}4D` }} className="w-full text-white py-4 rounded-xl font-bold shadow-soft hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-60">
+                {isSavingLog ? "Saving..." : "Save Log Entry"}
               </button>
             </motion.div>
           </div>
@@ -274,7 +285,7 @@ export default function AssetDetailPage() {
         {showEdit && (
           <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center p-0 sm:p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowEdit(false)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="bg-card w-full sm:max-w-md rounded-t-[2.5rem] sm:rounded-[2rem] shadow-heavy z-10 overflow-hidden flex flex-col p-6 pb-32 space-y-4 max-h-[85vh] overflow-y-auto hide-scrollbar">
+            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="bg-card w-full sm:max-w-md rounded-t-[2.5rem] sm:rounded-[2rem] shadow-heavy z-10 overflow-hidden flex flex-col p-6 pb-32 space-y-4 max-h-[85dvh] overflow-y-auto hide-scrollbar">
               <div className="w-12 h-1.5 bg-border rounded-full mx-auto mb-2 shrink-0 sm:hidden" />
               <div className="flex justify-between items-center">
                 <h3 className="font-bold text-lg text-foreground">Edit Asset</h3>
@@ -304,8 +315,8 @@ export default function AssetDetailPage() {
               </div>
               <CustomDatePicker value={editDate} onChange={setEditDate} accentColor={accentColor} />
               <div className="flex items-center gap-2 bg-muted/60 rounded-xl px-4 py-3 border border-border">
-                <span className="font-bold text-muted-foreground text-sm">RM</span>
-                <input value={editPrice} onChange={e => setEditPrice(e.target.value)} type="number" placeholder="0.00" className="flex-1 bg-transparent text-sm font-bold outline-none text-foreground" />
+                <span className="font-bold text-muted-foreground text-sm">{currency}</span>
+                <input value={editPrice} onChange={e => setEditPrice(e.target.value)} type="number" inputMode="decimal" placeholder="0.00" className="flex-1 bg-transparent text-sm font-bold outline-none text-foreground" />
               </div>
               <button onClick={handleSaveEdit} style={{ backgroundColor: accentColor, boxShadow: `0 0 15px ${accentColor}4D` }} className="w-full text-white py-4 rounded-xl font-bold shadow-soft hover:scale-[1.02] active:scale-[0.98] transition-all">
                 Save Changes

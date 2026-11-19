@@ -2,7 +2,29 @@ import localforage from "localforage";
 import type { RawCreditCardStatementRow, Transaction } from "./types";
 
 const OFFLINE_QUEUE_KEY = "offline_tx_queue";
+const OFFLINE_DEAD_LETTER_KEY = "offline_tx_dead_letter";
 const OFFLINE_STATEMENT_QUEUE_KEY = "offline_statement_queue";
+
+export type OfflineQueuedTx = Partial<Transaction> & {
+  /** Monotonic local revision tag; stripped before sending to Supabase. */
+  _queueRev?: number;
+};
+
+let revCounter = 0;
+function nextQueueRev(): number {
+  const now = Date.now();
+  revCounter = now > revCounter ? now : revCounter + 1;
+  return revCounter;
+}
+
+/**
+ * Strip internal queue metadata before sending a transaction payload to Supabase.
+ */
+export function stripOfflineQueueMeta(tx: OfflineQueuedTx): Partial<Transaction> {
+  const { _queueRev: _ignored, ...clean } = tx;
+  void _ignored;
+  return clean;
+}
 
 /**
  * Single-flight serializer lock for offline transaction queue operations.
@@ -18,23 +40,48 @@ function withQueueLock<T>(op: () => Promise<T>): Promise<T> {
 }
 
 /**
- * Enqueue a transaction to the offline queue with serialized read-modify-write.
- * Rejects if IndexedDB storage fails so callers know persistence did not succeed.
+ * Enqueue (or supersede by id) a transaction in the offline queue with
+ * serialized read-modify-write. Returns the stamped `_queueRev` so callers can
+ * safely acknowledge only the exact snapshot they synced.
  */
-export async function enqueueOfflineTx(tx: Partial<Transaction>): Promise<void> {
+export async function enqueueOfflineTx(tx: Partial<Transaction>): Promise<number> {
   return withQueueLock(async () => {
-    const existing = (await localforage.getItem<Partial<Transaction>[]>(OFFLINE_QUEUE_KEY)) || [];
-    existing.push(tx);
-    await localforage.setItem(OFFLINE_QUEUE_KEY, existing);
+    const existing = (await localforage.getItem<OfflineQueuedTx[]>(OFFLINE_QUEUE_KEY)) || [];
+    const rev = nextQueueRev();
+    const entry: OfflineQueuedTx = { ...stripOfflineQueueMeta(tx), _queueRev: rev };
+    const filtered = tx.id ? existing.filter(item => item.id !== tx.id) : existing;
+    filtered.push(entry);
+    await localforage.setItem(OFFLINE_QUEUE_KEY, filtered);
+    return rev;
+  });
+}
+
+/**
+ * Enqueue multiple transactions in a single IndexedDB read-modify-write.
+ */
+export async function enqueueOfflineTxBatch(txs: Partial<Transaction>[]): Promise<Map<string, number>> {
+  const revs = new Map<string, number>();
+  if (txs.length === 0) return revs;
+  return withQueueLock(async () => {
+    const existing = (await localforage.getItem<OfflineQueuedTx[]>(OFFLINE_QUEUE_KEY)) || [];
+    const incomingIds = new Set(txs.map(t => t.id).filter(Boolean) as string[]);
+    const filtered = existing.filter(item => !item.id || !incomingIds.has(item.id));
+    for (const tx of txs) {
+      const rev = nextQueueRev();
+      if (tx.id) revs.set(tx.id, rev);
+      filtered.push({ ...stripOfflineQueueMeta(tx), _queueRev: rev });
+    }
+    await localforage.setItem(OFFLINE_QUEUE_KEY, filtered);
+    return revs;
   });
 }
 
 /**
  * Retrieve the current offline queue items without modifying them.
  */
-export async function getOfflineQueue(): Promise<Partial<Transaction>[]> {
+export async function getOfflineQueue(): Promise<OfflineQueuedTx[]> {
   return withQueueLock(async () => {
-    return (await localforage.getItem<Partial<Transaction>[]>(OFFLINE_QUEUE_KEY)) || [];
+    return (await localforage.getItem<OfflineQueuedTx[]>(OFFLINE_QUEUE_KEY)) || [];
   });
 }
 
@@ -43,10 +90,10 @@ export async function getOfflineQueue(): Promise<Partial<Transaction>[]> {
  * If legacy transactions exist without a user_id, they are safely claimed
  * by the current user so they are not lost.
  */
-export async function getOfflineQueueForUser(userId: string): Promise<Partial<Transaction>[]> {
+export async function getOfflineQueueForUser(userId: string): Promise<OfflineQueuedTx[]> {
   if (!userId) return [];
   return withQueueLock(async () => {
-    const queue = (await localforage.getItem<Partial<Transaction>[]>(OFFLINE_QUEUE_KEY)) || [];
+    const queue = (await localforage.getItem<OfflineQueuedTx[]>(OFFLINE_QUEUE_KEY)) || [];
     let updated = false;
 
     const userQueue = queue.filter(tx => {
@@ -70,16 +117,28 @@ export async function getOfflineQueueForUser(userId: string): Promise<Partial<Tr
 
 /**
  * Safely removes ONLY the successfully acknowledged transactions from the queue.
- * Any transactions added concurrently during sync, or transactions that failed to upload,
- * remain securely in the queue.
+ * When `expectedRevs` is provided, an entry whose `_queueRev` changed while a
+ * sync was in flight (e.g. edited offline mid-sync) is preserved for the next sync.
  *
  * Returns the number of items removed.
  */
-export async function removeAcknowledgedOfflineTxs(acknowledgedIds: Set<string>): Promise<number> {
+export async function removeAcknowledgedOfflineTxs(
+  acknowledgedIds: Set<string>,
+  expectedRevs?: Map<string, number>
+): Promise<number> {
   if (acknowledgedIds.size === 0) return 0;
   return withQueueLock(async () => {
-    const currentQueue = (await localforage.getItem<Partial<Transaction>[]>(OFFLINE_QUEUE_KEY)) || [];
-    const remaining = currentQueue.filter(tx => !tx.id || !acknowledgedIds.has(tx.id));
+    const currentQueue = (await localforage.getItem<OfflineQueuedTx[]>(OFFLINE_QUEUE_KEY)) || [];
+    const remaining = currentQueue.filter(tx => {
+      if (!tx.id || !acknowledgedIds.has(tx.id)) return true;
+      if (expectedRevs && expectedRevs.has(tx.id)) {
+        const expected = expectedRevs.get(tx.id);
+        if (tx._queueRev !== undefined && expected !== undefined && tx._queueRev !== expected) {
+          return true; // Superseded by a newer local edit/delete — keep in queue
+        }
+      }
+      return false;
+    });
     const removedCount = currentQueue.length - remaining.length;
     if (remaining.length === 0) {
       await localforage.removeItem(OFFLINE_QUEUE_KEY);
@@ -87,6 +146,61 @@ export async function removeAcknowledgedOfflineTxs(acknowledgedIds: Set<string>)
       await localforage.setItem(OFFLINE_QUEUE_KEY, remaining);
     }
     return removedCount;
+  });
+}
+
+/**
+ * Quarantine a permanently rejected (non-network) offline record out of the
+ * active sync queue so it cannot cause infinite poison-pill retry loops.
+ */
+export async function quarantineOfflineTx(
+  tx: OfflineQueuedTx,
+  reason: string
+): Promise<void> {
+  return withQueueLock(async () => {
+    const currentQueue = (await localforage.getItem<OfflineQueuedTx[]>(OFFLINE_QUEUE_KEY)) || [];
+    const remaining = tx.id ? currentQueue.filter(item => item.id !== tx.id) : currentQueue;
+    if (remaining.length === 0) {
+      await localforage.removeItem(OFFLINE_QUEUE_KEY);
+    } else {
+      await localforage.setItem(OFFLINE_QUEUE_KEY, remaining);
+    }
+    try {
+      const deadLetter = (await localforage.getItem<Array<{ tx: Partial<Transaction>; reason: string; quarantinedAt: string }>>(OFFLINE_DEAD_LETTER_KEY)) || [];
+      deadLetter.push({
+        tx: stripOfflineQueueMeta(tx),
+        reason,
+        quarantinedAt: new Date().toISOString(),
+      });
+      await localforage.setItem(OFFLINE_DEAD_LETTER_KEY, deadLetter.slice(-50));
+    } catch {
+      /* ignore dead-letter write errors */
+    }
+  });
+}
+
+/**
+ * Clear all queued offline transactions and statements belonging to a user
+ * (used during full Clear Data reset so deleted records cannot resurrect).
+ */
+export async function clearOfflineQueueForUser(userId: string): Promise<void> {
+  if (!userId) return;
+  return withQueueLock(async () => {
+    const txQueue = (await localforage.getItem<OfflineQueuedTx[]>(OFFLINE_QUEUE_KEY)) || [];
+    const remainingTx = txQueue.filter(tx => tx.user_id && tx.user_id !== userId);
+    if (remainingTx.length === 0) {
+      await localforage.removeItem(OFFLINE_QUEUE_KEY);
+    } else {
+      await localforage.setItem(OFFLINE_QUEUE_KEY, remainingTx);
+    }
+
+    const stmtQueue = (await localforage.getItem<RawCreditCardStatementRow[]>(OFFLINE_STATEMENT_QUEUE_KEY)) || [];
+    const remainingStmt = stmtQueue.filter(s => s.user_id && s.user_id !== userId);
+    if (remainingStmt.length === 0) {
+      await localforage.removeItem(OFFLINE_STATEMENT_QUEUE_KEY);
+    } else {
+      await localforage.setItem(OFFLINE_STATEMENT_QUEUE_KEY, remainingStmt);
+    }
   });
 }
 

@@ -1,19 +1,28 @@
 import type { Transaction } from "./context";
+import { getLocalDateKeyFromIso } from "./utils";
+
+/** Neutralize spreadsheet formula injection (=, +, -, @, tab, CR) on CSV cells. */
+function escapeCsvCell(raw: unknown): string {
+  let str = String(raw ?? "");
+  if (/^[=+\-@\t\r]/.test(str)) {
+    str = `'${str}`;
+  }
+  return `"${str.replace(/"/g, '""')}"`;
+}
 
 export async function exportDataToCSV(
   transactions: Transaction[],
   monthFilter: string | null,
-  // `currency` reserved for a future per-currency CSV formatter — kept in
-  // the signature so callers don't have to change when that lands. Prefix
-  // with `_` to silence the unused-var linter without losing the name.
   _currency: string
 ): Promise<void> {
-  if (transactions.length === 0) throw new Error("No transactions to export.");
+  void _currency;
+  const activeTxs = transactions.filter(tx => !tx.deleted_at);
+  if (activeTxs.length === 0) throw new Error("No transactions to export.");
 
   // Filter by month if specified (e.g. "April 2026")
-  let filtered = transactions;
+  let filtered = activeTxs;
   if (monthFilter) {
-    filtered = transactions.filter(tx => {
+    filtered = activeTxs.filter(tx => {
       const d = new Date(tx.date);
       const label = d.toLocaleString("en-US", { month: "long", year: "numeric" });
       return label === monthFilter;
@@ -21,10 +30,10 @@ export async function exportDataToCSV(
     if (filtered.length === 0) throw new Error(`No transactions found for ${monthFilter}.`);
   }
 
-  // Build CSV
+  // Build CSV (UTF-8 BOM for clean Excel parsing)
   const headers = ["Date", "Type", "Category", "Sub Category", "Amount", "Account", "To Account", "Note", "Status"];
   const rows = filtered.map(tx => [
-    new Date(tx.date).toLocaleDateString(),
+    getLocalDateKeyFromIso(tx.date),
     tx.type,
     tx.category || "",
     tx.sub_category || "",
@@ -34,9 +43,11 @@ export async function exportDataToCSV(
     tx.note || "",
     tx.status || "cleared",
   ]);
-  const csvContent = [headers, ...rows]
-    .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
-    .join("\n");
+  const csvContent =
+    "\uFEFF" +
+    [headers, ...rows]
+      .map(row => row.map(escapeCsvCell).join(","))
+      .join("\n");
 
   const fileName = monthFilter
     ? `tracker_${monthFilter.replace(/\s/g, "_")}.csv`

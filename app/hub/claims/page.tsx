@@ -5,12 +5,38 @@ import { motion } from "framer-motion";
 import { ArrowLeft, Check, Clock, Receipt } from "lucide-react";
 import Link from "next/link";
 import { useAppData } from "@/lib/context";
+import { convertCurrencySafe } from "@/lib/balance";
 
 type TabType = "pending" | "cleared";
 
 export default function ClaimsPage() {
-  const { transactions, updateTransaction, addTransaction, accentColor, formatCurrency, triggerToast, confirmAction } = useAppData();
+  const {
+    transactions,
+    accountObjects,
+    currency,
+    exchangeRates,
+    updateTransaction,
+    addTransaction,
+    accentColor,
+    formatCurrency,
+    triggerToast,
+    confirmAction,
+  } = useAppData();
   const [activeTab, setActiveTab] = useState<TabType>("pending");
+  const [clearingId, setClearingId] = useState<string | null>(null);
+
+  const accountLookup = useMemo(() => {
+    const byKey = new Map<string, (typeof accountObjects)[number]>();
+    for (const a of accountObjects) {
+      if (a.id) byKey.set(a.id, a);
+      byKey.set(a.name.trim().toLowerCase(), a);
+    }
+    return byKey;
+  }, [accountObjects]);
+
+  const resolveTxAccount = (tx: (typeof transactions)[number]) =>
+    (tx.account_id ? accountLookup.get(tx.account_id) : undefined) ||
+    accountLookup.get((tx.account || "").trim().toLowerCase());
 
   const claimableTransactions = useMemo(
     () => transactions.filter(tx => tx.is_claimable === true),
@@ -27,45 +53,68 @@ export default function ClaimsPage() {
     [claimableTransactions]
   );
 
-  const totalPending = useMemo(
-    () => pendingClaims.reduce((sum, tx) => sum + Number(tx.amount), 0),
-    [pendingClaims]
-  );
+  const totalPending = useMemo(() => {
+    let cents = 0;
+    for (const tx of pendingClaims) {
+      const acc =
+        (tx.account_id ? accountLookup.get(tx.account_id) : undefined) ||
+        accountLookup.get((tx.account || "").trim().toLowerCase());
+      const srcCur = acc?.currencyCode || currency;
+      const conv = convertCurrencySafe(Number(tx.amount), srcCur, currency, {
+        liveRates: exchangeRates,
+      });
+      if (conv.isKnown) {
+        cents += Math.round(conv.amount * 100);
+      }
+    }
+    return cents / 100;
+  }, [pendingClaims, accountLookup, currency, exchangeRates]);
 
   const displayedClaims = activeTab === "pending" ? pendingClaims : clearedClaims;
 
   const handleMarkCleared = (tx: typeof transactions[0]) => {
+    if (clearingId) return;
+    const acc = resolveTxAccount(tx);
+    const txCur = acc?.currencyCode || currency;
     confirmAction(
       "Mark as Cleared",
-      `Confirm reimbursement of ${formatCurrency(Number(tx.amount))} for "${tx.category}"?`,
+      `Confirm reimbursement of ${formatCurrency(Number(tx.amount), txCur)} for "${tx.category}"?`,
       async () => {
-        const updateRes = await updateTransaction(tx.id, { claim_status: "cleared" });
-        if (!updateRes.success) {
-          triggerToast(`❌ Failed to update claim status: ${updateRes.error || "Please try again."}`);
-          return;
-        }
+        setClearingId(tx.id);
+        try {
+          const updateRes = await updateTransaction(tx.id, { claim_status: "cleared" });
+          if (!updateRes.success) {
+            triggerToast(`❌ Failed to update claim status: ${updateRes.error || "Please try again."}`);
+            return;
+          }
 
-        const addRes = await addTransaction({
-          type: "Income",
-          amount: Number(tx.amount),
-          account: tx.account,
-          account_id: tx.account_id,
-          category: "Reimbursement",
-          note: `Claim Cleared: ${tx.category}${tx.note ? ` - ${tx.note}` : ""}`,
-          date: new Date().toISOString(),
-          status: "cleared",
-          is_claimable: false,
-          claim_status: "none",
-        });
+          const addRes = await addTransaction({
+            type: "Income",
+            amount: Number(tx.amount),
+            account: tx.account,
+            account_id: tx.account_id || acc?.id,
+            category: "Reimbursement",
+            note: `Claim Cleared: ${tx.category}${tx.note ? ` - ${tx.note}` : ""}`,
+            date: new Date().toISOString(),
+            status: "cleared",
+            is_claimable: false,
+            claim_status: "none",
+            credit_card_tx_type: acc?.kind === "credit_card" ? "refund" : null,
+          });
 
-        if (addRes.success) {
-          triggerToast(
-            addRes.status === "synced"
-              ? "Claim cleared & reimbursement logged!"
-              : "Claim cleared & logged offline (Pending Sync)"
-          );
-        } else {
-          triggerToast(`⚠️ Claim marked cleared, but reimbursement record failed: ${addRes.error || "Please log manually."}`);
+          if (addRes.success) {
+            triggerToast(
+              addRes.status === "synced"
+                ? "Claim cleared & reimbursement logged!"
+                : "Claim cleared & logged offline (Pending Sync)"
+            );
+          } else {
+            triggerToast(`⚠️ Claim marked cleared, but reimbursement record failed: ${addRes.error || "Please log manually."}`);
+          }
+        } catch {
+          triggerToast("❌ Failed to clear claim. Please try again.");
+        } finally {
+          setClearingId(null);
         }
       }
     );
@@ -150,17 +199,21 @@ export default function ClaimsPage() {
                     {tx.note && <p className="text-xs text-muted-foreground font-medium mt-0.5">{tx.note}</p>}
                     <p className="text-[10px] text-muted-foreground font-medium mt-1">{formatDate(tx.date)}</p>
                   </div>
-                  <p className="font-black text-lg text-rose-500 shrink-0">{formatCurrency(Number(tx.amount))}</p>
+                  <p className="font-black text-lg text-rose-500 shrink-0">
+                    {formatCurrency(Number(tx.amount), resolveTxAccount(tx)?.currencyCode || currency)}
+                  </p>
                 </div>
 
                 {activeTab === "pending" && (
                   <button
+                    type="button"
+                    disabled={clearingId === tx.id}
                     onClick={() => handleMarkCleared(tx)}
-                    className="mt-3 w-full py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all active:scale-[0.97]"
+                    className="mt-3 w-full py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all active:scale-[0.97] disabled:opacity-60"
                     style={{ backgroundColor: `${accentColor}15`, color: accentColor }}
                   >
                     <Check className="w-4 h-4" />
-                    Mark as Cleared
+                    {clearingId === tx.id ? "Clearing..." : "Mark as Cleared"}
                   </button>
                 )}
 

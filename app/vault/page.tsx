@@ -6,7 +6,7 @@ import { Plus, Trash2, X, Package, ChevronDown } from "lucide-react";
 import { useAppData } from "@/lib/context";
 import AssetDetailOverlay from "@/components/AssetDetailOverlay";
 import CustomDatePicker from "@/components/CustomDatePicker";
-import { roundCurrency } from "@/lib/utils";
+import { formatLocalDate, roundCurrency } from "@/lib/utils";
 
 const EMOJI_OPTIONS = ["📱", "💻", "📸", "👟", "⌚", "🎧", "🎮", "🚗", "🏠", "🛋️", "🧳", "👜", "📦", "🔧", "🎸"];
 
@@ -15,10 +15,11 @@ export default function VaultPage() {
 
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
   const [emoji, setEmoji] = useState("📦");
-  const [purchaseDate, setPurchaseDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [purchaseDate, setPurchaseDate] = useState(() => formatLocalDate());
   const [purchasePrice, setPurchasePrice] = useState("");
   const [activeFilter, setActiveFilter] = useState("All");
   const [showCatDropdown, setShowCatDropdown] = useState(false);
@@ -49,20 +50,25 @@ export default function VaultPage() {
   const existingCategories = useMemo(() => [...new Set(assets.map(a => a.category).filter(Boolean))], [assets]);
 
   const handleAdd = async () => {
-    if (!name) return;
-    await addAsset({
-      name,
-      category: category || "General",
-      emoji_icon: emoji,
-      purchase_date: purchaseDate,
-      purchase_price: Number(purchasePrice) || 0,
-    });
-    triggerToast(`${emoji} ${name} added to Vault!`);
-    setShowAdd(false);
-    setName("");
-    setCategory("");
-    setEmoji("📦");
-    setPurchasePrice("");
+    if (!name.trim() || isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      await addAsset({
+        name: name.trim(),
+        category: category.trim() || "General",
+        emoji_icon: emoji,
+        purchase_date: purchaseDate,
+        purchase_price: Math.max(0, Number(purchasePrice) || 0),
+      });
+      triggerToast(`${emoji} ${name.trim()} added to Vault!`);
+      setShowAdd(false);
+      setName("");
+      setCategory("");
+      setEmoji("📦");
+      setPurchasePrice("");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const getDaysActive = (dateStr: string) => {

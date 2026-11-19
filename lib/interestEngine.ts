@@ -3,7 +3,7 @@
 // ============================================================================
 
 import type { Account, CreditCardStatement, InterestProjection } from "./types";
-import { roundCurrency } from "./utils";
+import { dateKeyToUtcMs, formatLocalDate, roundCurrency } from "./utils";
 
 export const APR_TIER_PRESETS = [
   {
@@ -46,7 +46,7 @@ export function calculateInterestProjection(params: {
     latestStatement,
     statementRemaining,
     minimumRemaining,
-    referenceDateStr = new Date().toISOString().split("T")[0],
+    referenceDateStr = formatLocalDate(),
   } = params;
 
   // 1. Determine effective APR (default to 15.0% standard if unconfigured)
@@ -54,12 +54,12 @@ export function calculateInterestProjection(params: {
   const apr = typeof rawApr === "number" && rawApr >= 0 ? rawApr : 15.0;
   const dailyRatePct = roundCurrency((apr / 365) * 100) / 100;
 
-  const todayTime = new Date(referenceDateStr).getTime();
+  const todayTime = dateKeyToUtcMs(referenceDateStr);
 
   // 2. Evaluate statement cycle & grace period
   if (latestStatement) {
-    const dueTime = new Date(latestStatement.dueDate).getTime();
-    const diffDays = Math.ceil((dueTime - todayTime) / 86400000);
+    const dueTime = dateKeyToUtcMs(latestStatement.dueDate);
+    const diffDays = Math.round((dueTime - todayTime) / 86400000);
     const isOverdue = diffDays < 0;
 
     if (statementRemaining <= 0.005) {

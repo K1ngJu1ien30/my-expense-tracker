@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ArrowLeft, Copy, Check, Clipboard, FileText, CheckCircle2, AlertCircle, ArrowRight, Upload } from "lucide-react";
 import Link from "next/link";
-import { useAppContext } from "@/lib/context";
+import { useAppData } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
-import type { Transaction } from "@/lib/types";
+import type { Transaction, CreditCardTxType } from "@/lib/types";
 import CustomSelect from "@/components/CustomSelect";
 import { roundCurrency } from "@/lib/utils";
 
@@ -67,10 +67,16 @@ export type ParsedImportItem = {
 };
 
 export default function StatementImportPage() {
-  const { categories, accounts, addTransaction, triggerToast, accentColor, formatCurrency } = useAppContext();
+  const { categories, accounts, accountObjects, addTransactionsBatch, triggerToast, accentColor, formatCurrency } = useAppData();
   const activeAccent = accentColor || "#3b82f6";
 
   const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
   const [jsonText, setJsonText] = useState("");
   const [parseError, setParseError] = useState<string | null>(null);
   const [parsedItems, setParsedItems] = useState<ParsedImportItem[]>([]);
@@ -85,7 +91,8 @@ export default function StatementImportPage() {
       setCopied(true);
       NativeHaptics.successMedium();
       triggerToast("📋 AI Prompt copied to clipboard!");
-      setTimeout(() => setCopied(false), 3000);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 3000);
     } catch {
       triggerToast("Failed to copy automatically. Please select text manually.");
     }
@@ -272,6 +279,7 @@ export default function StatementImportPage() {
 
   // ─── Step 4: Batch Import to Database ────────────────────────────────────
   const handleExecuteImport = async () => {
+    if (isImporting) return;
     const selectedItems = parsedItems.filter((i) => i.selected);
     if (selectedItems.length === 0) {
       triggerToast("No transactions selected for import.");
@@ -279,35 +287,41 @@ export default function StatementImportPage() {
     }
 
     setIsImporting(true);
-    let successCount = 0;
-    let failCount = 0;
-
     try {
-      for (const item of selectedItems) {
-        const payload: Partial<Transaction> = {
+      const payloads: Partial<Transaction>[] = selectedItems.map((item) => {
+        const matchedAcc = accountObjects.find(
+          (a) => a.name.trim().toLowerCase() === item.account.trim().toLowerCase()
+        );
+        let creditCardTxType: CreditCardTxType | null = null;
+        if (matchedAcc?.kind === "credit_card") {
+          creditCardTxType = item.type === "Income" ? "refund" : "purchase";
+        }
+        return {
           date: item.date,
           note: item.note,
           amount: item.amount,
           type: item.type,
-          category: item.category,
-          account: item.account,
+          category: item.type === "Income" ? "" : item.category,
+          account: matchedAcc?.name || item.account,
+          account_id: matchedAcc?.id,
+          credit_card_tx_type: creditCardTxType,
         };
-        const res = await addTransaction(payload);
-        if (res.success) {
-          successCount++;
-        } else {
-          failCount++;
-        }
-      }
+      });
 
-      setImportedCount(successCount);
-      setParsedItems([]);
-      setJsonText("");
-      NativeHaptics.successMedium();
+      const { succeeded, failedIndices } = await addTransactionsBatch(payloads);
+      const failCount = failedIndices.length;
+
+      setImportedCount(succeeded);
       if (failCount === 0) {
-        triggerToast(`🎉 Successfully imported ${successCount} transactions!`);
+        setParsedItems([]);
+        setJsonText("");
+        triggerToast(`🎉 Successfully imported ${succeeded} transactions!`);
       } else {
-        triggerToast(`⚠️ Imported ${successCount} transactions (${failCount} failed).`);
+        // Retain failed rows so the user can inspect and retry them without data loss
+        const failedSet = new Set(failedIndices);
+        const failedItems = selectedItems.filter((_, idx) => failedSet.has(idx));
+        setParsedItems(failedItems);
+        triggerToast(`⚠️ Imported ${succeeded} transactions (${failCount} failed — kept for retry).`);
       }
     } catch (err) {
       console.error(err);

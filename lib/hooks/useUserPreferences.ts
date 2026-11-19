@@ -22,10 +22,30 @@ import { supabase } from "../supabase";
  * `hydrateFromMetadata(session.user.user_metadata)` after login.
  */
 export function useUserPreferences(session: Session | null) {
+  const userId = session?.user?.id ?? null;
+
+  const getScopedKey = useCallback(
+    (base: string, explicitUserId?: string | null) => {
+      const uid = explicitUserId ?? userId;
+      return uid ? `${base}_${uid}` : base;
+    },
+    [userId]
+  );
+
   // ─── Profile ────────────────────────────────────────────────────────────
   const [userName, setUserNameRaw] = useState("User");
-  const [currency, setCurrency] = useState("RM");
-  const [accentColor, setAccentColor] = useState("#3b82f6");
+  const [currency, setCurrencyRaw] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("pref_currency") || "RM";
+    }
+    return "RM";
+  });
+  const [accentColor, setAccentColorRaw] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("pref_accent_color") || "#3b82f6";
+    }
+    return "#3b82f6";
+  });
 
   // ─── Money behaviour ────────────────────────────────────────────────────
   const [includeSavings, setIncludeSavingsRaw] = useState(() => {
@@ -48,25 +68,27 @@ export function useUserPreferences(session: Session | null) {
   const [isClaimsEnabled, setIsClaimsEnabledRaw] = useState(false);
 
   // ─── Easter-egg flags ───────────────────────────────────────────────────
-  // Greeting-line swap at different hours (2 AM owl, 5 AM early-bird, etc.).
-  // ON by default — it's a gentle UX touch, not an intrusive animation.
   const [enableTimeBasedGreeting, setEnableTimeBasedGreetingRaw] = useState(true);
-  // Auto-trigger the Derry horror sequence at 13:13 on any Friday the 13th.
-  // OFF by default because horror is not for everyone.
   const [enableFridayThe13th, setEnableFridayThe13thRaw] = useState(false);
 
   // ─── Setters that dual-write local state + Supabase user_metadata ───────
 
   type Metadata = Record<string, string | number | boolean>;
 
-  /** Internal helper — updates local state and persists to Supabase if logged in. */
+  /** Internal helper — safely persists to Supabase user_metadata without throwing offline. */
   const persist = useCallback(
     async (data: Metadata) => {
-      if (session?.user) {
-        await supabase.auth.updateUser({ data });
+      if (!userId) return;
+      try {
+        const { error } = await supabase.auth.updateUser({ data });
+        if (error) {
+          console.warn("[useUserPreferences] Failed to persist metadata:", error.message);
+        }
+      } catch (err) {
+        console.warn("[useUserPreferences] Offline/network error persisting metadata:", err);
       }
     },
-    [session]
+    [userId]
   );
 
   const setUserName = useCallback(
@@ -77,15 +99,41 @@ export function useUserPreferences(session: Session | null) {
     [persist]
   );
 
+  const setCurrency = useCallback(
+    (newCurrency: string) => {
+      const normalized = newCurrency || "RM";
+      setCurrencyRaw(normalized);
+      try {
+        localStorage.setItem(getScopedKey("pref_currency"), normalized);
+        localStorage.setItem("pref_currency", normalized);
+      } catch {}
+      void persist({ currency: normalized });
+    },
+    [getScopedKey, persist]
+  );
+
+  const setAccentColor = useCallback(
+    (newAccent: string) => {
+      const normalized = newAccent || "#3b82f6";
+      setAccentColorRaw(normalized);
+      try {
+        localStorage.setItem(getScopedKey("pref_accent_color"), normalized);
+        localStorage.setItem("pref_accent_color", normalized);
+      } catch {}
+      void persist({ accent_color: normalized });
+    },
+    [getScopedKey, persist]
+  );
+
   const toggleIncludeSavings = useCallback(
     async (val: boolean) => {
       setIncludeSavingsRaw(val);
       try {
-        localStorage.setItem("include_savings", String(val));
+        localStorage.setItem(getScopedKey("include_savings"), String(val));
       } catch {}
       await persist({ include_savings: val });
     },
-    [persist]
+    [getScopedKey, persist]
   );
 
   const toggleFoodBudget = useCallback(
@@ -180,7 +228,8 @@ export function useUserPreferences(session: Session | null) {
    * Call this once after sign-in / session restore.
    */
   const hydrateFromMetadata = useCallback(
-    (meta: Record<string, unknown> | undefined, email: string | undefined) => {
+    (meta: Record<string, unknown> | undefined, email: string | undefined, explicitUserId?: string) => {
+      const scope = (base: string) => (explicitUserId ? `${base}_${explicitUserId}` : getScopedKey(base));
       if (!meta) {
         setUserNameRaw(email?.split("@")[0] || "User");
         return;
@@ -190,12 +239,34 @@ export function useUserPreferences(session: Session | null) {
       const emailName = email?.split("@")[0];
       setUserNameRaw(metaName || emailName || "User");
 
+      if (typeof meta.currency === "string" && meta.currency.trim()) {
+        setCurrencyRaw(meta.currency);
+        try {
+          localStorage.setItem(scope("pref_currency"), meta.currency);
+          localStorage.setItem("pref_currency", meta.currency);
+        } catch {}
+      } else if (typeof window !== "undefined") {
+        const savedCur = localStorage.getItem(scope("pref_currency")) || localStorage.getItem("pref_currency");
+        if (savedCur) setCurrencyRaw(savedCur);
+      }
+
+      if (typeof meta.accent_color === "string" && meta.accent_color.trim()) {
+        setAccentColorRaw(meta.accent_color);
+        try {
+          localStorage.setItem(scope("pref_accent_color"), meta.accent_color);
+          localStorage.setItem("pref_accent_color", meta.accent_color);
+        } catch {}
+      } else if (typeof window !== "undefined") {
+        const savedAccent = localStorage.getItem(scope("pref_accent_color")) || localStorage.getItem("pref_accent_color");
+        if (savedAccent) setAccentColorRaw(savedAccent);
+      }
+
       if (meta.include_savings !== undefined) {
         const val = meta.include_savings === true;
         setIncludeSavingsRaw(val);
-        try { localStorage.setItem("include_savings", String(val)); } catch {}
+        try { localStorage.setItem(scope("include_savings"), String(val)); } catch {}
       } else if (typeof window !== "undefined") {
-        const saved = localStorage.getItem("include_savings");
+        const saved = localStorage.getItem(scope("include_savings")) ?? localStorage.getItem("include_savings");
         if (saved !== null) setIncludeSavingsRaw(saved === "true");
       }
       setEnableFoodBudgetRaw(meta.enable_food_budget === true);
@@ -206,20 +277,24 @@ export function useUserPreferences(session: Session | null) {
       setIsBiometricEnabledRaw(meta.biometric_enabled === true);
       setIsVaultEnabledRaw(meta.vault_enabled === true);
       setIsClaimsEnabledRaw(meta.claims_enabled === true);
-      // Greeting is ON by default unless user explicitly opted out.
       setEnableTimeBasedGreetingRaw(
         meta.enable_time_based_greeting === false ? false : true
       );
-      // Horror flag is OFF by default — only ON if user explicitly opted in.
       setEnableFridayThe13thRaw(meta.enable_friday_the_13th === true);
     },
-    []
+    [getScopedKey]
   );
 
   /** Reset all preferences to defaults (called on logout). */
   const resetPreferences = useCallback(() => {
     setUserNameRaw("User");
-    try { localStorage.removeItem("include_savings"); } catch {}
+    setCurrencyRaw("RM");
+    setAccentColorRaw("#3b82f6");
+    try {
+      localStorage.removeItem("include_savings");
+      localStorage.removeItem("pref_currency");
+      localStorage.removeItem("pref_accent_color");
+    } catch {}
     setIncludeSavingsRaw(true);
     setEnableFoodBudgetRaw(false);
     setEnableSalaryPlannerRaw(false);

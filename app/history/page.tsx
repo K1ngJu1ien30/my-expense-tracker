@@ -84,6 +84,7 @@ const SWIPE_SNAP_THRESHOLD = -72;
  */
 const SwipeableTransactionRow = memo(function SwipeableTransactionRow({
   tx,
+  txCurrency,
   formattedDate,
   formatCurrency,
   accentColor,
@@ -94,8 +95,9 @@ const SwipeableTransactionRow = memo(function SwipeableTransactionRow({
   onClose,
 }: {
   tx: Transaction;
+  txCurrency?: string;
   formattedDate: string;
-  formatCurrency: (n: number) => string;
+  formatCurrency: (n: number, overrideCurrency?: string) => string;
   accentColor: string;
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
@@ -322,7 +324,7 @@ const SwipeableTransactionRow = memo(function SwipeableTransactionRow({
           >
             {tx.type === "Expense" && "-"}
             {tx.type === "Income" && "+"}
-            {formatCurrency(Number(tx.amount))}
+            {formatCurrency(Number(tx.amount), txCurrency)}
           </h3>
         </div>
 
@@ -330,7 +332,7 @@ const SwipeableTransactionRow = memo(function SwipeableTransactionRow({
         <div className="hidden md:flex justify-end gap-2 pl-2 mt-3 border-t border-border/30 pt-3 opacity-0 group-hover:opacity-80 group-focus-within:opacity-80 transition-opacity">
           <button
             type="button"
-            aria-label={`Edit ${tx.type.toLowerCase()} of ${formatCurrency(Number(tx.amount))}`}
+            aria-label={`Edit ${tx.type.toLowerCase()} of ${formatCurrency(Number(tx.amount), txCurrency)}`}
             onClick={(e) => { e.stopPropagation(); onEdit(tx.id); }}
             className="flex items-center justify-center p-2 rounded-xl bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors focus:outline-none"
             style={{ borderColor: `${accentColor}15` }}
@@ -339,7 +341,7 @@ const SwipeableTransactionRow = memo(function SwipeableTransactionRow({
           </button>
           <button
             type="button"
-            aria-label={`Delete ${tx.type.toLowerCase()} of ${formatCurrency(Number(tx.amount))}`}
+            aria-label={`Delete ${tx.type.toLowerCase()} of ${formatCurrency(Number(tx.amount), txCurrency)}`}
             onClick={(e) => { e.stopPropagation(); onDelete(tx.id); }}
             className="flex items-center justify-center p-2 rounded-xl bg-muted text-muted-foreground hover:bg-rose-500/10 hover:text-rose-500 transition-colors focus:outline-none"
           >
@@ -354,6 +356,8 @@ const SwipeableTransactionRow = memo(function SwipeableTransactionRow({
 export default function HistoryPage() {
   const {
     transactions,
+    accountObjects,
+    currency,
     deleteTransaction,
     setEditTransactionId,
     accentColor,
@@ -362,6 +366,16 @@ export default function HistoryPage() {
     categories,
     setShowTransactionModal,
   } = useAppData();
+
+  const accountCurrencyMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of accountObjects) {
+      const code = a.currencyCode || currency;
+      if (a.id) map.set(a.id, code);
+      map.set(a.name.trim().toLowerCase(), code);
+    }
+    return map;
+  }, [accountObjects, currency]);
 
   // Legacy shortcut pills, still useful above the power-search bar.
   const [filter, setFilter] = useState<FilterType>("all");
@@ -684,6 +698,11 @@ export default function HistoryPage() {
                   <div className="pb-2.5">
                     <SwipeableTransactionRow
                       tx={tx}
+                      txCurrency={
+                        (tx.account_id ? accountCurrencyMap.get(tx.account_id) : undefined) ||
+                        accountCurrencyMap.get((tx.account || "").trim().toLowerCase()) ||
+                        currency
+                      }
                       formattedDate={meta.shortDate}
                       formatCurrency={formatCurrency}
                       accentColor={accentColor}

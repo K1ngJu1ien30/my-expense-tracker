@@ -155,8 +155,10 @@ export function learn(
   if (tokens.length === 0) return model;
 
   for (const token of tokens) {
-    if (!model[token]) model[token] = {};
-    model[token][category] = (model[token][category] || 0) + 1;
+    if (!Object.hasOwn(model, token)) model[token] = {};
+    const bucket = model[token];
+    const prev = Object.hasOwn(bucket, category) ? bucket[category] : 0;
+    bucket[category] = prev + 1;
   }
   return model;
 }

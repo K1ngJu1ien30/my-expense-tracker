@@ -46,11 +46,18 @@ export const NativeHaptics = {
       const { Haptics } = await import("@capacitor/haptics");
       let count = 0;
       const interval = setInterval(async () => {
-        if (count >= 5) { clearInterval(interval); return; }
-        await Haptics.vibrate({ duration: 50 });
-        await new Promise(r => setTimeout(r, 100));
-        await Haptics.vibrate({ duration: 80 });
+        if (count >= 5) {
+          clearInterval(interval);
+          return;
+        }
         count++;
+        try {
+          await Haptics.vibrate({ duration: 50 });
+          await new Promise(r => setTimeout(r, 100));
+          await Haptics.vibrate({ duration: 80 });
+        } catch {
+          clearInterval(interval);
+        }
       }, 600);
     } catch {}
   },

@@ -272,7 +272,8 @@ export function calculateAccountBalances(
         destAcc.transfersInCents += amtCents;
         destAcc.transactionCount += 1;
       }
-      if (!sourceAcc && !destAcc) {
+      // Flag both fully-orphaned and half-orphaned transfers for audit visibility
+      if (!sourceAcc || !destAcc) {
         orphanedTransactions.push(tx);
       }
     }
@@ -388,6 +389,7 @@ export function calculateFinancialPosition(
   const activeBreakdowns: AccountBalanceBreakdown[] = [];
   const archivedBreakdowns: AccountBalanceBreakdown[] = [];
 
+  const normBase = baseCurrency.trim().toUpperCase();
   for (const item of breakdowns) {
     if (item.isArchived) {
       archivedBreakdowns.push(item);
@@ -395,7 +397,11 @@ export function calculateFinancialPosition(
     }
     activeBreakdowns.push(item);
 
-    const cur = (item.currency || baseCurrency).trim().toUpperCase();
+    const rawCur = (item.currency || baseCurrency).trim().toUpperCase();
+    const cur =
+      (rawCur === "MYR" || rawCur === "RM") && (normBase === "RM" || normBase === "MYR")
+        ? normBase
+        : rawCur;
     activeCurrencies.add(cur);
 
     if (!byCurrency[cur]) {
@@ -498,6 +504,18 @@ export function calculateFinancialPosition(
     totalInvestmentsBase +
     totalCreditAssetsBase -
     totalLiabilitiesBase;
+
+  // Round every native per-currency bucket to 2 decimal places (integer cents)
+  for (const curKey of Object.keys(byCurrency)) {
+    const b = byCurrency[curKey];
+    b.availableCash = Math.round(b.availableCash * 100) / 100;
+    b.savings = Math.round(b.savings * 100) / 100;
+    b.investments = Math.round(b.investments * 100) / 100;
+    b.liabilities = Math.round(b.liabilities * 100) / 100;
+    b.creditAssets = Math.round((b.creditAssets || 0) * 100) / 100;
+    b.netFinancialPosition = Math.round(b.netFinancialPosition * 100) / 100;
+    b.netTotal = Math.round(b.netTotal * 100) / 100;
+  }
 
   return {
     accountBalances: balancesByName,

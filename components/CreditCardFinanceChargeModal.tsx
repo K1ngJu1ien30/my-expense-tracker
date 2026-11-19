@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import type { Account, FinanceChargeType } from "@/lib/types";
 import { NativeHaptics } from "@/lib/haptics";
-import { cn } from "@/lib/utils";
+import { cn, formatLocalDate } from "@/lib/utils";
 
 export type CreditCardFinanceChargeModalProps = {
   isOpen: boolean;
@@ -71,9 +71,10 @@ export default function CreditCardFinanceChargeModal({
   accentColor,
   onReconcile,
 }: CreditCardFinanceChargeModalProps) {
+  const displayCurrency = card.currencyCode || currency;
   const [chargeType, setChargeType] = useState<FinanceChargeType>("interest");
   const [amountStr, setAmountStr] = useState("");
-  const [dateStr, setDateStr] = useState<string>(() => new Date().toISOString().split("T")[0]);
+  const [dateStr, setDateStr] = useState<string>(() => formatLocalDate());
   const [note, setNote] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -94,10 +95,11 @@ export default function CreditCardFinanceChargeModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setFormError(null);
 
     const amt = parseFloat(amountStr);
-    if (isNaN(amt) || amt <= 0) {
+    if (isNaN(amt) || !isFinite(amt) || amt <= 0) {
       NativeHaptics.errorShake();
       setFormError("Please enter a valid positive charge amount.");
       return;
@@ -106,24 +108,29 @@ export default function CreditCardFinanceChargeModal({
     setIsSubmitting(true);
     NativeHaptics.lightTick();
 
-    const result = await onReconcile({
-      card,
-      chargeType,
-      amount: amt,
-      date: dateStr,
-      note: note.trim() || undefined,
-    });
+    try {
+      const result = await onReconcile({
+        card,
+        chargeType,
+        amount: amt,
+        date: dateStr,
+        note: note.trim() || undefined,
+      });
 
-    setIsSubmitting(false);
-
-    if (result.success) {
-      NativeHaptics.successMedium();
-      setAmountStr("");
-      setNote("");
-      onClose();
-    } else {
+      if (result.success) {
+        NativeHaptics.successMedium();
+        setAmountStr("");
+        setNote("");
+        onClose();
+      } else {
+        NativeHaptics.errorShake();
+        setFormError(result.error || "Failed to record finance charge.");
+      }
+    } catch (err) {
       NativeHaptics.errorShake();
-      setFormError(result.error || "Failed to record finance charge.");
+      setFormError(err instanceof Error ? err.message : "Failed to record finance charge.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -230,7 +237,7 @@ export default function CreditCardFinanceChargeModal({
             </label>
             <div className="relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 font-mono font-bold text-muted-foreground text-sm">
-                {currency}
+                {displayCurrency}
               </span>
               <input
                 type="number"
@@ -291,7 +298,7 @@ export default function CreditCardFinanceChargeModal({
             <p>
               A classified Expense of{" "}
               <span className="font-bold text-foreground">
-                {currency} {Number(amountStr || 0).toFixed(2)}
+                {displayCurrency} {Number(amountStr || 0).toFixed(2)}
               </span>{" "}
               will post to <span className="font-bold text-foreground">{card.name}</span> under{" "}
               <span className="font-semibold text-foreground">&quot;Fees &amp; Charges&quot;</span>.

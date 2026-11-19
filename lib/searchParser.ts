@@ -65,7 +65,7 @@ const MONTH_NAMES = [
   "july", "august", "september", "october", "november", "december",
 ];
 
-/** Return epoch ms for the first/last millisecond of a Y-M day window. */
+/** Return epoch ms for the first/last millisecond of a Y-M day window (DST-safe). */
 function dayBounds(year: number, month: number, day?: number) {
   if (day === undefined) {
     const from = new Date(year, month, 1).getTime();
@@ -73,7 +73,7 @@ function dayBounds(year: number, month: number, day?: number) {
     return { from, to };
   }
   const from = new Date(year, month, day).getTime();
-  const to = from + 86400000 - 1;
+  const to = new Date(year, month, day + 1).getTime() - 1;
   return { from, to };
 }
 
@@ -97,16 +97,14 @@ function parseDatePhrase(phrase: string): DateRange | null {
   if (p === "this week") {
     const dayOfWeek = now.getDay() || 7;
     const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek + 1);
-    const from = monday.getTime();
-    const to = from + 7 * 86400000 - 1;
-    return { from, to, label: "This Week" };
+    const nextMonday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 7);
+    return { from: monday.getTime(), to: nextMonday.getTime() - 1, label: "This Week" };
   }
   if (p === "last week") {
     const dayOfWeek = now.getDay() || 7;
     const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek + 1);
-    const from = monday.getTime() - 7 * 86400000;
-    const to = monday.getTime() - 1;
-    return { from, to, label: "Last Week" };
+    const prevMonday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() - 7);
+    return { from: prevMonday.getTime(), to: monday.getTime() - 1, label: "Last Week" };
   }
   if (p === "this month") {
     const { from, to } = dayBounds(now.getFullYear(), now.getMonth());
@@ -261,10 +259,11 @@ export function applySearchQuery(
       if (!q.categories.some((c) => cat === c || cat.includes(c))) return false;
     }
 
-    // Accounts: prefix or inclusion match is friendlier than strict equality.
+    // Accounts: match source OR destination transfer account.
     if (q.accounts.length > 0) {
       const acc = (tx.account || "").toLowerCase();
-      if (!q.accounts.some((a) => acc.includes(a))) return false;
+      const toAcc = (tx.to_account || "").toLowerCase();
+      if (!q.accounts.some((a) => acc.includes(a) || toAcc.includes(a))) return false;
     }
 
     // Amount range.
@@ -283,7 +282,7 @@ export function applySearchQuery(
     // Free-text terms — must ALL match at least one textual field.
     if (termsLower.length > 0) {
       const haystack =
-        `${tx.note || ""} ${tx.category || ""} ${tx.account || ""} ${tx.amount}`.toLowerCase();
+        `${tx.note || ""} ${tx.category || ""} ${tx.sub_category || ""} ${tx.account || ""} ${tx.to_account || ""} ${tx.amount}`.toLowerCase();
       for (const term of termsLower) {
         if (!haystack.includes(term)) return false;
       }

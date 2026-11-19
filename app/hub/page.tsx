@@ -4,13 +4,24 @@ import { useMemo } from "react";
 import { ChevronRight, Calendar as CalendarIcon } from "lucide-react";
 import Link from "next/link";
 import { useAppData } from "@/lib/context";
-import { getHeatmapTileStyle } from "../calendar/page";
+import { convertCurrencySafe } from "@/lib/balance";
+import { getHeatmapTileStyle } from "@/lib/heatmap";
 
 export default function HubPage() {
   const {
     accentColor, enableFoodBudget, enableSalaryPlanner, isVaultEnabled,
-    isClaimsEnabled, transactions, accountObjects,
+    isClaimsEnabled, transactions, accountObjects, currency, exchangeRates,
   } = useAppData();
+
+  const accountCurrencyMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of accountObjects) {
+      const code = a.currencyCode || currency;
+      if (a.id) map.set(a.id, code);
+      map.set(a.name.trim().toLowerCase(), code);
+    }
+    return map;
+  }, [accountObjects, currency]);
 
   // ─── Heatmap Calendar Data Derivation ──────────────────────────────────────
   const now = new Date();
@@ -41,10 +52,20 @@ export default function HubPage() {
       const day = String(d.getDate()).padStart(2, "0");
       const key = `${y}-${m}-${day}`;
 
-      map.set(key, (map.get(key) || 0) + Number(t.amount));
+      const srcCur =
+        (t.account_id ? accountCurrencyMap.get(t.account_id) : undefined) ||
+        accountCurrencyMap.get((t.account || "").trim().toLowerCase()) ||
+        currency;
+      const conv = convertCurrencySafe(Number(t.amount), srcCur, currency, {
+        liveRates: exchangeRates,
+      });
+      if (conv.isKnown) {
+        const nextCents = Math.round((map.get(key) || 0) * 100) + Math.round(conv.amount * 100);
+        map.set(key, nextCents / 100);
+      }
     });
     return map;
-  }, [transactions]);
+  }, [transactions, accountCurrencyMap, currency, exchangeRates]);
 
   const modules = [
     {
@@ -182,7 +203,7 @@ export default function HubPage() {
 
                 {amt > 0 ? (
                   <span className={`text-[8px] leading-none tracking-tighter truncate w-full ${style.amtClass}`}>
-                    RM{Math.round(amt)}
+                    {currency}{Math.round(amt)}
                   </span>
                 ) : (
                   <span className="text-[8px] opacity-0 select-none">-</span>

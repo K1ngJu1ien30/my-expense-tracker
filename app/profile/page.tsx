@@ -15,6 +15,7 @@ import {
   getUserSyncWatermarkKey,
   getUserTransactionsCacheKey,
 } from "@/lib/cacheKeys";
+import { clearOfflineQueueForUser } from "@/lib/offlineQueue";
 import { supabase } from "@/lib/supabase";
 import { ClearDataModal } from "@/components/profile/ClearDataModal";
 import { ExportModal } from "@/components/profile/ExportModal";
@@ -136,9 +137,10 @@ export default function ProfilePage() {
       const { error } = await supabase.from('transactions').delete().eq('user_id', session.user.id);
       if (error) throw new Error(error.message);
 
-      // Clear local persistent caches so wiped transactions cannot flash back on reload
+      // Clear local persistent caches + offline queues so wiped transactions cannot flash back on reload
       try {
         await Promise.all([
+          clearOfflineQueueForUser(session.user.id),
           localforage.removeItem(getUserDataCacheKey(session.user.id)),
           localforage.removeItem(getUserTransactionsCacheKey(session.user.id)),
           localforage.removeItem(getUserRecentTransactionsCacheKey(session.user.id)),
@@ -198,6 +200,35 @@ export default function ProfilePage() {
     setFridayRevealed(localStorage.getItem("friday13_revealed") === "true");
   }, []);
   const fridayRevealTimer = useRef<NodeJS.Timeout | null>(null);
+  useEffect(() => {
+    return () => {
+      if (fridayRevealTimer.current) {
+        clearTimeout(fridayRevealTimer.current);
+        fridayRevealTimer.current = null;
+      }
+    };
+  }, []);
+
+  // Local draft strings for food limits so typing doesn't fire supabase.auth.updateUser per keystroke
+  const [foodDailyDraft, setFoodDailyDraft] = useState<string | null>(null);
+  const [foodMonthlyDraft, setFoodMonthlyDraft] = useState<string | null>(null);
+
+  const commitFoodDaily = () => {
+    if (foodDailyDraft === null) return;
+    const parsed = Math.max(0, Number(foodDailyDraft) || 0);
+    setFoodDailyDraft(null);
+    if (parsed !== foodDailyLimit) {
+      void setFoodDailyLimit(parsed);
+    }
+  };
+  const commitFoodMonthly = () => {
+    if (foodMonthlyDraft === null) return;
+    const parsed = Math.max(0, Number(foodMonthlyDraft) || 0);
+    setFoodMonthlyDraft(null);
+    if (parsed !== foodMonthlyLimit) {
+      void setFoodMonthlyLimit(parsed);
+    }
+  };
   const startFridayReveal = () => {
     fridayRevealTimer.current = setTimeout(() => {
       if (!fridayRevealed) {
@@ -468,8 +499,11 @@ export default function ProfilePage() {
                         <span className="font-bold text-muted-foreground text-xs">{currency}</span>
                         <input
                           type="number"
-                          value={foodDailyLimit || ""}
-                          onChange={e => setFoodDailyLimit(Number(e.target.value))}
+                          inputMode="decimal"
+                          value={foodDailyDraft !== null ? foodDailyDraft : (foodDailyLimit || "")}
+                          onChange={e => setFoodDailyDraft(e.target.value)}
+                          onBlur={commitFoodDaily}
+                          onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
                           placeholder="0"
                           className="w-20 bg-transparent text-sm font-bold outline-none text-foreground text-right"
                         />
@@ -481,8 +515,11 @@ export default function ProfilePage() {
                         <span className="font-bold text-muted-foreground text-xs">{currency}</span>
                         <input
                           type="number"
-                          value={foodMonthlyLimit || ""}
-                          onChange={e => setFoodMonthlyLimit(Number(e.target.value))}
+                          inputMode="decimal"
+                          value={foodMonthlyDraft !== null ? foodMonthlyDraft : (foodMonthlyLimit || "")}
+                          onChange={e => setFoodMonthlyDraft(e.target.value)}
+                          onBlur={commitFoodMonthly}
+                          onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
                           placeholder="0"
                           className="w-20 bg-transparent text-sm font-bold outline-none text-foreground text-right"
                         />

@@ -4,33 +4,50 @@ import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { UtensilsCrossed } from "lucide-react";
 import { useAppData } from "@/lib/context";
+import { convertCurrencySafe } from "@/lib/balance";
 import { roundCurrency } from "@/lib/utils";
 
 export default function FoodBudgetCard() {
-  const { currency, transactions, foodDailyLimit, foodMonthlyLimit, accentColor } = useAppData();
+  const { currency, exchangeRates, accountObjects, transactions, foodDailyLimit, foodMonthlyLimit, accentColor } = useAppData();
 
   const { spentToday, spentThisMonth } = useMemo(() => {
+    const accCurMap = new Map<string, string>();
+    for (const a of accountObjects) {
+      const code = a.currencyCode || currency;
+      if (a.id) accCurMap.set(a.id, code);
+      accCurMap.set(a.name.trim().toLowerCase(), code);
+    }
+
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     const startOfTomorrow = startOfToday + 86400000;
-    let daily = 0;
-    let monthly = 0;
+    let dailyCents = 0;
+    let monthlyCents = 0;
 
     transactions.forEach(tx => {
-      if (tx.type !== "Expense") return;
+      if (tx.type !== "Expense" || tx.deleted_at) return;
       if (!tx.category?.toLowerCase().includes("food")) return;
       const d = new Date(tx.date);
       if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()) {
-        monthly += Number(tx.amount || 0);
+        const srcCur =
+          (tx.account_id ? accCurMap.get(tx.account_id) : undefined) ||
+          accCurMap.get((tx.account || "").trim().toLowerCase()) ||
+          currency;
+        const conv = convertCurrencySafe(Number(tx.amount || 0), srcCur, currency, {
+          liveRates: exchangeRates,
+        });
+        if (!conv.isKnown) return;
+        const cents = Math.round(conv.amount * 100);
+        monthlyCents += cents;
         const txTime = d.getTime();
         if (txTime >= startOfToday && txTime < startOfTomorrow) {
-          daily += Number(tx.amount || 0);
+          dailyCents += cents;
         }
       }
     });
 
-    return { spentToday: roundCurrency(daily), spentThisMonth: roundCurrency(monthly) };
-  }, [transactions]);
+    return { spentToday: dailyCents / 100, spentThisMonth: monthlyCents / 100 };
+  }, [transactions, accountObjects, currency, exchangeRates]);
 
   const dailyRemaining = roundCurrency(foodDailyLimit - spentToday);
   const monthlyRemaining = roundCurrency(foodMonthlyLimit - spentThisMonth);

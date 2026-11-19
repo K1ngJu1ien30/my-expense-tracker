@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { useAppContext } from "@/lib/context";
+import { useAppData } from "@/lib/context";
+import { NativeHaptics } from "@/lib/haptics";
 import { Lock, Mail, Key, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function AuthScreen() {
-    const { triggerToast, accentColor = "#3b82f6" } = useAppContext();
+    const { triggerToast, accentColor = "#3b82f6" } = useAppData();
     const [isLogin, setIsLogin] = useState(true);
     const [isReset, setIsReset] = useState(false);
     const [email, setEmail] = useState("");
@@ -43,7 +44,7 @@ export default function AuthScreen() {
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : "Failed to authenticate.";
             triggerToast(message);
-            if(navigator.vibrate) navigator.vibrate([20, 20, 20]);
+            NativeHaptics.errorShake();
         } finally {
             setLoading(false);
         }

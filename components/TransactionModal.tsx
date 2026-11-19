@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo, memo } from "react";
-import { motion, AnimatePresence, PanInfo } from "framer-motion";
+import { motion, AnimatePresence, PanInfo, useDragControls } from "framer-motion";
 import { X, ArrowRight, Sparkles, ChevronDown, SlidersHorizontal, CreditCard } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatLocalDate, getLocalDateKeyFromIso, parseLocalDateToIso, roundCurrency } from "@/lib/utils";
+import { convertCurrencySafe } from "@/lib/balance";
 
-import { useAppContext } from "@/lib/context";
+import { useAppData } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
 import { getCachedModel, loadModel, predict, type Prediction, type PredictorModel } from "@/lib/categoryPredictor";
 import { AUTO_EXCLUDE_CATEGORIES } from "@/lib/velocity";
@@ -178,8 +179,17 @@ const OptionChip = memo(function OptionChip({
   );
 });
 
-export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const { categories, triggerToast, accentColor, addTransaction, updateTransaction, transactions, editTransactionId, setEditTransactionId, accounts, accountObjects, currency, exchangeRates, triggerDerry, session, openCreditCardPayment } = useAppContext();
+export default function TransactionModal({
+  isOpen,
+  onClose,
+  editTransactionId = null,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  editTransactionId?: string | null;
+}) {
+  const { categories, triggerToast, accentColor, addTransaction, updateTransaction, transactions, setEditTransactionId, accounts, accountObjects, currency, exchangeRates, triggerDerry, session, openCreditCardPayment } = useAppData();
+  const dragControls = useDragControls();
 
   const [txType, setTxType] = useState<TxType>("Expense");
   const [modalCurrency, setModalCurrency] = useState(currency);
@@ -189,7 +199,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
   const [category, setCategory] = useState(categories[0] || "Food");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(() => formatLocalDate());
   const [status, setStatus] = useState<"cleared" | "pending">("cleared");
   const [isClaimable, setIsClaimable] = useState(false);
   // Per-transaction override for Spending Velocity.
@@ -368,7 +378,7 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
       setShowCurrencyPicker(false);
       setAmount("");
       setNote("");
-      setDate(new Date().toISOString().split("T")[0]);
+      setDate(formatLocalDate());
       setStatus("cleared");
       setIsClaimable(false);
       setExcludeFromVelocity(null);
@@ -413,9 +423,11 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
     setShowCurrencyPicker(false);
     setCategory(editTransaction.category || curCategories[0] || "Food");
 
-    const matchedAcc = editTransaction.account_id
-      ? curAccountObjects.find(a => a.id === editTransaction.account_id)?.name || editTransaction.account
-      : editTransaction.account;
+    const matchedAccObj = editTransaction.account_id
+      ? curAccountObjects.find(a => a.id === editTransaction.account_id)
+      : curAccountObjects.find(a => a.name === editTransaction.account);
+    const matchedAcc = matchedAccObj?.name || editTransaction.account;
+    setModalCurrency(matchedAccObj?.currencyCode || currencyRef.current);
     setAccount(matchedAcc || curAccounts[0] || "Bank (MBB)");
 
     if (editTransaction.to_account || editTransaction.to_account_id) {
@@ -429,8 +441,8 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
     setNote(editTransaction.note || "");
     setDate(
       editTransaction.date
-        ? new Date(editTransaction.date).toISOString().split("T")[0]
-        : new Date().toISOString().split("T")[0]
+        ? getLocalDateKeyFromIso(editTransaction.date)
+        : formatLocalDate()
     );
     setStatus((editTransaction.status as "cleared" | "pending") || "cleared");
     setIsClaimable(editTransaction.is_claimable === true);
@@ -605,15 +617,23 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
             exit={{ y: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 200 }}
             drag="y"
+            dragControls={dragControls}
+            dragListener={false}
             dragConstraints={{ top: 0 }}
             dragElastic={0.2}
             onDragEnd={handleDragEnd}
             role="dialog"
             aria-modal="true"
             aria-labelledby="tx-modal-title"
-            className="fixed bottom-0 left-0 right-0 max-w-2xl mx-auto bg-card z-[51] rounded-t-[2rem] shadow-heavy flex flex-col max-h-[90vh]"
+            className="fixed bottom-0 left-0 right-0 max-w-2xl mx-auto bg-card z-[51] rounded-t-[2rem] shadow-heavy flex flex-col max-h-[90dvh]"
           >
-            <div className="w-12 h-1.5 bg-border rounded-full mx-auto mt-3 mb-4 cursor-grab active:cursor-grabbing" aria-hidden="true" />
+            <div
+              onPointerDown={(e) => dragControls.start(e)}
+              className="w-full pt-3 pb-4 flex justify-center cursor-grab active:cursor-grabbing touch-none shrink-0"
+              aria-hidden="true"
+            >
+              <div className="w-12 h-1.5 bg-border rounded-full" />
+            </div>
 
             <div className="px-6 pb-[calc(2rem+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)))] overflow-y-auto hide-scrollbar">
               <div className="flex items-center justify-between mb-3">
@@ -705,18 +725,31 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                   </div>
                 </div>
 
-                {modalCurrency !== currency && amount && (() => {
-                  // Convert: amount is in modalCurrency, show equivalent in base (MYR)
-                  // exchangeRates is based on MYR, so rates[X] = how many X per 1 MYR
-                  const rateMap: Record<string, string> = { "RM": "MYR", "MYR": "MYR", "USD": "USD", "SGD": "SGD", "JPY": "JPY" };
-                  const foreignCode = rateMap[modalCurrency] || modalCurrency;
-                  const foreignRate = exchangeRates[foreignCode];
-                  const converted = foreignRate ? (Number(amount) / foreignRate) : null;
-                  return converted !== null ? (
+                {(() => {
+                  const targetCur = selectedAcc?.currencyCode || currency;
+                  const normModal = modalCurrency.trim().toUpperCase();
+                  const normTarget = targetCur.trim().toUpperCase();
+                  const sameCurrency =
+                    normModal === normTarget ||
+                    ((normModal === "RM" || normModal === "MYR") && (normTarget === "RM" || normTarget === "MYR"));
+                  if (sameCurrency || !amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+                    return null;
+                  }
+                  const conv = convertCurrencySafe(Number(amount), modalCurrency, targetCur, {
+                    liveRates: exchangeRates,
+                  });
+                  if (!conv.isKnown) {
+                    return (
+                      <p className="mt-2 text-xs font-bold text-amber-500 bg-amber-500/10 px-3 py-1 rounded-lg border border-amber-500/30 w-fit mx-auto">
+                        Exchange rate unavailable for {modalCurrency} → {targetCur}
+                      </p>
+                    );
+                  }
+                  return (
                     <p className="mt-2 text-xs font-bold text-muted-foreground bg-background px-3 py-1 rounded-lg border border-border/50 w-fit mx-auto">
-                      ≈ {currency} {converted.toFixed(2)}
+                      ≈ {targetCur} {conv.amount.toFixed(2)} (saved in {targetCur})
                     </p>
-                  ) : null;
+                  );
                 })()}
               </div>
 
@@ -1146,28 +1179,57 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                         triggerDerry();
                       }
 
-                      const selectedAcc = accountObjects.find(a => a.name === account || a.id === account);
-                      const selectedToAcc = txType === "Transfer"
-                        ? accountObjects.find(a => a.name === toAccount || a.id === toAccount)
+                      const resolvedAcc =
+                        accountLookup.get(account) || accountLookup.get(account.trim().toLowerCase());
+                      const resolvedToAcc = txType === "Transfer"
+                        ? (accountLookup.get(toAccount) || accountLookup.get(toAccount.trim().toLowerCase()))
                         : undefined;
 
+                      // Multi-currency integrity: convert foreign modalCurrency into the
+                      // account's native currency using verified exchange rates before saving.
+                      const targetCurrency = resolvedAcc?.currencyCode || currency;
+                      const normModal = modalCurrency.trim().toUpperCase();
+                      const normTarget = targetCurrency.trim().toUpperCase();
+                      const isSameCur =
+                        normModal === normTarget ||
+                        ((normModal === "RM" || normModal === "MYR") && (normTarget === "RM" || normTarget === "MYR"));
+
+                      let finalAmount = roundCurrency(parsedAmount);
+                      let finalNote = note;
+                      if (!isSameCur) {
+                        const conv = convertCurrencySafe(parsedAmount, modalCurrency, targetCurrency, {
+                          liveRates: exchangeRates,
+                        });
+                        if (!conv.isKnown || !Number.isFinite(conv.amount) || conv.amount <= 0) {
+                          setAmountError(`Exchange rate unavailable to convert ${modalCurrency} → ${targetCurrency}.`);
+                          NativeHaptics.errorShake();
+                          setIsSubmitting(false);
+                          return;
+                        }
+                        finalAmount = roundCurrency(conv.amount);
+                        const origTag = `(${modalCurrency} ${parsedAmount})`;
+                        if (!finalNote.includes(origTag)) {
+                          finalNote = finalNote.trim() ? `${finalNote.trim()} ${origTag}` : origTag;
+                        }
+                      }
+
                       let effectiveCcTxType: CreditCardTxType | null = null;
-                      if (txType === "Expense" && selectedAcc?.kind === "credit_card") {
+                      if (txType === "Expense" && resolvedAcc?.kind === "credit_card") {
                         effectiveCcTxType = creditCardTxType || "purchase";
-                      } else if (txType === "Transfer" && selectedToAcc?.kind === "credit_card") {
+                      } else if (txType === "Transfer" && resolvedToAcc?.kind === "credit_card") {
                         effectiveCcTxType = "repayment";
-                      } else if (txType === "Income" && selectedAcc?.kind === "credit_card") {
+                      } else if (txType === "Income" && resolvedAcc?.kind === "credit_card") {
                         effectiveCcTxType = creditCardTxType === "cashback" ? "cashback" : "refund";
                       }
 
+                      const preservedClaimStatus =
+                        txType === "Expense" && isClaimable
+                          ? (editTransaction?.claim_status === "cleared" ? "cleared" : "pending")
+                          : "none";
+
                       const payload = {
                          type: txType,
-                         amount: Number(amount),
-                         // Income is a top-level concept — it has no spending
-                         // category (Salary, Bonus, etc. are tracked via notes,
-                         // not category tags). Transfers get a canonical
-                         // "Transfer" tag. Expenses carry the user-picked
-                         // category.
+                         amount: finalAmount,
                          category:
                            txType === "Transfer"
                              ? "Transfer"
@@ -1175,55 +1237,45 @@ export default function TransactionModal({ isOpen, onClose }: { isOpen: boolean;
                                ? ""
                                : category,
                          account,
-                         account_id: selectedAcc?.id,
+                         account_id: resolvedAcc?.id,
                          to_account: txType === "Transfer" ? toAccount : undefined,
-                         to_account_id: selectedToAcc?.id,
-                         note,
-                         date: new Date(date).toISOString(),
+                         to_account_id: resolvedToAcc?.id,
+                         note: finalNote,
+                         date: parseLocalDateToIso(date, editTransaction?.date),
                          status: txType === "Income" ? status : "cleared",
                          is_claimable: txType === "Expense" ? isClaimable : false,
-                         claim_status: txType === "Expense" && isClaimable ? "pending" : "none",
-                         // Per-row velocity override. Only persisted when the
-                         // user explicitly set it — otherwise we leave it null
-                         // so the category auto-rule applies retroactively if
-                         // the category is later renamed / reclassified.
+                         claim_status: preservedClaimStatus,
                          exclude_from_velocity:
                            txType === "Expense" ? excludeFromVelocity : null,
                          credit_card_tx_type: effectiveCcTxType,
                       };
 
                       const actionLabel =
-                        txType === "Transfer" && selectedToAcc?.kind === "credit_card"
+                        txType === "Transfer" && resolvedToAcc?.kind === "credit_card"
                           ? "Repayment"
                           : txType;
 
                       if (editTransactionId) {
                          const updateRes = await updateTransaction(editTransactionId, payload);
                          if (updateRes.success) {
-                           NativeHaptics.successMedium();
                            triggerToast(`✅ ${actionLabel} updated successfully!`);
-                           if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(50);
                            handleClose();
                          } else {
                            NativeHaptics.errorShake();
                            triggerToast(`❌ Update failed: ${updateRes.error || "Please try again."}`);
-                           // Input preserved — modal remains open
                          }
                       } else {
                          const saveRes = await addTransaction(payload);
                          if (saveRes.success) {
-                           NativeHaptics.successMedium();
                            if (saveRes.status === "synced") {
                              triggerToast(`✅ ${actionLabel} saved!`);
                            } else {
                              triggerToast(`⏳ ${actionLabel} saved offline (Pending Sync)`);
                            }
-                           if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(50);
                            handleClose();
                          } else {
                            NativeHaptics.errorShake();
                            triggerToast(`❌ Save failed: ${saveRes.error || "Please try again."}`);
-                           // Input preserved — modal remains open
                          }
                       }
                     } catch (err) {

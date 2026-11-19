@@ -137,7 +137,7 @@ export function useAccountsState(session: Session | null) {
       try {
         if (accountsArray.length > 0) {
           const rows = accountsArray.map((a, idx) => ({
-            id: a.id && a.id.length === 36 ? a.id : crypto.randomUUID(),
+            id: a.id!,
             user_id: userId,
             name: a.name,
             currency_code: a.currencyCode || "RM",
@@ -159,7 +159,7 @@ export function useAccountsState(session: Session | null) {
 
           // Sync credit_card_details for any credit card accounts that have details
           const cardRows = accountsArray
-            .filter(a => a.kind === "credit_card" && a.cardDetails)
+            .filter(a => a.kind === "credit_card" && a.cardDetails && a.id)
             .map(a => ({
               account_id: a.id!,
               user_id: userId,
@@ -194,16 +194,30 @@ export function useAccountsState(session: Session | null) {
     []
   );
 
+  const userId = session?.user?.id;
+
   /**
    * Update accounts + dual-write to both storage destinations, and immediately
    * persist to user-scoped local cache (IndexedDB + localStorage) so offline
    * edits are never lost on reload.
-   * Uses Promise.allSettled so cloud failure doesn't block local responsiveness.
+   * Assigns canonical UUIDs up front so every state copy and DB row share one ID.
    */
   const handleUpdateAccounts = useCallback(
-    async (newAccountsArray: Account[]) => {
+    async (rawAccountsArray: Account[]) => {
+      const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const newAccountsArray: Account[] = rawAccountsArray.map(a => {
+        const canonicalId = a.id && uuidRe.test(a.id) ? a.id : crypto.randomUUID();
+        if (canonicalId === a.id && (!a.cardDetails || a.cardDetails.accountId === canonicalId)) {
+          return a;
+        }
+        return {
+          ...a,
+          id: canonicalId,
+          ...(a.cardDetails ? { cardDetails: { ...a.cardDetails, accountId: canonicalId } } : {}),
+        };
+      });
+
       setAccountObjects(newAccountsArray);
-      const userId = session?.user?.id;
       const cacheKey = getUserDataCacheKey(userId);
       const metaKey = getUserMetaCacheKey(userId);
 
@@ -229,13 +243,13 @@ export function useAccountsState(session: Session | null) {
         /* swallow */
       }
 
-      if (!session?.user) return;
+      if (!userId) return;
       await Promise.allSettled([
         supabase.auth.updateUser({ data: { custom_accounts: newAccountsArray } }),
-        syncAccountsToNewTable(session.user.id, newAccountsArray),
+        syncAccountsToNewTable(userId, newAccountsArray),
       ]);
     },
-    [session, syncAccountsToNewTable]
+    [userId, syncAccountsToNewTable]
   );
 
   const reorderAccounts = useCallback(
@@ -244,9 +258,11 @@ export function useAccountsState(session: Session | null) {
       const reordered = names.map(
         name =>
           accountObjects.find(a => a.name === name) || {
+            id: crypto.randomUUID(),
             name,
             currencyCode: "RM",
             isArchived: false,
+            kind: "bank" as const,
           }
       );
       await handleUpdateAccounts([...reordered, ...archivedAccounts]);
@@ -505,29 +521,57 @@ export function useAccountsState(session: Session | null) {
     categoriesRef.current = categories;
   }, [categories]);
 
-  /** Dual-write categories to the user_categories table (replace-all strategy).
-   *
-   * Returns true on success, false on any failure — the caller uses this to
-   * surface a toast so the user knows when a category addition didn't make
-   * it to the cloud and might disappear after a clean install.
+  /**
+   * Dual-write categories to the user_categories table using safe upsert-then-prune
+   * (never deletes existing rows before the new rows are written, so a mid-sync
+   * network failure can never wipe all user categories).
    */
   const syncCategoriesToNewTable = useCallback(
-    async (userId: string, cats: string[]): Promise<boolean> => {
+    async (uid: string, cats: string[]): Promise<boolean> => {
       try {
-        const { error: deleteErr } = await supabase
-          .from("user_categories")
-          .delete()
-          .eq("user_id", userId);
-        if (deleteErr) throw deleteErr;
-        if (cats.length > 0) {
-          const rows = cats.map((name, idx) => ({
-            user_id: userId,
+        // Deduplicate preserving order
+        const deduped: string[] = [];
+        const seen = new Set<string>();
+        for (const c of cats) {
+          const trimmed = c.trim();
+          if (trimmed && !seen.has(trimmed.toLowerCase())) {
+            seen.add(trimmed.toLowerCase());
+            deduped.push(trimmed);
+          }
+        }
+
+        if (deduped.length > 0) {
+          const rows = deduped.map((name, idx) => ({
+            user_id: uid,
             name,
             sort_order: idx,
           }));
-          const { error: insertErr } = await supabase.from("user_categories").insert(rows);
-          if (insertErr) throw insertErr;
+          const { error: upsertErr } = await supabase
+            .from("user_categories")
+            .upsert(rows, { onConflict: "user_id,name" });
+          if (upsertErr) throw upsertErr;
         }
+
+        // Remove only categories that are no longer in `deduped`
+        const { data: existingRows, error: selectErr } = await supabase
+          .from("user_categories")
+          .select("name")
+          .eq("user_id", uid);
+        if (selectErr) throw selectErr;
+
+        const toRemove = (existingRows || [])
+          .map(r => r.name as string)
+          .filter(name => !seen.has(name.toLowerCase()));
+
+        if (toRemove.length > 0) {
+          const { error: delErr } = await supabase
+            .from("user_categories")
+            .delete()
+            .eq("user_id", uid)
+            .in("name", toRemove);
+          if (delErr) throw delErr;
+        }
+
         return true;
       } catch (err) {
         console.warn(
@@ -543,11 +587,9 @@ export function useAccountsState(session: Session | null) {
   /** Persist categories to IndexedDB + lightweight localStorage meta + Supabase. */
   const persistCategories = useCallback(
     async (newCats: string[]) => {
-      const userId = session?.user?.id;
       const cacheKey = getUserDataCacheKey(userId);
       const metaKey = getUserMetaCacheKey(userId);
 
-      // Lightweight localStorage metadata mirror (for instant cold-boot)
       if (typeof window !== "undefined") {
         try {
           const raw = localStorage.getItem(metaKey);
@@ -559,7 +601,6 @@ export function useAccountsState(session: Session | null) {
         }
       }
 
-      // IndexedDB cache — source of truth when cloud is unreachable.
       try {
         const data =
           ((await localforage.getItem(cacheKey)) as Record<
@@ -571,35 +612,27 @@ export function useAccountsState(session: Session | null) {
       } catch {
         /* swallow */
       }
-      // Cloud sync for cross-device consistency. Awaited (not fire-and-forget)
-      // so we can detect failures — otherwise a silent cloud-write failure
-      // means the category is only on-device, and gets overwritten by the
-      // next refreshData() merge. See the bug report: "categories disappear
-      // after every app update."
-      if (session?.user) {
-        const ok = await syncCategoriesToNewTable(session.user.id, newCats);
+
+      if (userId) {
+        const ok = await syncCategoriesToNewTable(userId, newCats);
         if (!ok) {
-          // Also mirror into user_metadata as a secondary fallback so the
-          // category survives cache wipes even when the dedicated table is
-          // unreachable (e.g. migration 002 not yet applied on this project).
           try {
             await supabase.auth.updateUser({ data: { custom_categories: newCats } });
           } catch {
-            /* silent — we've done all we can */
+            /* silent */
           }
         }
       }
     },
-    [session, syncCategoriesToNewTable]
+    [userId, syncCategoriesToNewTable]
   );
 
   const setCategories = useCallback(
     (cats: string[] | ((prev: string[]) => string[])) => {
-      setCategoriesRaw(prev => {
-        const next = typeof cats === "function" ? cats(prev) : cats;
-        persistCategories(next);
-        return next;
-      });
+      const next = typeof cats === "function" ? cats(categoriesRef.current) : cats;
+      categoriesRef.current = next;
+      setCategoriesRaw(next);
+      void persistCategories(next);
     },
     [persistCategories]
   );

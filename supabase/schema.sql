@@ -80,8 +80,11 @@ CREATE TABLE IF NOT EXISTS transactions (
     status VARCHAR(50) DEFAULT 'cleared' CHECK (status IN ('cleared', 'pending')),
     is_claimable BOOLEAN DEFAULT false,
     claim_status VARCHAR(50) DEFAULT 'none' CHECK (claim_status IN ('none', 'pending', 'cleared')),
-    exclude_from_velocity BOOLEAN DEFAULT false,
+    exclude_from_velocity BOOLEAN DEFAULT NULL,
+    credit_card_tx_type VARCHAR(30) DEFAULT NULL,
+    statement_id UUID DEFAULT NULL,
     deleted_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     CONSTRAINT transactions_id_user_id_unique UNIQUE (id, user_id)
 );
@@ -291,8 +294,10 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     amount DECIMAL(12,2) NOT NULL,
     billing_day INTEGER,
     source_account VARCHAR(255),
+    source_account_id UUID REFERENCES user_accounts(id) ON DELETE RESTRICT,
     auto_deduct BOOLEAN DEFAULT true,
-    type VARCHAR(50) NOT NULL, -- 'subscription' vs 'utility'
+    last_paid_month VARCHAR(20),
+    type VARCHAR(50) NOT NULL, -- 'subscription' | 'fixed_bill' | 'utility'
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

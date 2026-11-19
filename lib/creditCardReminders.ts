@@ -12,6 +12,7 @@ import {
   calculateStatementRemaining,
   calculateMinimumRemaining,
 } from "./hooks/useCreditCardPayments";
+import { dateKeyToUtcMs, formatLocalDate, roundCurrency } from "./utils";
 
 export type CreditCardReminderUrgency = "overdue" | "due_today" | "due_soon";
 
@@ -49,10 +50,10 @@ export function deriveCreditCardReminders(params: {
     creditCardPayments,
     creditCardAllocations,
     accountBalances,
-    todayDateStr = new Date().toISOString().split("T")[0],
+    todayDateStr = formatLocalDate(),
   } = params;
 
-  const todayTime = new Date(todayDateStr).getTime();
+  const todayTime = dateKeyToUtcMs(todayDateStr);
   const reminders: CreditCardReminder[] = [];
 
   const creditCards = accountObjects.filter(
@@ -62,43 +63,35 @@ export function deriveCreditCardReminders(params: {
   for (const card of creditCards) {
     const cardId = card.id || card.name;
     const cardBal = accountBalances[card.name] ?? (Number(card.openingBalance) || 0);
-    const totalCardDebt = cardBal < 0 ? Math.round(Math.abs(cardBal) * 100) / 100 : 0;
+    const totalCardDebt = cardBal < 0 ? roundCurrency(Math.abs(cardBal)) : 0;
     const reminderDaysBefore = card.cardDetails?.reminderDaysBefore ?? 3;
 
     // Filter statements for this card, sorted by dueDate ASC (oldest due first)
     const cardStatements = statements
       .filter((s) => s.accountId === cardId || s.accountId === card.name)
-      .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+      .sort((a, b) => dateKeyToUtcMs(a.dueDate) - dateKeyToUtcMs(b.dueDate));
 
-    // Find unsettled statements
-    const unsettled = cardStatements.filter((s) => {
-      if (s.isSettled) return false;
-      const remaining = calculateStatementRemaining(
-        s,
-        creditCardPayments,
-        creditCardAllocations
-      );
-      return remaining > 0.005;
-    });
+    // Single pass: compute remaining balance once per unsettled statement
+    const unsettledWithRemaining: Array<{ st: CreditCardStatement; remaining: number }> = [];
+    for (const s of cardStatements) {
+      if (s.isSettled) continue;
+      const remaining = calculateStatementRemaining(s, creditCardPayments, creditCardAllocations);
+      if (remaining > 0.005) {
+        unsettledWithRemaining.push({ st: s, remaining });
+      }
+    }
 
-    if (unsettled.length > 0) {
-      // Evaluate each unsettled statement
-      for (const st of unsettled) {
-        const remaining = calculateStatementRemaining(
-          st,
-          creditCardPayments,
-          creditCardAllocations
-        );
+    if (unsettledWithRemaining.length > 0) {
+      for (const { st, remaining } of unsettledWithRemaining) {
         const minRemaining = calculateMinimumRemaining(
           st,
           creditCardPayments,
           creditCardAllocations
         );
-        const dueTime = new Date(st.dueDate).getTime();
-        const diffDays = Math.ceil((dueTime - todayTime) / 86400000);
+        const dueTime = dateKeyToUtcMs(st.dueDate);
+        const diffDays = Math.round((dueTime - todayTime) / 86400000);
 
         if (diffDays < 0) {
-          // Overdue
           reminders.push({
             id: `reminder-${cardId}-${st.id}-overdue`,
             cardId,
@@ -115,7 +108,6 @@ export function deriveCreditCardReminders(params: {
             reminderDaysBefore,
           });
         } else if (diffDays === 0) {
-          // Due Today
           reminders.push({
             id: `reminder-${cardId}-${st.id}-today`,
             cardId,
@@ -132,7 +124,6 @@ export function deriveCreditCardReminders(params: {
             reminderDaysBefore,
           });
         } else if (diffDays <= reminderDaysBefore) {
-          // Due soon within configured window
           reminders.push({
             id: `reminder-${cardId}-${st.id}-soon`,
             cardId,
@@ -151,15 +142,29 @@ export function deriveCreditCardReminders(params: {
         }
       }
     } else if (totalCardDebt > 0 && card.dueDay) {
-      // Fallback: No issued statement entered, but card has outstanding debt and configured dueDay
-      const today = new Date(todayDateStr);
-      const currentMonthDue = new Date(today.getFullYear(), today.getMonth(), card.dueDay);
-      let targetDueDate = currentMonthDue;
-      if (today.getDate() > card.dueDay) {
-        targetDueDate = new Date(today.getFullYear(), today.getMonth() + 1, card.dueDay);
+      // Fallback: No issued statement entered, but card has outstanding debt and configured dueDay.
+      // Use pure calendar arithmetic (clamping dueDay to month length) so UTC+8/UTC-5 never shifts ±1 day.
+      const [yStr, mStr, dStr] = todayDateStr.split("-");
+      const todayY = Number(yStr);
+      const todayM = Number(mStr) - 1; // 0-indexed
+      const todayD = Number(dStr);
+
+      let targetY = todayY;
+      let targetM = todayM;
+      const daysInCurrentM = new Date(Date.UTC(todayY, todayM + 1, 0)).getUTCDate();
+      const clampedCurrentDueDay = Math.min(card.dueDay, daysInCurrentM);
+      if (todayD > clampedCurrentDueDay) {
+        targetM += 1;
+        if (targetM > 11) {
+          targetM = 0;
+          targetY += 1;
+        }
       }
-      const dueStr = targetDueDate.toISOString().split("T")[0];
-      const diffDays = Math.ceil((targetDueDate.getTime() - todayTime) / 86400000);
+      const daysInTargetM = new Date(Date.UTC(targetY, targetM + 1, 0)).getUTCDate();
+      const targetDay = Math.min(card.dueDay, daysInTargetM);
+      const dueStr = `${targetY}-${String(targetM + 1).padStart(2, "0")}-${String(targetDay).padStart(2, "0")}`;
+      const dueTime = dateKeyToUtcMs(dueStr);
+      const diffDays = Math.round((dueTime - todayTime) / 86400000);
 
       if (diffDays >= 0 && diffDays <= reminderDaysBefore) {
         reminders.push({
@@ -172,7 +177,7 @@ export function deriveCreditCardReminders(params: {
           daysRemaining: diffDays,
           urgency: diffDays === 0 ? "due_today" : "due_soon",
           remainingBalance: totalCardDebt,
-          minimumPayment: Math.min(totalCardDebt, Math.max(50, totalCardDebt * 0.05)),
+          minimumPayment: roundCurrency(Math.min(totalCardDebt, Math.max(50, totalCardDebt * 0.05))),
           totalCardDebt,
           reminderDaysBefore,
         });

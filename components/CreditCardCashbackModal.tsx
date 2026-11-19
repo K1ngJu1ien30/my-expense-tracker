@@ -22,7 +22,7 @@ import type {
   CashbackRecord,
 } from "@/lib/types";
 import { NativeHaptics } from "@/lib/haptics";
-import { cn } from "@/lib/utils";
+import { cn, formatLocalDate } from "@/lib/utils";
 import { DEFAULT_CASHBACK_RULES } from "@/lib/cashbackEngine";
 import { useAppContext } from "@/lib/context";
 
@@ -60,6 +60,7 @@ export default function CreditCardCashbackModal({
   onRecordCashback,
 }: CreditCardCashbackModalProps) {
   const { isOffline } = useAppContext();
+  const displayCurrency = card.currencyCode || currency;
   const [activeTab, setActiveTab] = useState<"record" | "rules">("record");
 
   // ─── Record Cashback State ───────────────────────────────────────────────
@@ -71,7 +72,7 @@ export default function CreditCardCashbackModal({
     );
     return bank ? bank.id || bank.name : "";
   });
-  const [dateStr, setDateStr] = useState<string>(() => new Date().toISOString().split("T")[0]);
+  const [dateStr, setDateStr] = useState<string>(() => formatLocalDate());
   const [note, setNote] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -91,27 +92,39 @@ export default function CreditCardCashbackModal({
   const [newCatRate, setNewCatRate] = useState("");
   const [isSavingRules, setIsSavingRules] = useState(false);
 
+  // Re-sync rules & defaults when modal opens or active card / config changes
+  useEffect(() => {
+    if (!isOpen) return;
+    setIsEnabled(config?.isEnabled ?? true);
+    setMonthlyCapStr(config?.monthlyCap ? String(config.monthlyCap) : "");
+    setMinSpendStr(config?.minSpendThreshold ? String(config.minSpendThreshold) : "");
+    setRules(config?.rules && config.rules.length > 0 ? config.rules : DEFAULT_CASHBACK_RULES);
+    setDateStr(formatLocalDate());
+    setFormError(null);
+  }, [isOpen, card.id, card.name, config]);
+
   // Filter valid bank / cash accounts for deposit destination
   const bankAccounts = useMemo(
     () => accountObjects.filter((a) => a.kind !== "credit_card" && !a.isArchived),
     [accountObjects]
   );
 
-  // Find target destination account object
+  // Find target destination account object (never fall back to card for bank_deposit)
   const targetDestAccount = useMemo(() => {
     if (destination === "card_statement_credit") return card;
     return (
       bankAccounts.find((a) => a.id === destAccountId || a.name === destAccountId) ||
       bankAccounts[0] ||
-      card
+      null
     );
   }, [destination, destAccountId, bankAccounts, card]);
 
   // Filter records for this card
   const cardCashbackHistory = useMemo(() => {
     const cardId = card.id || card.name;
+    const cardLower = card.name.toLowerCase();
     return cashbackRecords.filter(
-      (r) => r.cardId === cardId || r.cardName.toLowerCase() === card.name.toLowerCase()
+      (r) => r.cardId === cardId || (r.cardName || "").toLowerCase() === cardLower
     );
   }, [cashbackRecords, card]);
 
@@ -137,6 +150,7 @@ export default function CreditCardCashbackModal({
   // Handle Record Cashback Submit
   const handleRecordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setFormError(null);
 
     if (isOffline) {
@@ -146,7 +160,7 @@ export default function CreditCardCashbackModal({
     }
 
     const amt = parseFloat(amountStr);
-    if (isNaN(amt) || amt <= 0) {
+    if (isNaN(amt) || !isFinite(amt) || amt <= 0) {
       NativeHaptics.errorShake();
       setFormError("Please enter a valid positive cashback amount.");
       return;
@@ -154,7 +168,7 @@ export default function CreditCardCashbackModal({
 
     if (!targetDestAccount) {
       NativeHaptics.errorShake();
-      setFormError("Please select a valid destination account.");
+      setFormError("No non-credit-card bank account available for deposit. Select Statement Credit instead.");
       return;
     }
 
@@ -165,32 +179,38 @@ export default function CreditCardCashbackModal({
       cashbackOperationIdRef.current = crypto.randomUUID();
     }
 
-    const result = await onRecordCashback({
-      card,
-      destinationAccount: targetDestAccount,
-      creditDestination: destination,
-      amount: amt,
-      date: dateStr,
-      note: note.trim() || undefined,
-      operationId: cashbackOperationIdRef.current,
-    });
+    try {
+      const result = await onRecordCashback({
+        card,
+        destinationAccount: targetDestAccount,
+        creditDestination: destination,
+        amount: amt,
+        date: dateStr,
+        note: note.trim() || undefined,
+        operationId: cashbackOperationIdRef.current,
+      });
 
-    setIsSubmitting(false);
-
-    if (result.success) {
-      cashbackOperationIdRef.current = null;
-      NativeHaptics.successMedium();
-      setAmountStr("");
-      setNote("");
-      onClose();
-    } else {
+      if (result.success) {
+        cashbackOperationIdRef.current = null;
+        NativeHaptics.successMedium();
+        setAmountStr("");
+        setNote("");
+        onClose();
+      } else {
+        NativeHaptics.errorShake();
+        setFormError(result.error || "Failed to record cashback.");
+      }
+    } catch (err) {
       NativeHaptics.errorShake();
-      setFormError(result.error || "Failed to record cashback.");
+      setFormError(err instanceof Error ? err.message : "Failed to record cashback.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   // Handle Save Rules Submit
   const handleSaveRules = async () => {
+    if (isSavingRules) return;
     setIsSavingRules(true);
     NativeHaptics.lightTick();
 
@@ -208,10 +228,13 @@ export default function CreditCardCashbackModal({
       minSpendThreshold: cleanMin,
     };
 
-    await onSaveConfig(updatedConfig);
-    setIsSavingRules(false);
-    NativeHaptics.successMedium();
-    setActiveTab("record");
+    try {
+      await onSaveConfig(updatedConfig);
+      NativeHaptics.successMedium();
+      setActiveTab("record");
+    } finally {
+      setIsSavingRules(false);
+    }
   };
 
   // Add category rule
@@ -252,7 +275,7 @@ export default function CreditCardCashbackModal({
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 10 }}
-        className="bg-card w-full max-w-lg rounded-[2.5rem] border border-border/80 shadow-heavy overflow-hidden flex flex-col max-h-[90vh]"
+        className="bg-card w-full max-w-lg rounded-[2.5rem] border border-border/80 shadow-heavy overflow-hidden flex flex-col max-h-[90dvh]"
       >
         {/* Header */}
         <div className="p-6 border-b border-border/50 flex items-center justify-between bg-muted/20">
@@ -337,7 +360,7 @@ export default function CreditCardCashbackModal({
                 </label>
                 <div className="relative">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 font-mono font-bold text-muted-foreground text-sm">
-                    {currency}
+                    {displayCurrency}
                   </span>
                   <input
                     type="number"
@@ -473,7 +496,7 @@ export default function CreditCardCashbackModal({
                   <p>
                     A ledger Income of{" "}
                     <span className="font-bold text-foreground">
-                      {currency} {Number(amountStr || 0).toFixed(2)}
+                      {displayCurrency} {Number(amountStr || 0).toFixed(2)}
                     </span>{" "}
                     will post to{" "}
                     <span className="font-bold text-foreground">{card.name}</span>, reducing your
@@ -483,7 +506,7 @@ export default function CreditCardCashbackModal({
                   <p>
                     A ledger Income of{" "}
                     <span className="font-bold text-foreground">
-                      {currency} {Number(amountStr || 0).toFixed(2)}
+                      {displayCurrency} {Number(amountStr || 0).toFixed(2)}
                     </span>{" "}
                     will deposit into{" "}
                     <span className="font-bold text-foreground">
@@ -545,7 +568,7 @@ export default function CreditCardCashbackModal({
                           </span>
                         </div>
                         <span className="font-mono font-black text-emerald-500">
-                          +{currency} {Number(rec.amount).toFixed(2)}
+                          +{displayCurrency} {Number(rec.amount).toFixed(2)}
                         </span>
                       </div>
                     ))}
@@ -578,7 +601,7 @@ export default function CreditCardCashbackModal({
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-muted-foreground">
-                    Monthly Cashback Cap ({currency})
+                    Monthly Cashback Cap ({displayCurrency})
                   </label>
                   <input
                     type="number"
@@ -596,7 +619,7 @@ export default function CreditCardCashbackModal({
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-muted-foreground">
-                    Min Spend Required ({currency})
+                    Min Spend Required ({displayCurrency})
                   </label>
                   <input
                     type="number"

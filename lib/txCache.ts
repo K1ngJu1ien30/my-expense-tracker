@@ -8,6 +8,123 @@ import type { Transaction } from "./types";
 
 export const RECENT_TX_SLICE_SIZE = 100;
 
+export type LocalTxMutationRecord = {
+  id: string;
+  tx?: Transaction;
+  deletedAt?: string;
+  epoch: number;
+  inFlight: boolean;
+};
+
+export type LocalTxTracker = {
+  getEpoch: () => number;
+  recordStart: (id: string, data: { tx?: Transaction; deletedAt?: string; inFlight: boolean }) => number;
+  recordSettled: (id: string, epoch: number, update?: { tx?: Transaction; deletedAt?: string; remove?: boolean }) => void;
+  clear: () => void;
+  applyOverrides: (
+    cloudRows: Transaction[],
+    sinceEpoch: number,
+    pruneSettled?: boolean
+  ) => { rows: Transaction[]; appliedCount: number };
+};
+
+/**
+ * Creates a mutable, React-Compiler-friendly coordinator that protects
+ * optimistic local mutations from being clobbered by in-flight `refreshData()`.
+ */
+export function createLocalTxTracker(): LocalTxTracker {
+  const map = new Map<string, LocalTxMutationRecord>();
+  let epochCounter = 0;
+
+  return {
+    getEpoch: () => epochCounter,
+    recordStart: (id, data) => {
+      const epoch = ++epochCounter;
+      map.set(id, {
+        id,
+        tx: data.tx,
+        deletedAt: data.deletedAt,
+        epoch,
+        inFlight: data.inFlight,
+      });
+      return epoch;
+    },
+    recordSettled: (id, epoch, update) => {
+      const current = map.get(id);
+      if (!current || current.epoch !== epoch) return;
+      if (update?.remove) {
+        map.delete(id);
+        return;
+      }
+      map.set(id, {
+        ...current,
+        ...(update?.tx ? { tx: update.tx, deletedAt: undefined } : {}),
+        ...(update?.deletedAt ? { deletedAt: update.deletedAt, tx: undefined } : {}),
+        inFlight: false,
+      });
+    },
+    clear: () => {
+      map.clear();
+    },
+    applyOverrides: (cloudRows, sinceEpoch, pruneSettled = true) => {
+      if (map.size === 0) {
+        return { rows: cloudRows, appliedCount: 0 };
+      }
+
+      let appliedCount = 0;
+      const toOverride: LocalTxMutationRecord[] = [];
+      const toPrune: string[] = [];
+
+      map.forEach((rec, id) => {
+        if (rec.inFlight || rec.epoch > sinceEpoch) {
+          toOverride.push(rec);
+        } else if (pruneSettled) {
+          toPrune.push(id);
+        }
+      });
+
+      if (pruneSettled) {
+        for (const id of toPrune) map.delete(id);
+      }
+
+      if (toOverride.length === 0) {
+        return { rows: cloudRows, appliedCount: 0 };
+      }
+
+      const byId = new Map<string, Transaction>();
+      for (const row of cloudRows) {
+        if (row.id && !row.deleted_at) byId.set(row.id, row);
+      }
+
+      for (const rec of toOverride) {
+        appliedCount++;
+        if (rec.deletedAt) {
+          byId.delete(rec.id);
+        } else if (rec.tx && !rec.tx.deleted_at) {
+          byId.set(rec.id, rec.tx);
+        }
+      }
+
+      const merged = Array.from(byId.values());
+      merged.sort(compareTransactionsDesc);
+      return { rows: merged, appliedCount };
+    },
+  };
+}
+
+/**
+ * Convenience helper delegating to `tracker.applyOverrides(...)`.
+ */
+export function applyLocalTxOverrides(
+  cloudRows: Transaction[],
+  tracker: LocalTxTracker | undefined,
+  sinceEpoch: number,
+  pruneSettled: boolean = true
+): { rows: Transaction[]; appliedCount: number } {
+  if (!tracker) return { rows: cloudRows, appliedCount: 0 };
+  return tracker.applyOverrides(cloudRows, sinceEpoch, pruneSettled);
+}
+
 /**
  * Deterministic comparator matching Postgres `ORDER BY date DESC, id DESC`.
  */
@@ -138,7 +255,7 @@ export async function readFullCachedTransactions(
  */
 export function writeCachedTransactions(userId: string, txs: Transaction[]): Promise<void> {
   if (!userId) return Promise.resolve();
-  const activeOnly = txs.filter((t) => !t.deleted_at);
+  const activeOnly = txs.filter((t) => !t.deleted_at).sort(compareTransactionsDesc);
   const recentSlice = activeOnly.slice(0, RECENT_TX_SLICE_SIZE);
   return enqueueCacheWrite(userId, async () => {
     await Promise.all([

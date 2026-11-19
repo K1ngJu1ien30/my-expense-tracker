@@ -6,6 +6,8 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAppData } from "@/lib/context";
 import { NativeHaptics } from "@/lib/haptics";
+import { convertCurrencySafe } from "@/lib/balance";
+import { getHeatmapTileStyle } from "@/lib/heatmap";
 import type { Transaction } from "@/lib/types";
 
 const WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
@@ -32,38 +34,19 @@ function formatDateKey(year: number, monthIndex: number, day: number): string {
   return `${y}-${m}-${d}`;
 }
 
-export function getHeatmapTileStyle(amount: number) {
-  if (amount <= 0) {
-    return {
-      tileClass: "bg-slate-800/40 dark:bg-zinc-900/60 border border-border/20 text-muted-foreground/60 cursor-default",
-      numClass: "text-muted-foreground/70",
-      amtClass: "opacity-0 select-none",
-    };
-  }
-  if (amount < 50) {
-    return {
-      tileClass: "bg-rose-950/30 border border-rose-900/40 text-rose-300 hover:scale-[1.04] active:scale-95 shadow-sm cursor-pointer",
-      numClass: "text-rose-300 font-black",
-      amtClass: "text-rose-300 dark:text-rose-400 font-black",
-    };
-  }
-  if (amount < 150) {
-    return {
-      tileClass: "bg-gradient-to-br from-rose-900/50 to-red-950/60 border border-rose-700/60 text-rose-200 hover:scale-[1.04] active:scale-95 shadow-sm cursor-pointer",
-      numClass: "text-rose-200 font-black",
-      amtClass: "text-rose-200 font-black",
-    };
-  }
-  return {
-    tileClass: "bg-gradient-to-br from-rose-600 to-red-600 text-white border border-rose-400 shadow-md shadow-rose-600/30 hover:scale-[1.04] active:scale-95 cursor-pointer font-black",
-    numClass: "text-white font-black",
-    amtClass: "text-white font-black",
-  };
-}
-
 export default function CalendarPage() {
-  const { transactions, accentColor, formatCurrency } = useAppData();
+  const { transactions, accountObjects, currency, exchangeRates, accentColor, formatCurrency } = useAppData();
   const activeAccent = accentColor || "#3b82f6";
+
+  const accountCurrencyMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of accountObjects) {
+      const code = a.currencyCode || currency;
+      if (a.id) map.set(a.id, code);
+      map.set(a.name.trim().toLowerCase(), code);
+    }
+    return map;
+  }, [accountObjects, currency]);
 
   const now = new Date();
   const [viewMode, setViewMode] = useState<"month" | "year">("month");
@@ -73,9 +56,9 @@ export default function CalendarPage() {
   // Selected day state for bottom drawer breakdown
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
 
-  // ─── Daily Aggregation Map ──────────────────────────────────────────────
+  // ─── Daily Aggregation Map (integer cents, base-currency safe) ──────────
   const dailyExpensesMap = useMemo(() => {
-    const map = new Map<string, { total: number; txs: Transaction[] }>();
+    const map = new Map<string, { totalCents: number; total: number; txs: Transaction[] }>();
 
     transactions.forEach((t) => {
       if (t.type !== "Expense" || t.deleted_at) return;
@@ -87,14 +70,25 @@ export default function CalendarPage() {
       const day = String(d.getDate()).padStart(2, "0");
       const key = `${y}-${m}-${day}`;
 
-      const existing = map.get(key) || { total: 0, txs: [] };
-      existing.total += Number(t.amount);
+      const srcCur =
+        (t.account_id ? accountCurrencyMap.get(t.account_id) : undefined) ||
+        accountCurrencyMap.get((t.account || "").trim().toLowerCase()) ||
+        currency;
+      const conv = convertCurrencySafe(Number(t.amount), srcCur, currency, {
+        liveRates: exchangeRates,
+      });
+
+      const existing = map.get(key) || { totalCents: 0, total: 0, txs: [] };
+      if (conv.isKnown) {
+        existing.totalCents += Math.round(conv.amount * 100);
+        existing.total = existing.totalCents / 100;
+      }
       existing.txs.push(t);
       map.set(key, existing);
     });
 
     return map;
-  }, [transactions]);
+  }, [transactions, accountCurrencyMap, currency, exchangeRates]);
 
   // ─── Month View Computations ───────────────────────────────────────────
   const daysInCurrentMonth = useMemo(
@@ -108,23 +102,23 @@ export default function CalendarPage() {
   );
 
   const monthlyTotal = useMemo(() => {
-    let total = 0;
+    let totalCents = 0;
     for (let day = 1; day <= daysInCurrentMonth; day++) {
       const key = formatDateKey(currentYear, currentMonth, day);
       const data = dailyExpensesMap.get(key);
-      if (data) total += data.total;
+      if (data) totalCents += data.totalCents;
     }
-    return total;
+    return totalCents / 100;
   }, [currentYear, currentMonth, daysInCurrentMonth, dailyExpensesMap]);
 
   // ─── Year View Computations ────────────────────────────────────────────
   const yearlyTotal = useMemo(() => {
-    let total = 0;
+    let totalCents = 0;
+    const yearPrefix = `${currentYear}-`;
     dailyExpensesMap.forEach((val, key) => {
-      const [y] = key.split("-").map(Number);
-      if (y === currentYear) total += val.total;
+      if (key.startsWith(yearPrefix)) totalCents += val.totalCents;
     });
-    return total;
+    return totalCents / 100;
   }, [currentYear, dailyExpensesMap]);
 
   // Navigation handlers
@@ -328,7 +322,7 @@ export default function CalendarPage() {
 
                   {hasExpenses ? (
                     <span className={`text-[8px] leading-none tracking-tighter truncate w-full ${style.amtClass}`}>
-                      RM{Math.round(amt)}
+                      {currency}{Math.round(amt)}
                     </span>
                   ) : (
                     <span className="text-[8px] opacity-0 select-none">-</span>
@@ -341,20 +335,20 @@ export default function CalendarPage() {
           {/* Dynamic Color Intensity Scale Legend */}
           <div className="flex flex-wrap items-center justify-center gap-4 pt-3 text-[10px] font-bold text-muted-foreground">
             <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-md bg-slate-800/40 dark:bg-zinc-900/60 border border-border/20" />
+              <span className="w-3 h-3 rounded-md bg-muted/40 dark:bg-zinc-900/60 border border-border/30" />
               <span>0</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-md bg-rose-950/30 border border-rose-900/40" />
-              <span className="text-rose-300">&lt; RM50</span>
+              <span className="w-3 h-3 rounded-md bg-rose-500/15 dark:bg-rose-950/40 border border-rose-500/30 dark:border-rose-900/50" />
+              <span className="text-rose-700 dark:text-rose-300">&lt; {currency}50</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-md bg-gradient-to-br from-rose-900/50 to-red-950/60 border border-rose-700/60" />
-              <span className="text-rose-200">RM50-150</span>
+              <span className="w-3 h-3 rounded-md bg-gradient-to-br from-rose-500/30 to-red-500/35 dark:from-rose-900/60 dark:to-red-950/70 border border-rose-500/50 dark:border-rose-700/60" />
+              <span className="text-rose-800 dark:text-rose-200">{currency}50-150</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-md bg-gradient-to-br from-rose-600 to-red-600 border border-rose-400" />
-              <span className="text-white">&gt; RM150</span>
+              <span className="text-foreground">&gt; {currency}150</span>
             </div>
           </div>
         </motion.div>
@@ -416,9 +410,9 @@ export default function CalendarPage() {
                   </p>
                 </div>
 
-                {/* Mini Heatmap Preview Grid */}
+                {/* Mini Heatmap Preview Grid (all days of month, including 29–31) */}
                 <div className="grid grid-cols-7 gap-0.5 pt-1">
-                  {Array.from({ length: 28 }).map((_, dayIdx) => {
+                  {Array.from({ length: daysInM }).map((_, dayIdx) => {
                     const dayNum = dayIdx + 1;
                     const dateKey = formatDateKey(currentYear, mIdx, dayNum);
                     const data = dailyExpensesMap.get(dateKey);
@@ -482,22 +476,28 @@ export default function CalendarPage() {
               </div>
 
               <div className="flex-1 overflow-y-auto hide-scrollbar space-y-2.5">
-                {selectedDayData?.txs.map((tx) => (
-                  <div
-                    key={tx.id}
-                    className="flex items-center justify-between p-3.5 rounded-2xl bg-muted/40 border border-border/30"
-                  >
-                    <div>
-                      <p className="text-sm font-bold text-foreground">{tx.category}</p>
-                      <p className="text-[11px] text-muted-foreground font-medium">
-                        {tx.account} {tx.note && `· ${tx.note}`}
-                      </p>
+                {selectedDayData?.txs.map((tx) => {
+                  const txCur =
+                    (tx.account_id ? accountCurrencyMap.get(tx.account_id) : undefined) ||
+                    accountCurrencyMap.get((tx.account || "").trim().toLowerCase()) ||
+                    currency;
+                  return (
+                    <div
+                      key={tx.id}
+                      className="flex items-center justify-between p-3.5 rounded-2xl bg-muted/40 border border-border/30"
+                    >
+                      <div>
+                        <p className="text-sm font-bold text-foreground">{tx.category}</p>
+                        <p className="text-[11px] text-muted-foreground font-medium">
+                          {tx.account} {tx.note && `· ${tx.note}`}
+                        </p>
+                      </div>
+                      <span className="text-sm font-black text-rose-500">
+                        -{formatCurrency(tx.amount, txCur)}
+                      </span>
                     </div>
-                    <span className="text-sm font-black text-rose-500">
-                      -{formatCurrency(tx.amount)}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="pt-3 border-t border-border/40 flex items-center justify-between">
